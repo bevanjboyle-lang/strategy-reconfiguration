@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Strategy & Reconfiguration — BSW Acute Services Review</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f9;color:#1a1f26;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:0 18px 60px}
+.top{background:#005eb8;color:#fff}
+.top .in{max-width:1100px;margin:0 auto;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-weight:600;font-size:17px}
+.brand small{display:block;font-weight:400;font-size:11.5px;opacity:.85}
+.viewas{font-size:13px;display:flex;align-items:center;gap:8px}
+.viewas select{font-size:13px;padding:6px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff}
+.viewas select option{color:#000}
+.stages{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px}
+.stage{font-size:12px;padding:6px 11px;border-radius:999px;background:#e7ecf3;color:#5b6573}
+.stage.on{background:#dbe7f6;color:#003d78;font-weight:600}
+.banner{background:#fff7e6;border:1px solid #f0d68a;color:#7a5b00;font-size:12px;padding:8px 11px;border-radius:8px;margin:12px 0}
+.st{font-size:12px;font-weight:600;color:#5b6573;letter-spacing:.4px;text-transform:uppercase;margin:22px 0 10px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}
+.kpi{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:13px 15px}
+.kpi .l{font-size:12px;color:#5b6573;margin-bottom:5px}
+.kpi .v{font-size:25px;font-weight:600}
+.kpi .s{font-size:11.5px;color:#8a93a1;margin-top:3px}
+.maprow{display:grid;grid-template-columns:1.25fr 1fr;gap:15px}
+@media(max-width:800px){.maprow{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:15px}
+.card h3{margin:0 0 3px;font-size:15px}
+.card .cap{font-size:12px;color:#8a93a1;margin-bottom:10px}
+.places{display:flex;gap:9px}
+.place{flex:1;border-radius:10px;padding:11px;color:#fff;cursor:pointer;border:2px solid transparent;text-align:left}
+.place.sel{border-color:#1a1f26}
+.place .pn{font-size:13px;font-weight:600}
+.place .pt{font-size:11px;opacity:.92}
+.place .pi{font-size:21px;font-weight:700;margin-top:7px}
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:#5b6573;margin-top:10px}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.drivers{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px}
+.driver{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:13px;cursor:pointer;text-align:left}
+.driver.sel{border-color:#1a1f26}
+.driver .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.driver .dn{font-size:14px;font-weight:600}
+.driver .dm{font-size:12px;color:#5b6573;min-height:17px}
+.bar{height:6px;background:#eef1f5;border-radius:999px;overflow:hidden;margin-top:9px}
+.bar>div{height:100%}
+.list{border:1px solid #e3e8ef;border-radius:12px;overflow:hidden;background:#fff}
+.row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-bottom:1px solid #eef1f5;cursor:pointer}
+.row:last-child{border-bottom:none}
+.row:hover{background:#f7f9fc}
+.row .tag{width:7px;height:32px;border-radius:3px;flex:none}
+.row .m{flex:1;min-width:0}
+.row .t1{font-size:13px}
+.row .t2{font-size:11.5px;color:#8a93a1}
+.row .sc{font-size:13px;font-weight:700;width:30px;text-align:right}
+.overlay{position:fixed;inset:0;background:rgba(15,20,28,.45);display:flex;align-items:flex-start;justify-content:center;padding:34px 14px;overflow:auto}
+.modal{background:#fff;border-radius:14px;max-width:540px;width:100%;padding:18px 20px}
+.modal h2{margin:0 0 1px;font-size:17px}
+.modal .ms{font-size:12px;color:#8a93a1;margin-bottom:12px}
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:#fff}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid #eef1f5}
+.kv .k{color:#5b6573}
+.prov{font-size:11.5px;color:#8a93a1;background:#f7f9fc;border:1px solid #e3e8ef;border-radius:8px;padding:8px 10px;margin-top:10px}
+.chal{margin-top:14px;border-top:1px solid #eef1f5;padding-top:12px}
+.chal h4{margin:0 0 7px;font-size:13px}
+.field{width:100%;font-size:13px;padding:8px 9px;border:1px solid #e3e8ef;border-radius:8px;margin-top:6px;font-family:inherit}
+.btn{font-size:13px;padding:8px 13px;border-radius:8px;border:1px solid #005eb8;background:#005eb8;color:#fff;cursor:pointer;font-weight:600}
+.note{font-size:11px;color:#8a93a1;margin-top:7px}
+.ovr{font-size:12px;background:#eef6ee;border:1px solid #cfe6cf;border-radius:8px;padding:7px 9px;margin-top:8px}
+.x{float:right;border:none;background:none;font-size:19px;color:#8a93a1;cursor:pointer}
+.loading{padding:60px 0;text-align:center;color:#8a93a1}
+</style>
+</head>
+<body>
+<div class="top"><div class="in">
+  <div class="brand">Strategy &amp; Reconfiguration<small>BSW Acute Services Review · shared current-state view</small></div>
+  <div class="viewas"><span>Viewing as</span><select id="orgsel"></select></div>
+</div></div>
+<div class="wrap">
+  <div class="stages">
+    <span class="stage on">1 · Orient</span><span class="stage">2 · Surface</span><span class="stage">3 · Frame</span><span class="stage">4 · Prioritise</span><span class="stage">5 · Commit</span>
+  </div>
+  <div class="banner">Live prototype. Underlying values are illustrative (modelled), pending NHS public-data and Model Health System ingestion. Distress scores and challenges are computed and stored live.</div>
+  <div id="app"><div class="loading">Loading the shared current-state view…</div></div>
+  <div class="st">Demand &amp; capacity outlook (BSW Hospitals Group)</div>
+  <div class="maprow">
+    <div class="card">
+      <h3>Assumptions</h3><div class="cap">Editable and transparent. Baseline activity is illustrative pending ingestion.</div>
+      <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between"><span>Annual demand growth</span><span id="dg">2.0%</span></div>
+      <input id="growth" type="range" min="0" max="5" step="0.1" value="2.0" style="width:100%" oninput="computeDemand()"/>
+      <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between;margin-top:8px"><span>Efficiency / shift-of-care offset</span><span id="do">0.5%</span></div>
+      <input id="offset" type="range" min="0" max="3" step="0.1" value="0.5" style="width:100%" oninput="computeDemand()"/>
+      <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between;margin-top:8px"><span>Horizon</span><span id="dy">10 yrs</span></div>
+      <input id="years" type="range" min="1" max="10" step="1" value="10" style="width:100%" oninput="computeDemand()"/>
+      <div class="note" id="dnet"></div>
+    </div>
+    <div class="card">
+      <h3>Projected position</h3><div class="cap">Demand vs roughly flat capacity</div>
+      <div class="kv"><span class="k">A&amp;E attendances / yr</span><span id="da"></span></div>
+      <div class="kv"><span class="k">Emergency admissions / yr</span><span id="dadm"></span></div>
+      <div class="kv"><span class="k">Additional beds needed</span><span id="dbeds"></span></div>
+      <div class="prov" id="dmsg" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+<div id="modalroot"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL="https://ehkxzxjnhqcuarbcfchw.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoa3h6eGpuaHFjdWFyYmNmY2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTE2MzcsImV4cCI6MjA5ODA2NzYzN30.oLc_J8Y5pV4xzBkOQruRU5WqbwyA_Lsb6M4etRYNFWY";
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
+const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
+const PLACES=[["Bath & NE Somerset","RD1","RUH Bath"],["Swindon","RN3","Great Western"],["Wiltshire","RNZ","Salisbury"]];
+let orgs=[],rows=[],orgdist=[],overrides=[];
+let orgById={},distByOrg={},distByCode={};
+let sel=null,driver=null,drill=null;
+
+function color(d){if(d==null)return '#9aa4b2';if(d>=70)return '#cf3b3b';if(d>=55)return '#e07a2e';if(d>=35)return '#e8a800';return '#0a9342';}
+function slab(s){return {near_failure:'near-failure',serious:'serious',watch:'watch',stable:'stable'}[s]||s;}
+function fmt(v,u){if(v==null)return '—';v=Number(v);if(u==='pct')return (v%1?v.toFixed(1):v)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(v).toLocaleString()+'m';if(u==='count')return v.toLocaleString();if(u==='score')return ''+v;return ''+v;}
+function esc(s){return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function orgRows(){return rows.filter(r=>r.organisation_id===sel);}
+
+async function loadAll(){
+  const [o,d,r,ov]=await Promise.all([
+    sb.from('sr_organisations').select('*'),
+    sb.from('sr_v_org_distress').select('*'),
+    sb.from('sr_v_metric_status').select('*'),
+    sb.from('sr_overrides').select('*')
+  ]);
+  orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];
+  orgById={};orgs.forEach(x=>orgById[x.id]=x);
+  distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
+  distByCode={};orgdist.forEach(x=>{if(x.org_code)distByCode[x.org_code]=x;});
+  if(!sel){const g=orgs.find(x=>x.type==='provider_group');sel=g?g.id:(orgs[0]||{}).id;}
+  renderSelect();render();
+}
+function renderSelect(){
+  const selectable=orgs.filter(x=>['icb','provider_group','acute_trust'].includes(x.type));
+  document.getElementById('orgsel').innerHTML=selectable.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('');
+}
+document.getElementById('orgsel').addEventListener('change',e=>{sel=e.target.value;driver=null;render();});
+
+function render(){
+  const o=orgById[sel],od=distByOrg[sel];if(!o){return;}
+  const gm=c=>orgRows().find(r=>r.metric_code===c);
+  const deficit=gm('deficit'),ae=gm('ae_4hr');
+  const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,6);
+  let html='';
+  html+=`<div class="kpis">
+    <div class="kpi"><div class="l">System distress index</div><div class="v" style="color:${color(od&&od.distress_index)}">${od?od.distress_index:'—'}<span style="font-size:13px;color:#8a93a1">/100</span></div><div class="s">${esc(o.name)}</div></div>
+    <div class="kpi"><div class="l">Near-failure flags</div><div class="v" style="color:${od&&od.near_failure_count?'#cf3b3b':'#1a1f26'}">${od?od.near_failure_count:'—'}</div><div class="s">breaching, deteriorating, critical</div></div>
+    <div class="kpi"><div class="l">Financial position vs plan</div><div class="v">${deficit?fmt(deficit.value,'gbp_m'):'—'}</div><div class="s">underlying deficit</div></div>
+    <div class="kpi"><div class="l">A&amp;E 4-hour performance</div><div class="v">${ae?fmt(ae.value,'pct'):'—'}</div><div class="s">standard 95%</div></div>
+  </div>`;
+  html+=`<div class="st">System geography</div><div class="maprow"><div class="card"><h3>BSW acute system</h3><div class="cap">Distress by place. Click a place to focus on its acute provider.</div><div class="places">`;
+  PLACES.forEach(p=>{const dd=distByCode[p[1]];const di=dd?dd.distress_index:null;const s=o.code===p[1];
+    html+=`<button class="place ${s?'sel':''}" style="background:${color(di)}" onclick="selectCode('${p[1]}')"><div class="pn">${p[0]}</div><div class="pt">${p[2]}</div><div class="pi">${di==null?'—':di}</div></button>`;});
+  html+=`</div><div class="legend"><span><i class="dot" style="background:#0a9342"></i>stable</span><span><i class="dot" style="background:#e8a800"></i>watch</span><span><i class="dot" style="background:#e07a2e"></i>serious</span><span><i class="dot" style="background:#cf3b3b"></i>near-failure</span></div></div>`;
+  html+=`<div class="card"><h3>Closest to failure</h3><div class="cap">Across the three trusts</div><div class="list" style="border:none">`;
+  closest.forEach(r=>{html+=`<div class="row" style="padding-left:0;padding-right:0" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)} · ${r.org_code}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;});
+  html+=`</div></div></div>`;
+  html+=`<div class="st">Priority drivers — ${esc(o.name)}</div><div class="drivers">`;
+  DRIVERS.forEach(dv=>{const rs=orgRows().filter(r=>r.driver===dv[0]);const avg=rs.length?Math.round(rs.reduce((a,r)=>a+r.distress,0)/rs.length):null;const worst=rs.slice().sort((a,b)=>b.distress-a.distress)[0];const nf=rs.filter(r=>r.near_failure).length;
+    html+=`<button class="driver ${driver===dv[0]?'sel':''}" onclick="setDriver('${dv[0]}')"><div class="dh"><span class="dn">${dv[1]}</span><span class="dot" style="background:${color(avg)}"></span></div><div class="dm">${worst?esc(worst.metric_name)+': '+fmt(worst.value,worst.unit):'no data'}${nf?' · '+nf+' near-failure':''}</div><div class="bar"><div style="width:${avg||0}%;background:${color(avg)}"></div></div></button>`;});
+  html+=`</div>`;
+  if(driver){const rs=orgRows().filter(r=>r.driver===driver).sort((a,b)=>b.distress-a.distress);const dn=DRIVERS.find(d=>d[0]===driver)[1];
+    html+=`<div class="st">${dn} — metrics for ${esc(o.name)}</div><div class="list">`;
+    rs.forEach(r=>{const ov=overrides.filter(x=>x.metric_value_id===r.metric_value_id).length;
+      html+=`<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}${ov?' · adjusted':''}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;});
+    html+=`</div>`;}
+  document.getElementById('app').innerHTML=html;
+  renderModal();
+}
+function selectCode(c){const t=orgs.find(o=>o.code===c);if(t){sel=t.id;driver=null;renderSelect();render();}}
+function setDriver(d){driver=driver===d?null:d;render();}
+function openDrill(orgId,code){drill={orgId,code};render();}
+function closeDrill(){drill=null;render();}
+
+function renderModal(){
+  const root=document.getElementById('modalroot');
+  if(!drill){root.innerHTML='';return;}
+  const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r){root.innerHTML='';return;}
+  const o=orgById[drill.orgId],selOrg=orgById[sel];
+  const canChallenge=selOrg.type==='acute_trust'&&selOrg.id===drill.orgId;
+  const trend=r.prev_value==null?'no prior period':r.worsening===true?'deteriorating':r.worsening===false?'improving':'stable';
+  const ovs=overrides.filter(x=>x.metric_value_id===r.metric_value_id);
+  root.innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()">
+    <button class="x" onclick="closeDrill()">×</button>
+    <h2>${esc(r.metric_name)}</h2><div class="ms">${esc(o.name)} · ${r.domain}</div>
+    <div style="margin:4px 0 12px"><span class="pill" style="background:${color(r.distress)}">${slab(r.status)} · ${r.distress}/100</span></div>
+    <div class="kv"><span class="k">Latest value</span><span>${fmt(r.value,r.unit)}</span></div>
+    <div class="kv"><span class="k">Standard / target</span><span>${r.standard!=null?fmt(r.standard,r.unit):'—'}</span></div>
+    <div class="kv"><span class="k">National median</span><span>${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</span></div>
+    <div class="kv"><span class="k">Prior period</span><span>${r.prev_value!=null?fmt(r.prev_value,r.unit):'—'}</span></div>
+    <div class="kv"><span class="k">Trend</span><span>${trend}</span></div>
+    <div class="kv"><span class="k">Criticality</span><span>${r.criticality}/5</span></div>
+    <div class="prov">Source: illustrative (modelled), pending source/MHS ingestion · confidence: modelled · period ${r.period}</div>
+    ${ovs.map(x=>`<div class="ovr">Challenge: proposed ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)}</div>`).join('')}
+    <div class="chal"><h4>Challenge this figure</h4>
+    ${canChallenge?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/>
+      <textarea class="field" id="cwhy" rows="3" placeholder="Rationale (required)"></textarea>
+      <div style="margin-top:9px"><button class="btn" id="cbtn" onclick="submitChallenge()">Submit challenge</button></div>
+      <div class="note">Submitting as ${esc(selOrg.name)}. Visible to all, with author and rationale.</div>`
+    :`<div class="note">Only the organisation that owns this data can challenge it. Switch “Viewing as” to ${esc(o.name)} to challenge.</div>`}
+    </div></div></div>`;
+}
+async function submitChallenge(){
+  const why=document.getElementById('cwhy').value.trim();if(!why)return;
+  const val=document.getElementById('cval').value;
+  document.getElementById('cbtn').disabled=true;document.getElementById('cbtn').textContent='Saving…';
+  const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);
+  await sb.from('sr_overrides').insert({metric_value_id:r.metric_value_id,author_org_id:sel,proposed_value:val===''?null:Number(val),rationale:why,state:'challenged'});
+  await loadAll();
+}
+window.selectCode=selectCode;window.setDriver=setDriver;window.openDrill=openDrill;window.closeDrill=closeDrill;window.submitChallenge=submitChallenge;
+
+function computeDemand(){
+ var g=parseFloat(document.getElementById('growth').value);
+ var o=parseFloat(document.getElementById('offset').value);
+ var y=parseInt(document.getElementById('years').value);
+ document.getElementById('dg').textContent=g.toFixed(1)+'%';
+ document.getElementById('do').textContent=o.toFixed(1)+'%';
+ document.getElementById('dy').textContent=y+' yrs';
+ var net=(g-o)/100; var f=Math.pow(1+net,y);
+ var ba=240000, badm=95000;
+ var pa=Math.round(ba*f), padm=Math.round(badm*f);
+ var beds=Math.max(0,Math.round((padm-badm)*5/365/0.92));
+ var peryr=y?Math.round(beds/y):0;
+ document.getElementById('da').textContent=ba.toLocaleString()+' → '+pa.toLocaleString();
+ document.getElementById('dadm').textContent=badm.toLocaleString()+' → '+padm.toLocaleString();
+ document.getElementById('dbeds').textContent=beds.toLocaleString()+' ('+peryr+'/yr)';
+ document.getElementById('dnet').textContent='Net growth applied: '+(net*100).toFixed(1)+'% per year over '+y+' years.';
+ document.getElementById('dmsg').textContent='At these assumptions the Group needs about a '+peryr+'-bed ward of additional capacity each year just to stand still. Move the sliders to test scenarios.';
+}
+window.computeDemand=computeDemand;
+loadAll();computeDemand();
+</script>
+</body>
+</html>
