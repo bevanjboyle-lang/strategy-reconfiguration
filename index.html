@@ -199,7 +199,7 @@ function renderModal(){
     <div class="kv"><span class="k">Prior period</span><span>${r.prev_value!=null?fmt(r.prev_value,r.unit):'—'}</span></div>
     <div class="kv"><span class="k">Trend</span><span>${trend}</span></div>
     <div class="kv"><span class="k">Criticality</span><span>${r.criticality}/5</span></div>
-    <div class="prov">Source: illustrative (modelled), pending source/MHS ingestion · confidence: modelled · period ${r.period}</div>
+    <div class="prov">Source: ${r.source_url?`<a href="${r.source_url}" target="_blank" rel="noopener" style="color:#005eb8">${esc(r.source||'source')}</a>`:esc(r.source||'illustrative (modelled), pending ingestion')} · confidence: <strong style="color:${r.confidence==='official'?'#0a9342':'#8a6d00'}">${esc(r.confidence||'modelled')}</strong> · period ${r.period}</div>
     ${ovs.map(x=>`<div class="ovr">Challenge: proposed ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)}</div>`).join('')}
     <div class="chal"><h4>Challenge this figure</h4>
     ${canChallenge?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/>
