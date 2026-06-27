@@ -1,346 +1,431 @@
 <!doctype html>
 <html lang="en-GB">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Strategy & Reconfiguration — BSW Acute Services Review</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>BSW System Intelligence — Acute Services Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:light}
-*{box-sizing:border-box}
-body{margin:0;background:#f4f6f9;color:#1a1f26;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
-.wrap{max-width:1140px;margin:0 auto;padding:0 18px 70px}
-.top{background:#005eb8;color:#fff}
-.top .in{max-width:1140px;margin:0 auto;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
-.brand{font-weight:600;font-size:17px}
-.brand small{display:block;font-weight:400;font-size:11.5px;opacity:.85}
-.viewas{font-size:13px;display:flex;align-items:center;gap:8px}
-.viewas select{font-size:13px;padding:6px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff}
-.viewas select option{color:#000}
-.stages{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px}
-.stage{font-size:12.5px;padding:7px 13px;border-radius:999px;background:#e7ecf3;color:#5b6573;cursor:pointer;border:none}
-.stage.on{background:#005eb8;color:#fff;font-weight:600}
-.stage:hover:not(.on){background:#dbe7f6}
-.banner{background:#fff7e6;border:1px solid #f0d68a;color:#7a5b00;font-size:12px;padding:8px 11px;border-radius:8px;margin:12px 0}
-.intro{font-size:13.5px;color:#5b6573;margin:14px 0 4px}
-.st{font-size:12px;font-weight:600;color:#5b6573;letter-spacing:.4px;text-transform:uppercase;margin:22px 0 10px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}
-.kpi{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:13px 15px}
-.kpi .l{font-size:12px;color:#5b6573;margin-bottom:5px}
-.kpi .v{font-size:25px;font-weight:600}
-.kpi .s{font-size:11.5px;color:#8a93a1;margin-top:3px}
-.maprow{display:grid;grid-template-columns:1.25fr 1fr;gap:15px}
-@media(max-width:820px){.maprow{grid-template-columns:1fr}}
-.card{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:15px}
-.card h3{margin:0 0 3px;font-size:15px}
-.card .cap{font-size:12px;color:#8a93a1;margin-bottom:10px}
-.places{display:flex;gap:9px}
-.place{flex:1;border-radius:10px;padding:11px;color:#fff;cursor:pointer;border:2px solid transparent;text-align:left}
-.place.sel{border-color:#1a1f26}
-.place .pn{font-size:13px;font-weight:600}
-.place .pt{font-size:11px;opacity:.92}
-.place .pi{font-size:21px;font-weight:700;margin-top:7px}
-.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:#5b6573;margin-top:10px}
-.legend span{display:flex;align-items:center;gap:5px}
-.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
-.drivers{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px}
-.driver{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:13px;cursor:pointer;text-align:left}
-.driver.sel{border-color:#1a1f26}
-.driver .dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
-.driver .dn{font-size:14px;font-weight:600}
-.driver .dm{font-size:12px;color:#5b6573;min-height:17px}
-.bar{height:6px;background:#eef1f5;border-radius:999px;overflow:hidden;margin-top:9px}
-.bar>div{height:100%}
-.list{border:1px solid #e3e8ef;border-radius:12px;overflow:hidden;background:#fff}
-.row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-bottom:1px solid #eef1f5;cursor:pointer}
-.row:last-child{border-bottom:none}
-.row:hover{background:#f7f9fc}
-.row .tag{width:7px;height:34px;border-radius:3px;flex:none}
-.row .m{flex:1;min-width:0}
-.row .t1{font-size:13px}
-.row .t2{font-size:11.5px;color:#8a93a1}
-.row .sc{font-size:13px;font-weight:700;width:34px;text-align:right}
-.pill{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;color:#fff}
-.tagchip{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:#eef1f5;color:#5b6573;margin-right:5px}
-.overlay{position:fixed;inset:0;background:rgba(15,20,28,.45);display:flex;align-items:flex-start;justify-content:center;padding:34px 14px;overflow:auto;z-index:50}
-.modal{background:#fff;border-radius:14px;max-width:560px;width:100%;padding:18px 20px}
-.modal h2{margin:0 0 1px;font-size:17px}
-.modal .ms{font-size:12px;color:#8a93a1;margin-bottom:12px}
-.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid #eef1f5}
-.kv .k{color:#5b6573}
-.prov{font-size:11.5px;color:#8a93a1;background:#f7f9fc;border:1px solid #e3e8ef;border-radius:8px;padding:8px 10px;margin-top:10px}
-.chal{margin-top:14px;border-top:1px solid #eef1f5;padding-top:12px}
-.chal h4{margin:0 0 7px;font-size:13px}
-.field{width:100%;font-size:13px;padding:8px 9px;border:1px solid #e3e8ef;border-radius:8px;margin-top:6px;font-family:inherit}
-.btn{font-size:13px;padding:8px 13px;border-radius:8px;border:1px solid #005eb8;background:#005eb8;color:#fff;cursor:pointer;font-weight:600}
-.btn.ghost{background:#fff;color:#005eb8}
-.note{font-size:11px;color:#8a93a1;margin-top:7px}
-.ovr{font-size:12px;background:#eef6ee;border:1px solid #cfe6cf;border-radius:8px;padding:7px 9px;margin-top:8px}
-.x{float:right;border:none;background:none;font-size:19px;color:#8a93a1;cursor:pointer}
-.loading{padding:60px 0;text-align:center;color:#8a93a1}
-.lenses{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:6px}
-.lensbtn{font-size:12.5px;padding:7px 12px;border-radius:999px;cursor:pointer;border:1px solid #cfd8e3;background:#fff;color:#5b6573}
-.lensbtn.on{background:#dbe7f6;color:#003d78;border-color:#9cc0e8;font-weight:600}
-.critrow{display:flex;align-items:center;gap:10px;margin-bottom:7px}
-.critrow .cn{width:160px;font-size:12.5px;color:#1a1f26}
-.critrow .cb{flex:1}
-.rank{display:flex;align-items:center;gap:11px;padding:11px 13px;border-bottom:1px solid #eef1f5}
-.rank:last-child{border-bottom:none}
-.rank .n{font-size:15px;font-weight:700;color:#8a93a1;width:20px;text-align:center}
-.rank .m{flex:1;min-width:0}
-.rank .sc{font-size:15px;font-weight:700;width:34px;text-align:right}
-.robust{font-size:10px;font-weight:700;color:#0a7d3c;background:#e7f6ec;border:1px solid #bfe6cd;border-radius:999px;padding:1px 7px;margin-left:6px}
-canvas{max-width:100%}
+:root{color-scheme:light;--ink:#0b2239;--ink2:#33475b;--muted:#6b7c8f;--faint:#9aa7b4;--line:#e7ecf2;--line2:#eef2f7;--bg:#f4f7fb;--panel:#fff;--nhs:#005eb8;--nhs-d:#003a73;--teal:#0a9aa0;--violet:#5b53b5;--good:#1a9c6b;--watch:#e3a008;--serious:#e0701f;--crit:#d3433f;--shadow:0 1px 2px rgba(16,40,70,.04),0 6px 20px rgba(16,40,70,.06);--shadow-lg:0 14px 44px rgba(16,40,70,.18);--r:13px}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-feature-settings:"tnum" 1;line-height:1.5;-webkit-font-smoothing:antialiased}
+.serif{font-family:Newsreader,Georgia,serif}
+a{color:var(--nhs);text-decoration:none}button{font-family:inherit}
+.shell{display:flex;min-height:100vh}
+.side{width:228px;flex:none;background:linear-gradient(178deg,#062845,#0b2239 62%);color:#cdd9e6;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:18px 12px;overflow-y:auto}
+.logo{font-weight:700;font-size:15px;color:#fff;line-height:1.25;padding:0 6px}
+.logo small{display:block;font-weight:400;font-size:10.5px;color:#8ea6c0;margin-top:3px}
+.navgrp{margin-top:18px}
+.navgrp .lab{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:#5f7d9c;text-transform:uppercase;padding:0 8px;margin-bottom:5px}
+.nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;color:#a9bdd2;padding:8px 9px;border-radius:8px;cursor:pointer;font-size:13px;transition:.15s;margin-bottom:1px}
+.nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav button.on{background:rgba(255,255,255,.13);color:#fff;font-weight:600}
+.nav .ic{width:7px;height:7px;border-radius:2px;background:#3f6aa0;flex:none}
+.nav button.on .ic{background:var(--teal)}
+.side .foot{margin-top:auto;font-size:10px;color:#6f88a3;padding:10px 8px 0}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:11px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.topbar .ttl{font-size:14px;font-weight:600}.topbar .ttl small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.ctrls{display:flex;align-items:center;gap:9px}
+.sel{font-size:12.5px;padding:7px 11px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:500;box-shadow:var(--shadow);cursor:pointer}
+.view{padding:22px 28px 70px;max-width:1240px;margin:0 auto;width:100%;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.banner{background:linear-gradient(90deg,#fff8ea,#fffdf7);border:1px solid #f0dca6;color:#7a5b00;font-size:11.5px;padding:8px 12px;border-radius:9px;margin-bottom:16px}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--teal);margin:24px 0 9px}.eyebrow:first-child{margin-top:0}
+h1{font-size:22px;font-weight:600;margin:0 0 5px;letter-spacing:-.01em}
+.lead{font-size:14px;color:var(--ink2);max-width:820px;margin:0 0 6px}
+.grid{display:grid;gap:13px}.kpis{grid-template-columns:repeat(auto-fit,minmax(175px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:15px 17px}
+.kpi .l{font-size:11.5px;color:var(--muted);margin-bottom:7px;font-weight:500}
+.kpi .v{font-size:27px;font-weight:600;letter-spacing:-.02em;line-height:1}.kpi .v small{font-size:13px;color:var(--faint);font-weight:500}
+.kpi .s{font-size:11px;color:var(--faint);margin-top:6px}.kpi .spark{margin-top:9px;height:28px}
+.h3{font-size:14.5px;font-weight:600;margin:0 0 2px}.cap{font-size:11.5px;color:var(--faint);margin-bottom:11px}
+.two{display:grid;grid-template-columns:1.1fr .9fr;gap:13px}@media(max-width:920px){.two{grid-template-columns:1fr}.side{display:none}}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}@media(max-width:820px){.three{grid-template-columns:1fr}}
+#map svg{width:100%;height:auto;display:block}.maparea{transition:.15s;cursor:pointer}.maparea:hover{filter:brightness(1.07)}
+.maplabel{font-size:11px;font-weight:600;fill:#fff;paint-order:stroke;stroke:rgba(0,0,0,.25);stroke-width:2.5px;pointer-events:none}.maplabel.sub{font-size:9px;font-weight:500;fill:rgba(255,255,255,.92)}
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:11px}.legend span{display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.tip{position:fixed;z-index:100;background:#0b2239;color:#fff;border-radius:9px;padding:9px 11px;font-size:11.5px;box-shadow:var(--shadow-lg);pointer-events:none;opacity:0;transition:opacity .12s;max-width:260px}
+.tip b{color:#fff}.tip .r{display:flex;justify-content:space-between;gap:14px;color:#b9c8d8;margin-top:3px}.tip .r span:last-child{color:#fff;font-weight:600}
+.bar{height:7px;background:#eef1f5;border-radius:999px;overflow:hidden}.bar>div{height:100%;border-radius:999px;transition:width .6s cubic-bezier(.2,.7,.2,1)}
+.row{display:flex;align-items:center;gap:11px;padding:11px 14px;border-bottom:1px solid var(--line2);cursor:pointer;transition:background .15s}.row:last-child{border-bottom:none}.row:hover{background:#f7faff}
+.list{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff;box-shadow:var(--shadow)}
+.row .tag{width:6px;height:34px;border-radius:3px;flex:none}.row .m{flex:1;min-width:0}.row .t1{font-size:13px;font-weight:500}.row .t2{font-size:11px;color:var(--faint);margin-top:1px}.row .sc{font-size:14.5px;font-weight:700;width:42px;text-align:right}
+.pill{display:inline-block;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;color:#fff}
+.filters{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:13px}
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px}
+table.dt th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;border-bottom:1px solid var(--line)}
+table.dt td{padding:8px 10px;border-bottom:1px solid var(--line2)}
+table.dt td.num,table.dt th.num{text-align:right;font-variant-numeric:tabular-nums}
+table.dt tr:hover td{background:#f7faff}
+.hm{border-collapse:separate;border-spacing:3px;font-size:11px}
+.hm th{font-size:10px;color:var(--muted);font-weight:600;padding:3px 5px;text-align:center}
+.hm td{padding:0}.hm .cell{width:42px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:11px;cursor:pointer;transition:.12s}.hm .cell:hover{transform:scale(1.08)}
+.hm .rl{font-size:11px;font-weight:600;color:var(--ink2);padding-right:8px;white-space:nowrap;text-align:right}
+.chartbox{height:240px}.chartbox.sm{height:180px}
+.lenses{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:13px}
+.lensbtn{font-size:12px;padding:7px 13px;border-radius:999px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink2);font-weight:500;box-shadow:var(--shadow)}.lensbtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.slabel{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-bottom:3px}.slabel b{font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--nhs);cursor:pointer}
+.rank{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line2)}.rank:last-child{border-bottom:none}.rank .n{font-size:15px;font-weight:700;color:var(--faint);width:20px;text-align:center}.rank .m{flex:1}.rank .sc{font-size:15px;font-weight:700;width:38px;text-align:right}
+.robust{font-size:9.5px;font-weight:700;color:#0a7d3c;background:#e7f6ec;border:1px solid #bfe6cd;border-radius:999px;padding:1px 7px;margin-left:7px}
+.overlay{position:fixed;inset:0;background:rgba(11,34,57,.5);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:42px 16px;overflow:auto;z-index:120;animation:fade .2s}
+.modal{background:#fff;border-radius:16px;max-width:560px;width:100%;padding:20px 22px;box-shadow:var(--shadow-lg)}
+.modal h2{margin:0 0 1px;font-size:17px}.modal .ms{font-size:12px;color:var(--faint);margin-bottom:13px}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line2)}.kv .k{color:var(--muted)}.kv b{font-variant-numeric:tabular-nums}
+.prov{font-size:11px;color:var(--muted);background:#f6f9fc;border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin-top:11px}
+.field{width:100%;font-size:13px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin-top:7px;font-family:inherit}
+.btn{font-size:12.5px;padding:8px 14px;border-radius:9px;border:1px solid var(--nhs);background:var(--nhs);color:#fff;cursor:pointer;font-weight:600}.btn.ghost{background:#fff;color:var(--nhs)}.btn:disabled{opacity:.5}
+.x{float:right;border:none;background:none;font-size:20px;color:var(--faint);cursor:pointer}
+.note{font-size:11px;color:var(--faint);margin-top:8px}.ovr{font-size:12px;background:#eef7f0;border:1px solid #cfe7d6;border-radius:9px;padding:8px 10px;margin-top:8px}
+.loading{padding:70px 0;text-align:center;color:var(--faint)}
+.exec{background:linear-gradient(120deg,#062845,#0b3a66);color:#eaf2fb;border-radius:16px;padding:20px 22px;box-shadow:var(--shadow-lg);margin-bottom:16px}
+.exec .e1{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7fb0e6;margin-bottom:7px}.exec p{margin:0;font-size:15px;line-height:1.6}.exec .hl{color:#fff;font-weight:600}.exec .crit{color:#ff9b8a;font-weight:600}
+.delta{font-size:11px;font-weight:600}.up{color:var(--good)}.down{color:var(--crit)}
+.muted{color:var(--muted)}
 </style>
 </head>
 <body>
-<div class="top"><div class="in">
-  <div class="brand">Strategy &amp; Reconfiguration<small>BSW Acute Services Review · shared decision platform</small></div>
-  <div class="viewas"><span>Viewing as</span><select id="orgsel"></select></div>
-</div></div>
-<div class="wrap">
-  <div class="stages" id="stages"></div>
-  <div class="banner">Live prototype. A&amp;E is real NHS data (current and prior year); other metrics are modelled synthetic series, clearly tagged, pending Model Health System ingestion. Scores, rankings and challenges compute live.</div>
-  <div id="app"><div class="loading">Loading…</div></div>
+<div class="shell">
+  <aside class="side">
+    <div class="logo">BSW System Intelligence<small>Acute Services Review platform</small></div>
+    <div id="nav"></div>
+    <div class="foot">Prototype · A&amp;E real NHS data, other metrics modelled pending ingestion</div>
+  </aside>
+  <div class="main">
+    <div class="topbar"><div class="ttl" id="topttl">Loading…<small id="topsub"></small></div>
+      <div class="ctrls"><span class="sel" id="lenschip" style="display:none"></span><select class="sel" id="orgsel"></select></div></div>
+    <div class="view" id="view"><div class="loading">Loading the BSW system model…</div></div>
+  </div>
 </div>
-<div id="modalroot"></div>
+<div id="tip" class="tip"></div><div id="modalroot"></div>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SB_URL="https://ehkxzxjnhqcuarbcfchw.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoa3h6eGpuaHFjdWFyYmNmY2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTE2MzcsImV4cCI6MjA5ODA2NzYzN30.oLc_J8Y5pV4xzBkOQruRU5WqbwyA_Lsb6M4etRYNFWY";
 const sb=window.supabase.createClient(SB_URL,SB_KEY);
-const STAGES=[["orient","1 · Orient"],["surface","2 · Surface"],["frame","3 · Frame"],["prioritise","4 · Prioritise"],["commit","5 · Commit"]];
+const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.topo.json";
+const NAV=[["SYSTEM",[["overview","Overview"]]],
+["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"]]],
+["MODEL",[["modelling","Modelling studio"]]],
+["DECIDE",[["decide","Decision module"]]]];
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
-const PLACES=[["Bath & NE Somerset","RD1","RUH Bath"],["Swindon","RN3","Great Western"],["Wiltshire","RNZ","Salisbury"]];
-const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour waits","Medium"],amb_handover:["Faster handovers free ambulance hours and ED capacity","Short"],cancer_62:["Pathway redesign to recover the 62-day standard","Short"],rtt_backlog:["Pooled lists and hubs to clear long waits","Medium"],fragility:["Consolidating sub-scale services improves resilience","Long"],workforce:["Cut agency reliance and vacancy; stabilise rotas","Medium"],finance:["Productivity and configuration to address the deficit","Long"],diagnostics:["CDC and surgical hub to cut diagnostic waits","Short"],consolidation:["Site reconfiguration for clinical and financial sustainability","Long"],out_of_hospital:["Shift care to community; reduce length of stay","Medium"]};
-let orgs=[],rows=[],orgdist=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[];
-let orgById={},distByOrg={},distByCode={};
-let stage='orient',sel=null,driver=null,drill=null,lens='Balanced',chartObj=null;
-const committed={};
-
-function color(d){if(d==null)return '#9aa4b2';if(d>=70)return '#cf3b3b';if(d>=55)return '#e07a2e';if(d>=35)return '#e8a800';return '#0a9342';}
+const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
+const PLACE_MAP={RD1:"Bath and North East Somerset",RN3:"Swindon",RNZ:"Wiltshire"},PLACE_SITE={RD1:"RUH Bath",RN3:"Great Western",RNZ:"Salisbury"};
+const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour waits","Medium"],amb_handover:["Faster handovers free ambulance hours and ED capacity","Short"],cancer_62:["Pathway redesign to recover the 62-day standard","Short"],rtt_backlog:["Pooled lists and surgical hubs to clear long waits","Medium"],fragility:["Consolidating sub-scale services improves resilience","Long"],workforce:["Cut agency reliance and vacancy; stabilise rotas","Medium"],finance:["Productivity and configuration to address the deficit","Long"],diagnostics:["CDC and surgical hub to cut diagnostic waits","Short"],consolidation:["Site reconfiguration for clinical and financial sustainability","Long"],out_of_hospital:["Shift care to community; reduce length of stay","Medium"]};
+const TRUSTS=['RN3','RD1','RNZ'],TRUSTCOL={RN3:'#005eb8',RD1:'#0a9aa0',RNZ:'#5b53b5',GROUP:'#33475b',QOX:'#33475b'};
+let orgs=[],orgdist=[],rows=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[],series={};
+let specs=[],pods=[],sgs=[],flines=[],sites=[];
+let orgById={},distByOrg={},distByCode={},topo=null,fcache={};
+let stage='overview',sel=null,driver=null,drill=null,lensName='Balanced',weights={},charts={};
+let aSpec='110',aPod='NEL',perfMetric='rtt_18wk';
+function color(d){if(d==null)return '#aab6c2';if(d>=70)return '#d3433f';if(d>=55)return '#e0701f';if(d>=35)return '#e3a008';return '#1a9c6b';}
 function slab(s){return {near_failure:'near-failure',serious:'serious',watch:'watch',stable:'stable'}[s]||s;}
-function fmt(v,u){if(v==null)return '—';v=Number(v);if(u==='pct')return (Math.round(v*10)/10)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(v).toLocaleString()+'m';if(u==='count')return Math.round(v).toLocaleString();if(u==='days')return (Math.round(v*10)/10)+' days';if(u==='score'||u==='ratio')return ''+(Math.round(v*10)/10);return ''+v;}
-function esc(s){return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(v,u){if(v==null||v==='')return '—';v=Number(v);if(u==='pct')return (Math.round(v*10)/10)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(Math.round(v*10)/10).toLocaleString()+'m';if(u==='count'||u==='wte')return Math.round(v).toLocaleString();if(u==='days')return (Math.round(v*10)/10)+' days';if(u==='m2')return Math.round(v).toLocaleString()+' m²';if(u==='flag')return v?'Yes':'No';if(u==='score'||u==='ratio')return ''+(Math.round(v*10)/10);return ''+v;}
+function esc(s){return (s==null?'':''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function orgRows(){return rows.filter(r=>r.organisation_id===sel);}
+function killCharts(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
+function orgName(){return (orgById[sel]||{}).name||'';}
+function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:c;}
 
 async function loadAll(){
-  const [o,d,r,ov,cr,ln,iss,isc]=await Promise.all([
-    sb.from('sr_organisations').select('*'),
-    sb.from('sr_v_org_distress').select('*'),
-    sb.from('sr_v_metric_status').select('*'),
-    sb.from('sr_overrides').select('*'),
-    sb.from('sr_criteria').select('*').order('sort'),
-    sb.from('sr_lenses').select('*').order('sort'),
-    sb.from('sr_issues').select('*'),
-    sb.from('sr_issue_scores').select('*')
-  ]);
-  orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];
-  criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];
-  orgById={};orgs.forEach(x=>orgById[x.id]=x);
-  distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
+  const [o,d,r,ov,cr,ln,iss,isc,mv,sp,pd,sg,fl,si]=await Promise.all([
+    sb.from('sr_organisations').select('*'),sb.from('sr_v_org_distress').select('*'),sb.from('sr_v_metric_status').select('*'),
+    sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
+    sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
+    sb.from('sr_metric_values').select('organisation_id,metric_id,period,value').limit(20000),
+    sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
+    sb.from('sr_dim_staff_group').select('*').order('sort'),sb.from('sr_dim_finance_line').select('*').order('sort'),sb.from('sr_dim_site').select('*').order('sort')]);
+  orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];
+  specs=sp.data||[];pods=pd.data||[];sgs=sg.data||[];flines=fl.data||[];sites=si.data||[];
+  orgById={};orgs.forEach(x=>orgById[x.id]=x);distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
   distByCode={};orgdist.forEach(x=>{if(x.org_code)distByCode[x.org_code]=x;});
+  series={};(mv.data||[]).forEach(x=>{const k=x.organisation_id+'|'+x.metric_id;(series[k]=series[k]||[]).push(x);});
+  Object.values(series).forEach(a=>a.sort((p,q)=>p.period<q.period?-1:1));
   if(!sel){const g=orgs.find(x=>x.type==='provider_group');sel=g?g.id:(orgs[0]||{}).id;}
-  renderSelect();renderStages();render();
+  const L=lenses.find(x=>x.name===lensName)||lenses[0];if(L){lensName=L.name;weights=Object.assign({},L.weights);}
+  try{topo=await fetch(TOPO_URL).then(r=>r.json());}catch(e){topo=null;}
+  renderNav();renderSelect();render();
 }
-function renderSelect(){
-  const s=orgs.filter(x=>['icb','provider_group','acute_trust'].includes(x.type));
-  document.getElementById('orgsel').innerHTML=s.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('');
-}
-function renderStages(){
-  document.getElementById('stages').innerHTML=STAGES.map(s=>`<button class="stage ${stage===s[0]?'on':''}" onclick="setStage('${s[0]}')">${s[1]}</button>`).join('');
-}
+async function ensure(domain){if(fcache[domain])return fcache[domain];const{data}=await sb.from('sr_fact').select('*').eq('domain',domain).limit(20000);fcache[domain]=data||[];return fcache[domain];}
+function renderNav(){document.getElementById('nav').innerHTML=NAV.map(g=>`<div class="navgrp"><div class="lab">${g[0]}</div><div class="nav">`+g[1].map(s=>`<button class="${stage===s[0]?'on':''}" onclick="setStage('${s[0]}')"><span class="ic"></span><span>${s[1]}</span></button>`).join('')+`</div></div>`).join('');}
+function renderSelect(){const s=orgs.filter(x=>['icb','provider_group','acute_trust'].includes(x.type));document.getElementById('orgsel').innerHTML=s.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('');}
 document.getElementById('orgsel').addEventListener('change',e=>{sel=e.target.value;driver=null;render();});
-function setStage(s){stage=s;driver=null;renderStages();render();}
+function setStage(s){stage=s;driver=null;renderNav();render();window.scrollTo({top:0,behavior:'smooth'});}
 function selectCode(c){const t=orgs.find(o=>o.code===c);if(t){sel=t.id;driver=null;renderSelect();render();}}
 function setDriver(d){driver=driver===d?null:d;render();}
-function setLens(l){lens=l;render();}
-window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;
-
-function render(){ const a=document.getElementById('app');
-  if(stage==='orient')renderOrient(a);
-  else if(stage==='surface')renderSurface(a);
-  else if(stage==='frame')renderFrame(a);
-  else if(stage==='prioritise')renderPrioritise(a);
-  else if(stage==='commit')renderCommit(a);
-  renderModal();
+function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
+function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
+window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
+const TITLES={overview:'System overview',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision module'};
+function render(){killCharts();const o=orgById[sel]||{};
+  document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
+  const lc=document.getElementById('lenschip');if(stage==='decide'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
+  const v=document.getElementById('view');
+  const fn={overview:renderOverview,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,modelling:renderModelling,decide:renderDecide}[stage];
+  fn(v);
 }
+const tip=document.getElementById('tip');
+function showTip(h,e){tip.innerHTML=h;tip.style.opacity=1;moveTip(e);}
+function moveTip(e){let x=e.clientX+14,y=e.clientY+14;if(x+260>innerWidth)x=e.clientX-260;tip.style.left=x+'px';tip.style.top=y+'px';}
+function hideTip(){tip.style.opacity=0;}
+window.moveTip=moveTip;window.hideTip=hideTip;window.showTip=showTip;
+function spark(arr,col){if(!arr||arr.length<2)return '';const v=arr.map(a=>Number(a.value));const mn=Math.min(...v),mx=Math.max(...v),w=150,h=28,r=(mx-mn)||1;const p=v.map((x,i)=>[i/(v.length-1)*w,h-((x-mn)/r)*(h-4)-2]);return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:100%"><path d="M0 ${h} ${p.map(q=>'L'+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')} L${w} ${h} Z" fill="${col}22"/><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></svg>`;}
+function seriesFor(o,m){return series[o+'|'+m]||[];}
+function lineChart(id,labels,datasets,opt){const cv=document.getElementById(id);if(!cv||!window.Chart)return;charts[id]=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets},options:Object.assign({plugins:{legend:{display:datasets.length>1,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6b7c8f'}}},scales:{x:{ticks:{maxTicksLimit:8,font:{size:9},color:'#9aa7b4'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa7b4'},grid:{color:'#eef2f7'}}},responsive:true,maintainAspectRatio:false},opt||{})});}
+function barChart(id,labels,data,colors,opt){const cv=document.getElementById(id);if(!cv||!window.Chart)return;charts[id]=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5,maxBarThickness:46}]},options:Object.assign({plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},color:'#6b7c8f'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa7b4'},grid:{color:'#eef2f7'}}},responsive:true,maintainAspectRatio:false},opt||{})});}
+function latestPeriod(fr){return fr.reduce((m,x)=>x.period>m?x.period:m,'');}
 
-/* ---------- ORIENT ---------- */
-function renderOrient(a){
-  const o=orgById[sel],od=distByOrg[sel];
-  const gm=c=>orgRows().find(r=>r.metric_code===c);
+/* ===== OVERVIEW ===== */
+function renderOverview(v){
+  const o=orgById[sel],od=distByOrg[sel];const gm=c=>orgRows().find(r=>r.metric_code===c);
   const deficit=gm('deficit'),ae=gm('ae_4hr');
-  const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((x,y)=>y.distress-x.distress).slice(0,6);
-  let h=`<div class="intro">An uncontested, drillable view of the current state of acute services across BSW. Every figure carries its source, benchmark and trend.</div>`;
-  h+=`<div class="kpis">
-    <div class="kpi"><div class="l">System distress index</div><div class="v" style="color:${color(od&&od.distress_index)}">${od?od.distress_index:'—'}<span style="font-size:13px;color:#8a93a1">/100</span></div><div class="s">${esc(o.name)}</div></div>
-    <div class="kpi"><div class="l">Near-failure flags</div><div class="v" style="color:${od&&od.near_failure_count?'#cf3b3b':'#1a1f26'}">${od?od.near_failure_count:'—'}</div><div class="s">breaching, deteriorating, critical</div></div>
-    <div class="kpi"><div class="l">Financial position vs plan</div><div class="v">${deficit?fmt(deficit.value,'gbp_m'):'—'}</div><div class="s">underlying deficit</div></div>
-    <div class="kpi"><div class="l">A&amp;E 4-hour performance</div><div class="v">${ae?fmt(ae.value,'pct'):'—'}</div><div class="s">standard 95% · real data</div></div>
-  </div>`;
-  h+=`<div class="st">System geography</div><div class="maprow"><div class="card"><h3>BSW acute system</h3><div class="cap">Distress by place. Click a place to focus on its acute provider.</div><div class="places">`;
-  PLACES.forEach(p=>{const dd=distByCode[p[1]];const di=dd?dd.distress_index:null;const s=o.code===p[1];
-    h+=`<button class="place ${s?'sel':''}" style="background:${color(di)}" onclick="selectCode('${p[1]}')"><div class="pn">${p[0]}</div><div class="pt">${p[2]}</div><div class="pi">${di==null?'—':di}</div></button>`;});
-  h+=`</div><div class="legend"><span><i class="dot" style="background:#0a9342"></i>stable</span><span><i class="dot" style="background:#e8a800"></i>watch</span><span><i class="dot" style="background:#e07a2e"></i>serious</span><span><i class="dot" style="background:#cf3b3b"></i>near-failure</span></div></div>`;
-  h+=`<div class="card"><h3>Closest to failure</h3><div class="cap">Across the three trusts</div><div class="list" style="border:none">`;
-  closest.forEach(r=>{h+=`<div class="row" style="padding-left:0;padding-right:0" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)} · ${r.org_code}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;});
-  h+=`</div></div></div>`;
-  h+=`<div class="st">Priority drivers — ${esc(o.name)}</div><div class="drivers">`;
-  DRIVERS.forEach(dv=>{const rs=orgRows().filter(r=>r.driver===dv[0]);const avg=rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):null;const worst=rs.slice().sort((x,y)=>y.distress-x.distress)[0];const nf=rs.filter(r=>r.near_failure).length;
-    h+=`<button class="driver ${driver===dv[0]?'sel':''}" onclick="setDriver('${dv[0]}')"><div class="dh"><span class="dn">${dv[1]}</span><span class="dot" style="background:${color(avg)}"></span></div><div class="dm">${worst?esc(worst.metric_name)+': '+fmt(worst.value,worst.unit):'no data'}${nf?' · '+nf+' near-failure':''}</div><div class="bar"><div style="width:${avg||0}%;background:${color(avg)}"></div></div></button>`;});
-  h+=`</div>`;
-  if(driver){const rs=orgRows().filter(r=>r.driver===driver).sort((x,y)=>y.distress-x.distress);const dn=DRIVERS.find(d=>d[0]===driver)[1];
-    h+=`<div class="st">${dn} — metrics for ${esc(o.name)}</div><div class="list">`;
-    rs.forEach(r=>{const ov=overrides.filter(x=>x.metric_value_id===r.metric_value_id).length;
-      h+=`<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}${ov?' · adjusted':''}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;});
-    h+=`</div>`;}
+  const wd=DRIVERS.map(dv=>{const rs=orgRows().filter(r=>r.driver===dv[0]);return{n:dv[1],a:rs.length?rs.reduce((s,r)=>s+r.distress,0)/rs.length:0};}).sort((a,b)=>b.a-a.a);
+  const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,7);
+  let h=`<div class="exec"><div class="e1">Executive summary · ${esc(o.name)}</div><p>System distress index <span class="hl">${od?od.distress_index:'—'}/100</span> with <span class="${od&&od.near_failure_count?'crit':'hl'}">${od?od.near_failure_count:0} near-failure flags</span>. Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>; financial position <span class="${deficit&&deficit.value<0?'crit':'hl'}">${deficit?fmt(deficit.value,'gbp_m'):'—'}</span> vs plan.</p></div>`;
+  h+=`<div class="grid kpis">`+
+   kpi('System distress',od?od.distress_index:'—','/100',o.name,null,color(od&&od.distress_index))+
+   kpi('Near-failure flags',od?od.near_failure_count:'—','','breaching · deteriorating',null,od&&od.near_failure_count?'#d3433f':'#0b2239')+
+   kpi('Financial position',deficit?fmt(deficit.value,'gbp_m'):'—','','underlying deficit',deficit?seriesFor(sel,deficit.metric_id):null,'#0b2239')+
+   kpi('A&E 4-hour',ae?fmt(ae.value,'pct'):'—','','real NHS data',ae?seriesFor(sel,ae.metric_id):null,color(ae&&ae.distress))+`</div>`;
+  h+=`<div class="eyebrow">System geography</div><div class="two">
+   <div class="card"><div class="h3">BSW acute system</div><div class="cap">Hover a place; click to focus its provider.</div><div id="map"></div>
+   <div class="legend"><span><i class="dot" style="background:#1a9c6b"></i>stable</span><span><i class="dot" style="background:#e3a008"></i>watch</span><span><i class="dot" style="background:#e0701f"></i>serious</span><span><i class="dot" style="background:#d3433f"></i>near-failure</span></div></div>
+   <div class="card"><div class="h3">Distress by domain</div><div class="cap">${esc(o.name)}</div><div class="chartbox sm"><canvas id="radar"></canvas></div></div></div>`;
+  h+=`<div class="eyebrow">Closest to failure</div><div class="list">`+closest.map(rrow).join('')+`</div>`;
+  h+=`<div class="eyebrow">Jump into the system</div><div class="grid three">`+
+   ['activity','performance','finance','workforce','capacity','estate'].map(s=>`<div class="card" style="cursor:pointer" onclick="setStage('${s}')"><div class="h3">${TITLES[s]}</div><div class="cap">Open the ${TITLES[s].toLowerCase()} workspace →</div></div>`).join('')+`</div>`;
+  v.innerHTML=h;drawMap();drawRadar();countUps();
+}
+function kpi(l,val,suf,sub,ser,col){const sp=ser&&ser.length>1?`<div class="spark">${spark(ser.slice(-12),col)}</div>`:'';const num=(typeof val==='number')?`<span class="cu" data-target="${val}">0</span>`:esc(val);return `<div class="card kpi"><div class="l">${l}</div><div class="v" style="color:${col}">${num}${suf?`<small>${suf}</small>`:''}</div><div class="s">${esc(sub)}</div>${sp}</div>`;}
+function rrow(r){return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;}
+function countUps(){document.querySelectorAll('.cu').forEach(el=>{const t=Number(el.dataset.target);if(isNaN(t))return;const st=performance.now();(function f(n){const p=Math.min(1,(n-st)/650);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f);})(st);});}
+function drawMap(){const el=document.getElementById('map');if(!el||!topo)return;const fc=topojson.feature(topo,topo.objects.gbr);const want=Object.values(PLACE_MAP);const feats=fc.features.filter(f=>want.includes(f.properties.name));if(!feats.length)return;const W=el.clientWidth||520,H=330;const proj=d3.geoMercator().fitSize([W,H],{type:'FeatureCollection',features:feats});const path=d3.geoPath(proj);const cbn={};Object.entries(PLACE_MAP).forEach(([c,n])=>cbn[n]=c);const svg=d3.select(el).html('').append('svg').attr('viewBox',`0 0 ${W} ${H}`);const g=svg.append('g');
+  g.selectAll('path').data(feats).join('path').attr('d',path).attr('class','maparea').attr('stroke','#fff').attr('stroke-width',1.5).attr('fill',f=>color((distByCode[cbn[f.properties.name]]||{}).distress_index)).attr('opacity',f=>(orgById[sel]||{}).code===cbn[f.properties.name]?1:.92)
+   .on('mousemove',function(e,f){const c=cbn[f.properties.name],dd=distByCode[c]||{},aeR=rows.find(r=>r.org_code===c&&r.metric_code==='ae_4hr');showTip(`<b>${esc(f.properties.name)}</b> · ${esc(PLACE_SITE[c])}<div class="r"><span>Distress</span><span>${dd.distress_index??'—'}/100</span></div><div class="r"><span>Near-failure</span><span>${dd.near_failure_count??'—'}</span></div><div class="r"><span>A&E 4hr</span><span>${aeR?fmt(aeR.value,'pct'):'—'}</span></div>`,e);})
+   .on('mouseleave',hideTip).on('click',(e,f)=>{hideTip();selectCode(cbn[f.properties.name]);});
+  g.selectAll('text.l1').data(feats).join('text').attr('class','maplabel').attr('text-anchor','middle').attr('x',f=>path.centroid(f)[0]).attr('y',f=>path.centroid(f)[1]).text(f=>PLACE_SITE[cbn[f.properties.name]]);
+  g.selectAll('text.l2').data(feats).join('text').attr('class','maplabel sub').attr('text-anchor','middle').attr('x',f=>path.centroid(f)[0]).attr('y',f=>path.centroid(f)[1]+13).text(f=>{const d=distByCode[cbn[f.properties.name]];return d?d.distress_index+'/100':'';});
+}
+function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(0,94,184,.16)',borderColor:'#005eb8',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa7b4'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#33475b'}}},responsive:true,maintainAspectRatio:false}});}
+
+/* ===== ACTIVITY ===== */
+async function renderActivity(v){v.innerHTML='<div class="loading">Loading activity…</div>';const f=await ensure('activity');
+  const rttSpecs=specs.filter(s=>s.is_rtt);
+  const lp=latestPeriod(f);
+  const o=orgById[sel];
+  const specSel=`<select class="sel" id="aspec" onchange="aSpec=this.value;render()">`+rttSpecs.map(s=>`<option value="${s.code}" ${s.code===aSpec?'selected':''}>${esc(s.code+' '+s.name)}</option>`).join('')+`</select>`;
+  const podSel=`<select class="sel" id="apod" onchange="aPod=this.value;render()">`+pods.map(p=>`<option value="${p.code}" ${p.code===aPod?'selected':''}>${esc(p.name)}</option>`).join('')+`</select>`;
+  // comparison across trusts for aSpec/aPod latest
+  const comp=TRUSTS.map(c=>{const oid=(orgs.find(o=>o.code===c)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===aSpec&&x.pod_code===aPod&&x.period===lp);return{c,v:r?Number(r.value):0};});
+  // trend for selected org
+  const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
+  // table: specialties by total activity (all PODs) for selected org latest
+  const tbl=rttSpecs.map(s=>{let tot=0;pods.forEach(p=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===s.code&&x.pod_code===p.code&&x.period===lp);if(r)tot+=Number(r.value);});return{s,tot};}).sort((a,b)=>b.tot-a.tot);
+  let h=`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity by trust, specialty and point of delivery. Compare across the three trusts and drill by specialty.</div>`;
+  h+=`<div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${lp.slice(0,7)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
+   <div class="card"><div class="h3">Trend · ${esc(orgName())}</div><div class="cap">24-month activity</div><div class="chartbox"><canvas id="atrend"></canvas></div></div></div>`;
+  h+=`<div class="eyebrow">Specialties by volume — ${esc(orgName())}</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Total / month</th><th class="num">Non-elective</th><th class="num">Elective + day case</th><th class="num">Outpatients</th></tr></thead><tbody>`;
+  tbl.forEach(t=>{const g=(pod)=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===t.s.code&&x.pod_code===pod&&x.period===lp);return r?Number(r.value):0;};const elc=g('EL')+g('DC');const op=g('OPF')+g('OPFU');
+    h+=`<tr style="cursor:pointer" onclick="aSpec='${t.s.code}';render()"><td>${esc(t.s.code+' '+t.s.name)}</td><td class="num">${Math.round(t.tot).toLocaleString()}</td><td class="num">${Math.round(g('NEL')).toLocaleString()}</td><td class="num">${Math.round(elc).toLocaleString()}</td><td class="num">${Math.round(op).toLocaleString()}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  v.innerHTML=h;
+  barChart('acomp',comp.map(x=>PLACE_SITE[x.c]),comp.map(x=>x.v),comp.map(x=>TRUSTCOL[x.c]));
+  lineChart('atrend',trend.map(x=>x.period.slice(2,7)),[{data:trend.map(x=>Number(x.value)),borderColor:'#005eb8',backgroundColor:'rgba(0,94,184,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
+}
+
+/* ===== FLOW ===== */
+function renderFlow(v){
+  const codes=['los_emergency','ae_4hr','ae_12hr_dta','amb_handover_60','bed_occupancy','readmission_28d'];
+  const labels={los_emergency:'Avg LoS (emergency)',ae_4hr:'A&E 4-hour',ae_12hr_dta:'12-hour DTA waits',amb_handover_60:'Ambulance handover >60m',bed_occupancy:'G&A bed occupancy',readmission_28d:'28-day readmissions'};
+  let h=`<h1 class="serif">Flow & transit</h1><div class="lead">How patients move through the system: length of stay, A&E performance, ambulance handovers, bed occupancy and readmissions, compared across the three trusts.</div>`;
+  h+=`<div class="grid kpis">`+codes.map(c=>{const r=orgRows().find(x=>x.metric_code===c);return r?kpi(labels[c],fmt(r.value,r.unit),'',slab(r.status),seriesFor(sel,r.metric_id),color(r.distress)):'';}).join('')+`</div>`;
+  h+=`<div class="eyebrow">Trust comparison (latest)</div><div class="grid three">`;
+  codes.forEach((c,i)=>{h+=`<div class="card"><div class="h3" style="font-size:13px">${labels[c]}</div><div class="chartbox sm"><canvas id="fl${i}"></canvas></div></div>`;});
+  h+=`</div>`;v.innerHTML=h;countUps();
+  codes.forEach((c,i)=>{const comp=TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===c);return{tc,v:r?Number(r.value):0,col:color(r?r.distress:null)};});barChart('fl'+i,comp.map(x=>x.tc),comp.map(x=>x.v),comp.map(x=>x.col));});
+}
+
+/* ===== PERFORMANCE ===== */
+async function renderPerformance(v){v.innerHTML='<div class="loading">Loading performance…</div>';const f=await ensure('performance');
+  const rttSpecs=specs.filter(s=>s.is_rtt);const lp=latestPeriod(f);
+  const metricSel=`<select class="sel" id="pm" onchange="perfMetric=this.value;render()">`+[['rtt_18wk','RTT 18-week %'],['rtt_incomplete','Waiting list size'],['rtt_52wk','52-week breaches']].map(m=>`<option value="${m[0]}" ${m[0]===perfMetric?'selected':''}>${m[1]}</option>`).join('')+`</select>`;
+  // heatmap trust x specialty for perfMetric latest
+  const cell=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===sc&&x.metric_code===perfMetric&&x.period===lp);return r?Number(r.value):null;};
+  const allvals=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)allvals.push(c);}));
+  const mn=Math.min(...allvals),mx=Math.max(...allvals);
+  const hcol=(val)=>{if(val==null)return '#e7ecf2';let t=(val-mn)/((mx-mn)||1);if(perfMetric==='rtt_18wk')t=1-t;return d3.interpolateRgb('#1a9c6b', '#d3433f')(t);};
+  let h=`<h1 class="serif">Performance</h1><div class="lead">RTT waiting times by specialty, compared across the three trusts. Red marks the pain points. Click any cell to drill into its 24-month trend.</div>`;
+  h+=`<div class="filters">Metric ${metricSel}</div>`;
+  h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${lp.slice(0,7)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
+  h+=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th>${tc}</th>`).join('')+`</tr></thead><tbody>`;
+  rttSpecs.forEach(s=>{h+=`<tr><td class="rl">${esc(s.code+' '+s.name)}</td>`+TRUSTS.map(tc=>{const c=cell(tc,s.code);const oid=(orgs.find(o=>o.code===tc)||{}).id;return `<td><div class="cell" style="background:${hcol(c)}" onclick="openFactDrill('performance','${oid}','${s.code}','${perfMetric}')">${c==null?'':perfMetric==='rtt_18wk'?Math.round(c):Math.round(c).toLocaleString()}</div></td>`;}).join('')+`</tr>`;});
+  h+=`</tbody></table></div>`;
+  // worst pain points
+  const pain=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)pain.push({tc,s,v:c});}));
+  pain.sort((a,b)=>perfMetric==='rtt_18wk'?a.v-b.v:b.v-a.v);
+  h+=`<div class="eyebrow">Sharpest pain points</div><div class="list">`+pain.slice(0,8).map(p=>`<div class="row" onclick="openFactDrill('performance','${(orgs.find(o=>o.code===p.tc)||{}).id}','${p.s.code}','${perfMetric}')"><span class="tag" style="background:${hcol(p.v)}"></span><div class="m"><div class="t1">${esc(p.s.name)} · ${p.tc}</div><div class="t2">${perfMetric==='rtt_18wk'?fmt(p.v,'pct')+' within 18 weeks':Math.round(p.v).toLocaleString()+(perfMetric==='rtt_52wk'?' over 52 weeks':' waiting')}</div></div></div>`).join('')+`</div>`;
+  v.innerHTML=h;
+}
+
+/* ===== CAPACITY ===== */
+async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capacity…</div>';const f=await ensure('capacity');const lp=latestPeriod(f.filter(x=>x.metric_code==='ga_beds'));
+  const siteName=id=>(sites.find(s=>s.id===id)||{}).name||'';
+  const bedSites=sites.filter(s=>f.some(x=>x.site_id===s.id&&x.metric_code==='ga_beds'));
+  let h=`<h1 class="serif">Capacity</h1><div class="lead">General & acute beds, occupancy, and theatre, outpatient and diagnostic assets by site across the BSW Hospitals Group.</div>`;
+  h+=`<div class="eyebrow">Beds & occupancy by site (latest ${lp.slice(0,7)})</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
+  bedSites.forEach(s=>{const beds=f.find(x=>x.site_id===s.id&&x.metric_code==='ga_beds'&&x.period===lp);const occ=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===lp);const ov=occ?Number(occ.value):0;h+=`<tr><td>${esc(s.name)}</td><td class="num">${beds?Math.round(beds.value):'—'}</td><td class="num" style="color:${ov>=95?'#d3433f':ov>=92?'#e0701f':'#1a9c6b'};font-weight:600">${occ?fmt(occ.value,'pct'):'—'}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Bed occupancy trend</div><div class="cap">By main acute site</div><div class="chartbox"><canvas id="occ"></canvas></div></div>`;
+  h+=`<div class="card"><div class="h3">Theatre, outpatient & diagnostic assets</div><div class="cap">Latest position by site</div><table class="dt"><thead><tr><th>Site</th><th class="num">Theatres</th><th class="num">OP rooms</th><th class="num">CT</th><th class="num">MRI</th><th class="num">Endo</th></tr></thead><tbody>`;
+  sites.forEach(s=>{const g=m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code===m);return r?Math.round(r.value):0;};h+=`<tr><td>${esc(s.name)}</td><td class="num">${g('theatres')}</td><td class="num">${g('op_rooms')}</td><td class="num">${g('ct_scanners')}</td><td class="num">${g('mri_scanners')}</td><td class="num">${g('endoscopy_rooms')}</td></tr>`;});
+  h+=`</tbody></table></div></div>`;
+  v.innerHTML=h;
+  const cols={};bedSites.forEach((s,i)=>cols[s.id]=['#005eb8','#0a9aa0','#5b53b5','#e0701f'][i%4]);
+  const months=[...new Set(f.filter(x=>x.metric_code==='occupancy_pct').map(x=>x.period))].sort();
+  lineChart('occ',months.map(m=>m.slice(2,7)),bedSites.map(s=>({label:s.name.split(',')[0],data:months.map(m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===m);return r?Number(r.value):null;}),borderColor:cols[s.id],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2})),{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6b7c8f'}}}});
+}
+
+/* ===== ESTATE ===== */
+async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate…</div>';const f=await ensure('estate');
+  const g=(sid,m)=>{const r=f.find(x=>x.site_id===sid&&x.metric_code===m);return r?Number(r.value):0;};
+  const totBacklog=sites.reduce((s,si)=>s+g(si.id,'backlog_maint'),0);const totHigh=sites.reduce((s,si)=>s+g(si.id,'high_risk_backlog'),0);const totCrit=sites.reduce((s,si)=>s+g(si.id,'critical_infra_risk'),0);const totArea=sites.reduce((s,si)=>s+g(si.id,'floor_area'),0);
+  let h=`<h1 class="serif">Estate</h1><div class="lead">Estate condition across BSW sites from the ERIC field set: backlog maintenance, high-risk and critical-infrastructure risk, floor area, energy and PFI status.</div>`;
+  h+=`<div class="grid kpis">`+kpi('Total backlog maintenance',fmt(totBacklog,'gbp_m'),'','across all BSW sites','#0b2239')+kpi('High-risk backlog',fmt(totHigh,'gbp_m'),'','urgent remediation','#e0701f')+kpi('Critical infrastructure risk',fmt(totCrit,'gbp_m'),'','immediate risk','#d3433f')+kpi('Total floor area',fmt(totArea,'m2'),'','occupied estate','#0b2239')+`</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Backlog maintenance by site</div><div class="cap">£m</div><div class="chartbox"><canvas id="estbar"></canvas></div></div>
+   <div class="card"><div class="h3">Estate detail by site</div><div class="cap">ERIC field set</div><table class="dt"><thead><tr><th>Site</th><th class="num">Backlog</th><th class="num">High-risk</th><th class="num">Floor m²</th><th class="num">Energy</th><th>PFI</th></tr></thead><tbody>`;
+  sites.forEach(s=>{h+=`<tr><td>${esc(s.name)}</td><td class="num">${fmt(g(s.id,'backlog_maint'),'gbp_m')}</td><td class="num">${fmt(g(s.id,'high_risk_backlog'),'gbp_m')}</td><td class="num">${Math.round(g(s.id,'floor_area')).toLocaleString()}</td><td class="num">${fmt(g(s.id,'energy_cost'),'gbp_m')}</td><td>${g(s.id,'pfi')?'Yes':'No'}</td></tr>`;});
+  h+=`</tbody></table></div></div>`;v.innerHTML=h;countUps();
+  barChart('estbar',sites.map(s=>s.name.split(',')[0].replace(' Hospital','')),sites.map(s=>g(s.id,'backlog_maint')),sites.map(()=>'#e0701f'));
+}
+
+/* ===== FINANCE ===== */
+async function renderFinance(v){v.innerHTML='<div class="loading">Loading finance…</div>';const f=await ensure('finance');const lp=latestPeriod(f);
+  const g=(line)=>{const r=f.find(x=>x.organisation_id===sel&&x.line_code===line&&x.period===lp);return r?Number(r.value):0;};
+  const income=g('inc_clinical')+g('inc_other');const pay=g('pay_substantive')+g('pay_bank')+g('pay_agency');const nonpay=g('np_drugs')+g('np_clin_supplies')+g('np_nonclin')+g('np_premises')+g('np_deprec')+g('np_other');
+  const agencyPct=pay?100*g('pay_agency')/pay:0;
+  let h=`<h1 class="serif">Finance</h1><div class="lead">The full financial position for ${esc(orgName())}: income and expenditure, pay versus non-pay, agency reliance, EBITDA, balance sheet and cash flow — not just the bottom line.</div>`;
+  h+=`<div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#0b2239')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#d3433f':'#1a9c6b')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#0b2239')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#e0701f':'#1a9c6b')+`</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Expenditure breakdown</div><div class="cap">Pay vs non-pay (£m)</div><div class="chartbox"><canvas id="finexp"></canvas></div></div>
+   <div class="card"><div class="h3">Pay composition</div><div class="cap">Substantive · bank · agency</div><div class="chartbox"><canvas id="finpay"></canvas></div></div></div>`;
+  h+=`<div class="eyebrow">Income & expenditure</div><div class="card" style="padding:4px 0"><table class="dt"><tbody>`+
+   [['inc_clinical','NHS clinical income'],['inc_other','Other income'],['pay_substantive','Substantive pay'],['pay_bank','Bank staff'],['pay_agency','Agency staff'],['np_drugs','Drugs'],['np_clin_supplies','Clinical supplies'],['np_nonclin','Non-clinical supplies'],['np_premises','Premises'],['np_deprec','Depreciation'],['np_other','Other non-pay'],['res_ebitda','EBITDA'],['res_surplus','I&E surplus/(deficit)']].map(l=>`<tr><td>${l[1]}</td><td class="num" style="${l[0].startsWith('res')?'font-weight:700':''};color:${g(l[0])<0?'#d3433f':'#0b2239'}">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Balance sheet</div><table class="dt"><tbody>`+[['bs_ppe','Property, plant & equipment'],['bs_curr_assets','Current assets'],['bs_cash','Cash & equivalents'],['bs_curr_liab','Current liabilities'],['bs_net_assets','Net assets']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>
+   <div class="card"><div class="h3">Cash flow</div><table class="dt"><tbody>`+[['cf_ops','Net cash from operations'],['cf_capex','Capital expenditure'],['cf_close','Closing cash']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div></div>`;
+  v.innerHTML=h;countUps();
+  barChart('finexp',['Substantive','Bank','Agency','Drugs','Clin supplies','Non-clin','Premises','Deprec','Other'],[g('pay_substantive'),g('pay_bank'),g('pay_agency'),g('np_drugs'),g('np_clin_supplies'),g('np_nonclin'),g('np_premises'),g('np_deprec'),g('np_other')],['#005eb8','#377dd0','#7fb0e6','#0a9aa0','#3bb6b6','#7fd0d0','#5b53b5','#9089d6','#c3bff0']);
+  charts.finpay=new Chart(document.getElementById('finpay').getContext('2d'),{type:'doughnut',data:{labels:['Substantive','Bank','Agency'],datasets:[{data:[g('pay_substantive'),g('pay_bank'),g('pay_agency')],backgroundColor:['#005eb8','#0a9aa0','#e0701f'],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6b7c8f'}}},responsive:true,maintainAspectRatio:false}});
+}
+
+/* ===== WORKFORCE ===== */
+async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
+  const g=(sgc,m)=>{const r=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);return r?Number(r.value):0;};
+  const totW=sgs.reduce((s,sg)=>s+g(sg.code,'wte'),0);const totA=sgs.reduce((s,sg)=>s+g(sg.code,'agency_wte'),0);
+  let h=`<h1 class="serif">Workforce</h1><div class="lead">Workforce for ${esc(orgName())} by staff group: establishment, vacancy, sickness, turnover and agency reliance.</div>`;
+  h+=`<div class="grid kpis">`+kpi('Total workforce',fmt(totW,'wte'),'WTE','substantive establishment','#0b2239')+kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce',totA/totW>0.05?'#e0701f':'#1a9c6b')+kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing',g('nursing','vacancy_pct')>10?'#e0701f':'#1a9c6b')+kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental','#0b2239')+`</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Establishment by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>
+   <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">%</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`;
+  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE</th><th class="num">Vacancy</th><th class="num">Sickness</th><th class="num">Turnover</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
+  sgs.forEach(sg=>{h+=`<tr><td>${esc(sg.name)}</td><td class="num">${Math.round(g(sg.code,'wte')).toLocaleString()}</td><td class="num">${fmt(g(sg.code,'vacancy_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'sickness_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'turnover_pct'),'pct')}</td><td class="num">${Math.round(g(sg.code,'agency_wte')).toLocaleString()}</td></tr>`;});
+  h+=`</tbody></table></div>`;v.innerHTML=h;countUps();
+  barChart('wfbar',sgs.map(s=>s.name.split(' ')[0]),sgs.map(s=>g(s.code,'wte')),sgs.map(()=>'#005eb8'));
+  barChart('wfvac',sgs.map(s=>s.name.split(' ')[0]),sgs.map(s=>g(s.code,'vacancy_pct')),sgs.map(s=>g(s.code,'vacancy_pct')>10?'#e0701f':'#0a9aa0'));
+}
+
+/* ===== POPULATION ===== */
+function renderPopulation(v){
+  const gm=c=>orgRows().find(r=>r.metric_code===c);const imd=gm('imd_score'),pg=gm('pop_growth_65');
+  let h=`<h1 class="serif">Population & demand</h1><div class="lead">The population BSW serves and the demand pressure ahead: deprivation, ageing and the demographic driver behind rising acute demand.</div>`;
+  h+=`<div class="grid kpis">`+kpi('Deprivation (IMD)',imd?fmt(imd.value,'score'):'—','','average score','#0b2239')+kpi('Over-65 growth',pg?fmt(pg.value,'pct'):'—','/yr','demographic pressure','#e0701f')+kpi('Population','1.0m','','BSW ICS','#0b2239')+kpi('Over-60 growth (15yr)','+35%','','per ASR case for change','#e0701f')+`</div>`;
+  h+=`<div class="eyebrow">Demand & capacity outlook</div>`+demandHtml();v.innerHTML=h;countUps();computeDemand();
+}
+/* ===== MODELLING ===== */
+function renderModelling(v){
+  let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, editable demand &amp; capacity model. Adjust the assumptions and see future activity and the bed, theatre and diagnostic capacity the Group would need.</div>`;
   h+=demandHtml();
-  a.innerHTML=h; computeDemand();
+  h+=`<div class="eyebrow">Future capacity requirements</div><div class="grid three" id="reqcards"></div>`;
+  v.innerHTML=h;computeDemand();
 }
-
-/* ---------- SURFACE ---------- */
-function renderSurface(a){
-  let h=`<div class="intro">Agree the problems on the table. These candidate issues are drawn from the current-state evidence across the four priority drivers. Each is owned by an organisation, which can challenge it.</div>`;
-  DRIVERS.concat([["finance","Finance & productivity"]]).forEach(dv=>{
-    const dis=issues.filter(i=>(i.driver||'finance')===dv[0]||(dv[0]==='finance'&&!i.driver));
-    if(!dis.length)return;
-    h+=`<div class="st">${dv[1]}</div><div class="list">`;
-    dis.forEach(i=>{const org=i.organisation_id?orgById[i.organisation_id]:null;
-      h+=`<div class="row" onclick="openIssue('${i.code}')"><span class="tag" style="background:#005eb8"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">${esc(i.description||'')}</div></div><span class="tagchip">${org?esc(org.code||org.name.split(' ')[0]):'System'}</span></div>`;});
-    h+=`</div>`;
-  });
-  a.innerHTML=h;
-}
-
-/* ---------- FRAME ---------- */
-function renderFrame(a){
-  const L=lenses.find(x=>x.name===lens)||lenses[0];
-  let h=`<div class="intro">Choose the lens for prioritisation. Each lens is a weighting across the six appraisal criteria from the ASR (QIA, EHIA, workforce, estates &amp; digital, finance/ROI, travel &amp; access). Switch lens to see how priorities shift.</div>`;
-  h+=`<div class="lenses">`+lenses.map(x=>`<button class="lensbtn ${x.name===lens?'on':''}" onclick="setLens('${x.name}')">${esc(x.name)}</button>`).join('')+`</div>`;
-  h+=`<div class="card"><h3>${esc(L.name)} — criteria weights</h3><div class="cap">How much each criterion counts under this lens</div>`;
-  criteria.forEach(c=>{const w=Math.round((L.weights[c.code]||0)*100);
-    h+=`<div class="critrow"><div class="cn">${esc(c.name)}</div><div class="cb"><div class="bar"><div style="width:${w}%;background:#005eb8"></div></div></div><div style="width:34px;text-align:right;font-size:12.5px;font-weight:600">${w}%</div></div>`;});
-  h+=`</div><div class="note">Criteria definitions: `+criteria.map(c=>esc(c.name)+' — '+esc(c.descr)).join('; ')+`.</div>`;
-  a.innerHTML=h;
-}
-
-/* ---------- PRIORITISE ---------- */
-function weightedScore(issueCode,L){let t=0;criteria.forEach(c=>{const s=iscores.find(x=>x.criterion_code===c.code && issues.find(i=>i.id===x.issue_id && i.code===issueCode));});
-  // build via lookup
-  const iss=issues.find(i=>i.code===issueCode); if(!iss)return 0;
-  let sum=0; criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===iss.id&&x.criterion_code===c.code); sum+=(sc?Number(sc.score):0)*(L.weights[c.code]||0);}); return sum;
-}
-function rankingFor(L){return issues.map(i=>({code:i.code,title:i.title,driver:i.driver,val:weightedScore(i.code,L)})).sort((a,b)=>b.val-a.val);}
-function renderPrioritise(a){
-  const L=lenses.find(x=>x.name===lens)||lenses[0];
-  const ranked=rankingFor(L);
-  // robustness: top 5 across all lenses
-  const topSets=lenses.map(l=>rankingFor(l).slice(0,5).map(r=>r.code));
-  const robust=new Set(topSets[0].filter(c=>topSets.every(s=>s.includes(c))));
-  let h=`<div class="intro">Issues ranked under the chosen lens. Switch lens to watch the ranking change. Items marked <span class="robust">robust</span> stay in the top five under every lens — the no-regrets priorities to agree first.</div>`;
-  h+=`<div class="lenses">`+lenses.map(x=>`<button class="lensbtn ${x.name===lens?'on':''}" onclick="setLens('${x.name}')">${esc(x.name)}</button>`).join('')+`</div>`;
-  h+=`<div class="list">`;
-  ranked.forEach((r,i)=>{const v=Math.round(r.val);const col=v>=70?'#cf3b3b':v>=60?'#e07a2e':v>=45?'#e8a800':'#0a9342';
-    h+=`<div class="rank"><span class="n">${i+1}</span><div class="m"><div class="t1">${esc(r.title)}${robust.has(r.code)?'<span class="robust">robust</span>':''}</div><div class="bar" style="margin-top:7px"><div style="width:${v}%;background:${col}"></div></div></div><span class="sc" style="color:${col}">${v}</span></div>`;});
-  h+=`</div><div class="note">Weighted score 0-100 = sum of each criterion score × its weight under the ${esc(L.name)} lens.</div>`;
-  a.innerHTML=h;
-}
-
-/* ---------- COMMIT ---------- */
-function renderCommit(a){
-  const L=lenses.find(x=>x.name===lens)||lenses[0];
-  const top=rankingFor(L).slice(0,5);
-  let h=`<div class="intro">The agreed priority set under the <strong>${esc(L.name)}</strong> lens, with indicative impact and an indicative delivery horizon. This is the basis for options development and the Pre-Consultation Business Case.</div>`;
-  h+=`<div class="lenses">`+lenses.map(x=>`<button class="lensbtn ${x.name===lens?'on':''}" onclick="setLens('${x.name}')">${esc(x.name)}</button>`).join('')+`</div>`;
-  h+=`<div class="list">`;
-  top.forEach((r,i)=>{const im=IMPACT[r.code]||["",""];const termcol=im[1]==='Short'?'#0a9342':im[1]==='Medium'?'#e8a800':'#e07a2e';
-    h+=`<div class="rank"><span class="n">${i+1}</span><div class="m"><div class="t1">${esc(r.title)}</div><div class="t2">${esc(im[0])}</div></div><span class="tagchip" style="background:${termcol};color:#fff">${im[1]} term</span></div>`;});
-  h+=`</div>`;
-  h+=`<div style="margin-top:14px"><button class="btn" onclick="window.print()">Export priority set</button> <span class="note" style="display:inline">Generates a print/PDF-ready summary.</span></div>`;
-  a.innerHTML=h;
-}
-
-/* ---------- demand ---------- */
-function demandHtml(){return `<div class="st">Demand &amp; capacity outlook (BSW Hospitals Group)</div><div class="maprow">
-  <div class="card"><h3>Assumptions</h3><div class="cap">Editable and transparent. Baseline activity illustrative pending ingestion.</div>
-  <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between"><span>Annual demand growth</span><span id="dg">2.0%</span></div>
-  <input id="growth" type="range" min="0" max="5" step="0.1" value="2.0" style="width:100%" oninput="computeDemand()"/>
-  <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between;margin-top:8px"><span>Efficiency / shift-of-care offset</span><span id="do">0.5%</span></div>
-  <input id="offset" type="range" min="0" max="3" step="0.1" value="0.5" style="width:100%" oninput="computeDemand()"/>
-  <div style="font-size:13px;color:#5b6573;display:flex;justify-content:space-between;margin-top:8px"><span>Horizon</span><span id="dy">10 yrs</span></div>
-  <input id="years" type="range" min="1" max="10" step="1" value="10" style="width:100%" oninput="computeDemand()"/>
+function demandHtml(){return `<div class="two">
+  <div class="card"><div class="h3">Assumptions</div><div class="cap">Editable and transparent</div>
+  <div class="slabel"><span>Annual demand growth</span><b id="dg">2.0%</b></div><input id="growth" type="range" min="0" max="5" step="0.1" value="2.0" oninput="computeDemand()">
+  <div class="slabel" style="margin-top:8px"><span>Efficiency / shift-of-care offset</span><b id="do">0.5%</b></div><input id="offset" type="range" min="0" max="3" step="0.1" value="0.5" oninput="computeDemand()">
+  <div class="slabel" style="margin-top:8px"><span>Horizon</span><b id="dy">10 yrs</b></div><input id="years" type="range" min="1" max="10" step="1" value="10" oninput="computeDemand()">
   <div class="note" id="dnet"></div></div>
-  <div class="card"><h3>Projected position</h3><div class="cap">Demand vs roughly flat capacity</div>
-  <div class="kv"><span class="k">A&amp;E attendances / yr</span><span id="da"></span></div>
-  <div class="kv"><span class="k">Emergency admissions / yr</span><span id="dadm"></span></div>
-  <div class="kv"><span class="k">Additional beds needed</span><span id="dbeds"></span></div>
-  <div class="prov" id="dmsg" style="margin-top:12px"></div></div></div>`;}
-function computeDemand(){const g=parseFloat(v('growth')),o=parseFloat(v('offset')),y=parseInt(v('years'));if(isNaN(g))return;
+  <div class="card"><div class="h3">Projected demand vs capacity</div><div class="cap" id="dcap"></div><div class="chartbox sm"><canvas id="demandchart"></canvas></div></div></div>`;}
+function computeDemand(){const g=parseFloat(val('growth')),o=parseFloat(val('offset')),y=parseInt(val('years'));if(isNaN(g))return;
   document.getElementById('dg').textContent=g.toFixed(1)+'%';document.getElementById('do').textContent=o.toFixed(1)+'%';document.getElementById('dy').textContent=y+' yrs';
-  const net=(g-o)/100,f=Math.pow(1+net,y),ba=240000,badm=95000;const pa=Math.round(ba*f),padm=Math.round(badm*f);
-  const beds=Math.max(0,Math.round((padm-badm)*5/365/0.92)),per=y?Math.round(beds/y):0;
-  document.getElementById('da').textContent=ba.toLocaleString()+' → '+pa.toLocaleString();
-  document.getElementById('dadm').textContent=badm.toLocaleString()+' → '+padm.toLocaleString();
-  document.getElementById('dbeds').textContent=beds.toLocaleString()+' ('+per+'/yr)';
-  document.getElementById('dnet').textContent='Net growth '+(net*100).toFixed(1)+'% per year over '+y+' years.';
-  document.getElementById('dmsg').textContent='At these assumptions the Group needs about a '+per+'-bed ward of extra capacity each year just to stand still.';}
-function v(id){const e=document.getElementById(id);return e?e.value:NaN;}
+  const net=(g-o)/100,badm=95000,cap=98000,beds0=1560,th0=42,ct0=11;const yrs=[],dem=[],capL=[];
+  for(let i=0;i<=y;i++){yrs.push('Y'+i);dem.push(Math.round(badm*Math.pow(1+net,i)));capL.push(cap);}
+  const factor=Math.pow(1+net,y);const gap=dem[dem.length-1]-cap,beds=Math.max(0,Math.round(gap*5/365/0.92)),per=y?Math.round(beds/y):0;
+  document.getElementById('dnet').textContent='Net growth '+(net*100).toFixed(1)+'%/yr → about a '+per+'-bed ward of extra capacity each year.';
+  document.getElementById('dcap').textContent='Emergency admissions vs current capacity ('+cap.toLocaleString()+')';
+  if(charts.demand)charts.demand.destroy();const cv=document.getElementById('demandchart');
+  if(cv)charts.demand=new Chart(cv.getContext('2d'),{type:'line',data:{labels:yrs,datasets:[{label:'Projected demand',data:dem,borderColor:'#d3433f',backgroundColor:'rgba(211,67,63,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},{label:'Capacity',data:capL,borderColor:'#6b7c8f',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]},options:{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6b7c8f'}}},scales:{y:{ticks:{font:{size:9},color:'#9aa7b4',callback:v=>(v/1000)+'k'},grid:{color:'#eef2f7'}},x:{ticks:{font:{size:9},color:'#9aa7b4'},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
+  const rc=document.getElementById('reqcards');if(rc){rc.innerHTML=
+    reqCard('Additional G&A beds',Math.round(beds0*(factor-1)),'beds by year '+y)+
+    reqCard('Additional theatres',Math.max(0,Math.round(th0*(factor-1))),'to hold elective throughput')+
+    reqCard('Additional CT/MRI',Math.max(0,Math.round(ct0*(factor-1))),'diagnostic capacity');}
+}
+function reqCard(t,n,s){return `<div class="card"><div class="kpi"><div class="l">${t}</div><div class="v" style="color:#e0701f">+${n}</div><div class="s">${s}</div></div></div>`;}
+function val(id){const e=document.getElementById(id);return e?e.value:NaN;}
 window.computeDemand=computeDemand;
 
-/* ---------- issue modal ---------- */
-function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;const org=i.organisation_id?orgById[i.organisation_id]:null;
-  const sc=criteria.map(c=>{const s=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);return {n:c.name,v:s?Number(s.score):0};});
-  let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button>
-  <h2>${esc(i.title)}</h2><div class="ms">${org?esc(org.name):'System-wide'} · ${esc((i.driver||'finance').replace('_',' '))}</div>
-  <div style="font-size:13px;margin-bottom:10px">${esc(i.description||'')}</div>
-  <div class="cap" style="font-size:12px;color:#8a93a1;margin-bottom:6px">Appraisal scores (0-100)</div>`;
-  sc.forEach(s=>{h+=`<div class="critrow"><div class="cn">${esc(s.n)}</div><div class="cb"><div class="bar"><div style="width:${s.v}%;background:#005eb8"></div></div></div><div style="width:30px;text-align:right;font-size:12px;font-weight:600">${s.v}</div></div>`;});
-  h+=`<div class="note">Used in the Prioritise stage, weighted by the chosen lens.</div></div></div>`;
-  document.getElementById('modalroot').innerHTML=h;
+/* ===== DECISION MODULE ===== */
+let dstage='surface';
+function setDS(s){dstage=s;render();}window.setDS=setDS;
+function renderDecide(v){
+  let h=`<h1 class="serif">Decision module</h1><div class="lead">From the system evidence to an agreed set of priorities. Surface the problems, frame the lens, prioritise, and commit.</div>`;
+  h+=`<div class="lenses">`+[['surface','Surface'],['frame','Frame'],['prioritise','Prioritise'],['commit','Commit']].map(s=>`<button class="lensbtn ${dstage===s[0]?'on':''}" onclick="setDS('${s[0]}')">${s[1]}</button>`).join('')+`</div><div id="dbody"></div>`;
+  v.innerHTML=h;const b=document.getElementById('dbody');
+  if(dstage==='surface')dSurface(b);else if(dstage==='frame')dFrame(b);else if(dstage==='prioritise')dPrioritise(b);else dCommit(b);
 }
+function dSurface(b){let h='';DRIVERS.concat([['finance','Finance & productivity']]).forEach(dv=>{const dis=issues.filter(i=>dv[0]==='finance'?!i.driver:i.driver===dv[0]);if(!dis.length)return;h+=`<div class="eyebrow">${dv[1]}</div><div class="list">`+dis.map(i=>{const org=i.organisation_id?orgById[i.organisation_id]:null;return `<div class="row" onclick="openIssue('${i.code}')"><span class="tag" style="background:#005eb8"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">${esc(i.description||'')}</div></div><span class="pill" style="background:#eef2f7;color:#33475b">${org?esc(org.code||'System'):'System'}</span></div>`;}).join('')+`</div>`;});b.innerHTML=h;}
+function dFrame(b){const L=lenses.find(x=>x.name===lensName)||lenses[0];let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Criteria weights</div><div class="cap">Drag to rebalance (switches to Custom)</div>`+sliderBlock()+`</div><div class="card"><div class="h3">Criteria</div>`+criteria.map(c=>`<div style="margin-bottom:9px"><b style="font-size:12.5px">${esc(c.name)}</b><div class="muted" style="font-size:12px">${esc(c.descr)}</div></div>`).join('')+`</div></div>`;b.innerHTML=h;}
+function lensBar(){return `<div class="lenses">`+lenses.map(x=>`<button class="lensbtn ${x.name===lensName?'on':''}" onclick="setLens('${esc(x.name)}')">${esc(x.name)}</button>`).join('')+(lensName==='Custom'?`<button class="lensbtn on">Custom</button>`:'')+`</div>`;}
+function sliderBlock(){return criteria.map(c=>{const w=Math.round((weights[c.code]||0)*100);return `<div style="margin-bottom:12px"><div class="slabel"><span>${esc(c.name)}</span><b>${w}%</b></div><input type="range" min="0" max="50" value="${w}" oninput="setWeight('${c.code}',this.value)"></div>`;}).join('');}
+function wsum(iss){const tot=criteria.reduce((s,c)=>s+(weights[c.code]||0),0)||1;let s=0;criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===iss.id&&x.criterion_code===c.code);s+=(sc?Number(sc.score):0)*(weights[c.code]||0);});return s/tot;}
+function ranking(){return issues.map(i=>({i,val:wsum(i)})).sort((a,b)=>b.val-a.val);}
+function rankingForLens(L){const w=L.weights,tot=Object.values(w).reduce((a,b)=>a+b,0)||1;return issues.map(i=>{let s=0;criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);s+=(sc?Number(sc.score):0)*(w[c.code]||0);});return{code:i.code,val:s/tot};}).sort((a,b)=>b.val-a.val);}
+function dPrioritise(b){const topSets=lenses.map(l=>rankingForLens(l).slice(0,5).map(r=>r.code));const robust=new Set(topSets.length?topSets[0].filter(c=>topSets.every(s=>s.includes(c))):[]);
+  let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Weights</div><div class="cap">Live re-ranking</div>`+sliderBlock()+`</div><div class="card"><div class="h3">How priorities shift by lens</div><div class="chartbox"><canvas id="bump"></canvas></div></div></div>`;
+  h+=`<div class="eyebrow">Ranked priorities</div><div class="list">`+ranking().map((r,i)=>{const vv=Math.round(r.val);const col=vv>=70?'#d3433f':vv>=60?'#e0701f':vv>=45?'#e3a008':'#1a9c6b';return `<div class="rank" onclick="openIssue('${r.i.code}')"><span class="n">${i+1}</span><div class="m"><div class="t1">${esc(r.i.title)}${robust.has(r.i.code)?'<span class="robust">robust</span>':''}</div><div class="bar" style="margin-top:7px"><div style="width:${vv}%;background:${col}"></div></div></div><span class="sc" style="color:${col}">${vv}</span></div>`;}).join('')+`</div>`;
+  b.innerHTML=h;
+  const order=ranking().slice(0,6).map(r=>r.i.code);const pal=['#005eb8','#0a9aa0','#5b53b5','#e0701f','#1a9c6b','#d3433f'];
+  charts.bump=new Chart(document.getElementById('bump').getContext('2d'),{type:'line',data:{labels:lenses.map(l=>l.name),datasets:order.map((code,idx)=>({label:(issues.find(i=>i.code===code)||{}).title,data:lenses.map(l=>rankingForLens(l).findIndex(x=>x.code===code)+1),borderColor:pal[idx%6],backgroundColor:pal[idx%6],borderWidth:2,tension:.3,pointRadius:3}))},options:{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:8,font:{size:9},color:'#6b7c8f'}}},scales:{y:{reverse:true,min:1,max:issues.length,ticks:{stepSize:1,font:{size:9},color:'#9aa7b4'},grid:{color:'#eef2f7'}},x:{ticks:{font:{size:9},color:'#6b7c8f'},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});}
+function dCommit(b){const top=ranking().slice(0,5);const terms={Short:[],Medium:[],Long:[]};ranking().forEach(r=>{const im=IMPACT[r.i.code]||['',''];if(terms[im[1]])terms[im[1]].push({t:r.i.title,d:im[0]});});
+  let h=lensBar()+`<div class="eyebrow">Agreed priorities · ${esc(lensName)} lens</div><div class="list">`+top.map((r,i)=>{const im=IMPACT[r.i.code]||['',''];const tc=im[1]==='Short'?'#1a9c6b':im[1]==='Medium'?'#e3a008':'#e0701f';return `<div class="rank"><span class="n">${i+1}</span><div class="m"><div class="t1">${esc(r.i.title)}</div><div class="t2">${esc(im[0])}</div></div><span class="pill" style="background:${tc}">${im[1]} term</span></div>`;}).join('')+`</div>`;
+  h+=`<div class="eyebrow">Delivery roadmap</div><div class="three">`+[['Short','0–12 months'],['Medium','1–3 years'],['Long','3–10 years']].map(t=>`<div class="card"><div class="h3">${t[0]} term</div><div class="cap">${t[1]}</div>`+(terms[t[0]].map(x=>`<div style="border-left:3px solid #005eb8;padding:7px 10px;margin-bottom:7px;background:#f7faff;border-radius:6px;font-size:12.5px"><b>${esc(x.t)}</b><div class="muted" style="font-size:11.5px">${esc(x.d)}</div></div>`).join('')||'<div class="muted" style="font-size:12px">—</div>')+`</div>`).join('')+`</div>`;
+  h+=`<div style="margin-top:16px"><button class="btn" onclick="window.print()">Export priority pack</button></div>`;b.innerHTML=h;}
+
+/* ===== modals ===== */
+function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;const org=i.organisation_id?orgById[i.organisation_id]:null;hideTip();
+  let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(i.title)}</h2><div class="ms">${org?esc(org.name):'System-wide'} · ${esc((i.driver||'finance').replace(/_/g,' '))}</div><div style="font-size:13px;color:var(--ink2);margin-bottom:13px">${esc(i.description||'')}</div><div class="cap">Appraisal scores (0–100)</div>`;
+  criteria.forEach(c=>{const s=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);const val=s?Math.round(s.score):0;h+=`<div style="margin-bottom:8px"><div class="slabel"><span>${esc(c.name)}</span><b>${val}</b></div><div class="bar"><div style="width:${val}%;background:#005eb8"></div></div></div>`;});
+  h+=`</div></div>`;document.getElementById('modalroot').innerHTML=h;}
 window.openIssue=openIssue;
-
-/* ---------- metric drill with trend chart ---------- */
-async function openDrill(orgId,code){drill={orgId,code};render();
-  const r=rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);if(!r)return;
-  const {data}=await sb.from('sr_metric_values').select('period,value').eq('organisation_id',orgId).eq('metric_id',r.metric_id).order('period');
-  const cv=document.getElementById('trendchart');if(cv&&data&&window.Chart){if(chartObj)chartObj.destroy();
-    chartObj=new Chart(cv.getContext('2d'),{type:'line',data:{labels:data.map(d=>d.period.slice(0,7)),datasets:[{data:data.map(d=>Number(d.value)),borderColor:'#005eb8',backgroundColor:'rgba(0,94,184,.08)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false}},scales:{x:{ticks:{maxTicksLimit:6,font:{size:10}}},y:{ticks:{font:{size:10}}}},responsive:true,maintainAspectRatio:false}});}
+async function openFactDrill(domain,orgId,specCode,metric){const f=await ensure(domain);const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${metric==='rtt_18wk'?'RTT 18-week %':metric==='rtt_incomplete'?'Waiting list':'52-week breaches'}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Modelled (synthetic) — pending ingestion · ${ser.length} months</div></div></div>`;
+  lineChart('fd',ser.map(x=>x.period.slice(2,7)),[{data:ser.map(x=>Number(x.value)),borderColor:'#005eb8',backgroundColor:'rgba(0,94,184,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
 }
+window.openFactDrill=openFactDrill;
+async function openDrill(orgId,code){drill={orgId,code};renderMetricModal();const r=rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);if(!r)return;const ser=seriesFor(orgId,r.metric_id);lineChart('trendchart',ser.map(d=>d.period.slice(2,7)),[{data:ser.map(d=>Number(d.value)),borderColor:'#005eb8',backgroundColor:'rgba(0,94,184,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2},r.standard!=null?{data:ser.map(()=>r.standard),borderColor:'#9aa7b4',borderDash:[5,4],pointRadius:0,borderWidth:1.2}:null].filter(Boolean));}
 window.openDrill=openDrill;
-function closeDrill(){drill=null;if(chartObj){chartObj.destroy();chartObj=null;}render();}
+function closeDrill(){drill=null;if(charts.trendchart){charts.trendchart.destroy();delete charts.trendchart;}if(charts.fd){charts.fd.destroy();delete charts.fd;}document.getElementById('modalroot').innerHTML='';}
 window.closeDrill=closeDrill;
-
-function renderModal(){const root=document.getElementById('modalroot');if(!drill){root.innerHTML='';return;}
-  const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r){root.innerHTML='';return;}
-  const o=orgById[drill.orgId],selOrg=orgById[sel];
-  const canChallenge=selOrg.type==='acute_trust'&&selOrg.id===drill.orgId;
-  const trend=r.prev_value==null?'no prior period':r.worsening===true?'deteriorating':r.worsening===false?'improving':'stable';
-  const ovs=overrides.filter(x=>x.metric_value_id===r.metric_value_id);
-  root.innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()">
-    <button class="x" onclick="closeDrill()">×</button>
-    <h2>${esc(r.metric_name)}</h2><div class="ms">${esc(o.name)} · ${r.domain}</div>
-    <div style="margin:4px 0 10px"><span class="pill" style="background:${color(r.distress)}">${slab(r.status)} · ${r.distress}/100</span></div>
-    <div style="height:150px;margin:6px 0 10px"><canvas id="trendchart"></canvas></div>
-    <div class="kv"><span class="k">Latest value</span><span>${fmt(r.value,r.unit)}</span></div>
-    <div class="kv"><span class="k">Standard / target</span><span>${r.standard!=null?fmt(r.standard,r.unit):'—'}</span></div>
-    <div class="kv"><span class="k">National median</span><span>${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</span></div>
-    <div class="kv"><span class="k">Prior period</span><span>${r.prev_value!=null?fmt(r.prev_value,r.unit):'—'}</span></div>
-    <div class="kv"><span class="k">Trend</span><span>${trend}</span></div>
-    <div class="kv"><span class="k">Criticality</span><span>${r.criticality}/5</span></div>
-    <div class="prov">Source: ${r.source_url?`<a href="${r.source_url}" target="_blank" rel="noopener" style="color:#005eb8">${esc(r.source||'source')}</a>`:esc(r.source||'illustrative (modelled)')} · confidence: <strong style="color:${r.confidence==='official'?'#0a9342':'#8a6d00'}">${esc(r.confidence||'modelled')}</strong> · period ${r.period}</div>
-    ${ovs.map(x=>`<div class="ovr">Challenge: proposed ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)}</div>`).join('')}
-    <div class="chal"><h4>Challenge this figure</h4>
-    ${canChallenge?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/><textarea class="field" id="cwhy" rows="3" placeholder="Rationale (required)"></textarea><div style="margin-top:9px"><button class="btn" id="cbtn" onclick="submitChallenge()">Submit challenge</button></div><div class="note">Submitting as ${esc(selOrg.name)}. Visible to all.</div>`:`<div class="note">Only ${esc(o.name)} can challenge its own data. Switch “Viewing as” to challenge.</div>`}
-    </div></div></div>`;
-}
-async function submitChallenge(){const why=document.getElementById('cwhy').value.trim();if(!why)return;const val=document.getElementById('cval').value;
-  document.getElementById('cbtn').disabled=true;document.getElementById('cbtn').textContent='Saving…';
-  const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);
-  await sb.from('sr_overrides').insert({metric_value_id:r.metric_value_id,author_org_id:sel,proposed_value:val===''?null:Number(val),rationale:why,state:'challenged'});
-  const {data}=await sb.from('sr_overrides').select('*');overrides=data||[];renderModal();
-}
+function renderMetricModal(){if(!drill)return;const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r){document.getElementById('modalroot').innerHTML='';return;}const o=orgById[drill.orgId],selOrg=orgById[sel];const canCh=selOrg.type==='acute_trust'&&selOrg.id===drill.orgId;const trend=r.prev_value==null?'no prior period':r.worsening===true?'deteriorating':r.worsening===false?'improving':'stable';const ovs=overrides.filter(x=>x.metric_value_id===r.metric_value_id);
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(r.metric_name)}</h2><div class="ms">${esc(o.name)} · ${esc(r.domain)}</div><div style="margin:4px 0 10px"><span class="pill" style="background:${color(r.distress)}">${slab(r.status)} · ${r.distress}/100</span></div><div class="chartbox" style="height:155px"><canvas id="trendchart"></canvas></div>
+    <div class="kv"><span class="k">Latest value</span><b>${fmt(r.value,r.unit)}</b></div><div class="kv"><span class="k">Standard</span><b>${r.standard!=null?fmt(r.standard,r.unit):'—'}</b></div><div class="kv"><span class="k">National median</span><b>${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</b></div><div class="kv"><span class="k">Trend</span><b>${trend}</b></div>
+    <div class="prov">Source: ${r.source_url?`<a href="${r.source_url}" target="_blank" rel="noopener">${esc(r.source||'source')}</a>`:esc(r.source||'illustrative (modelled)')} · confidence: <b style="color:${r.confidence==='official'?'#1a9c6b':'#8a6d00'}">${esc(r.confidence||'modelled')}</b> · ${r.period}</div>
+    ${ovs.map(x=>`<div class="ovr">Challenge: ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)}</div>`).join('')}
+    <div style="margin-top:13px;border-top:1px solid var(--line2);padding-top:12px"><div class="h3" style="font-size:13px">Challenge this figure</div>${canCh?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/><textarea class="field" id="cwhy" rows="2" placeholder="Rationale (required)"></textarea><div style="margin-top:8px"><button class="btn" id="cbtn" onclick="submitChallenge()">Submit challenge</button></div>`:`<div class="note">Only ${esc(o.name)} can challenge its own data — switch “Viewing as”.</div>`}</div></div></div>`;}
+async function submitChallenge(){const why=document.getElementById('cwhy').value.trim();if(!why)return;const cv=document.getElementById('cval').value;document.getElementById('cbtn').disabled=true;const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);await sb.from('sr_overrides').insert({metric_value_id:r.metric_value_id,author_org_id:sel,proposed_value:cv===''?null:Number(cv),rationale:why,state:'challenged'});const{data}=await sb.from('sr_overrides').select('*');overrides=data||[];renderMetricModal();}
 window.submitChallenge=submitChallenge;
 loadAll();
 </script>
