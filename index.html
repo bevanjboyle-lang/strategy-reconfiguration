@@ -168,7 +168,7 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision module'};
+const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision journey'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
