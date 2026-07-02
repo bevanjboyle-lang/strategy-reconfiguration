@@ -185,4 +185,60 @@ test.describe('System Intelligence — smoke (E1)', () => {
       expect(await modal.locator('.ovr').count(), 'no challenge row appears').toBe(pre);
     }
   });
+
+  test('13 trust explorer: non-BSW trust renders domains, sparks + expand chart', async ({ page }) => {
+    test.slow(); // lazy per-trust series fetch on top of boot
+    await boot(page);
+    await nav(page, 'Trust explorer');
+    await expect(page.locator('#xorgsel')).toBeVisible({ timeout: 25000 });
+    // Pick an acute trust outside the current (BSW) system that has status rows.
+    const pick = await page.evaluate(() => {
+      const t = orgs.find((o) => o.type === 'acute_trust' && !TRUSTS.includes(o.code) &&
+        rows.some((r) => r.organisation_id === o.id && !r.service_id && r.value != null));
+      return t ? { id: t.id, name: t.name } : null;
+    });
+    expect(pick, 'a non-BSW acute trust with data exists').toBeTruthy();
+    await page.selectOption('#xorgsel', pick.id);
+    await expect(page.locator('.view .card').first()).toContainText(pick.name, { timeout: 30000 });
+    await expect(page.locator('.view .eyebrow').nth(2), 'at least three domain sections').toBeVisible();
+    expect(await page.locator('.view table.dt tbody svg').count(), 'trend sparklines').toBeGreaterThan(5);
+    // Expand the first metric row: inline chart + drill link appear.
+    await page.locator('.view table.dt tbody tr[onclick^="xToggleRow"]').first().click();
+    await expect(page.locator('.view tr.xex:visible').first()).toBeVisible();
+    await expect(page.locator('.view tr.xex:visible a', { hasText: 'Open drill' }).first()).toBeVisible();
+  });
+
+  test('14 metric explorer: search → select → ranked table + overlay chart', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await nav(page, 'Metric explorer');
+    await expect(page.locator('#xmq')).toBeVisible({ timeout: 25000 });
+    await page.locator('#xmq').fill('occupancy');
+    const first = page.locator('#xmlist .row').first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await expect(page.locator('#xmrank tbody tr').first()).toBeVisible({ timeout: 25000 });
+    expect(await page.locator('#xmrank tbody tr').count(), 'England ranked trusts').toBeGreaterThan(10);
+    expect(await page.locator('#xmrank input[type="checkbox"]').count(), 'overlay checkboxes').toBeGreaterThan(10);
+    await expect(page.locator('#xmchart'), 'overlay chart canvas').toBeAttached({ timeout: 25000 });
+    await expect(page.locator('.view')).toContainText(/\d+ trusts ·/); // catalogue coverage line
+  });
+
+  test('15 extract grid: 2 metrics, current system → pivot table + CSV', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await nav(page, 'Extract grid');
+    await expect(page.locator('#xgq')).toBeVisible({ timeout: 25000 });
+    await page.locator('#xgq').fill('ae_4hr');
+    await page.locator('#xgmlist input[type="checkbox"]').first().check();
+    await page.locator('#xgq').fill('rtt_18wk');
+    await page.locator('#xgmlist input[type="checkbox"]:not(:checked)').first().check();
+    await expect(page.locator('#xgcount')).toContainText('2 of 12');
+    await page.locator('#xgrun').click();
+    await expect(page.locator('#xgtable tbody tr').first()).toBeVisible({ timeout: 30000 });
+    expect(await page.locator('#xgtable tbody tr').count(), 'pivot org × period rows').toBeGreaterThan(5);
+    await expect(page.locator('#xgcsv'), 'CSV download').toBeVisible();
+    await expect(page.locator('#xgcopy'), 'copy query definition').toBeVisible();
+    await expect(page.locator('.view')).toContainText(/values/i);
+  });
 });

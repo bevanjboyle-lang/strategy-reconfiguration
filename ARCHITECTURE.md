@@ -15,7 +15,7 @@ byte-exact extraction — further module splits (app.js by page) = future.
 - `geo/` — static reference data fetched at runtime: systems.json,
   trusts.json, sites.json, cqc.json, icbs-need.json,
   catchment-summary.json, plus lsoa/ msoa/ access/ poi/ practices/.
-- `tests/` — Playwright smoke suite: smoke.spec.js (12 tests),
+- `tests/` — Playwright smoke suite: smoke.spec.js (15 tests),
   playwright.config.js (serves repo root on 127.0.0.1:4173), README.md.
 
 ## Load order (do not change)
@@ -38,3 +38,37 @@ update_freshness.py → qa_checks.py ('Data QA' sidebar badge reads it).
 
 ## Serving database
 Supabase, tables/views prefixed `sr_*` (sr_metrics, sr_issues, sr_overrides, sr_lens_votes, sr_data_freshness, sr_qa_results, sr_v_*); anon SELECT, authenticated-only writes (E2 RLS).
+
+## Explorer (three uncurated surfaces)
+
+EXPLORER nav group after EXPLORE; all three stages are catalogue-driven —
+the UI reads `sr_v_metric_catalog` (150 metrics: coverage, unit, standard,
+confidence mix, latest source) and `sr_v_fact_catalog` (line-level split
+counts), so newly ingested metrics and splits appear automatically with no
+app change:
+
+- Trust explorer (`xentity`) — any English acute trust (region-grouped
+  picker, current system first): summary strip (system, CQC, fragility,
+  distress pills) + per-domain tables (latest · vs standard · vs national
+  median · 12-point spark · SPC verdict chip), each row expandable to the
+  full series chart, line-level splits and 'Open drill'. The trust's whole
+  series is fetched once (`sr_metric_values`, service_id null) and cached
+  in `xSeriesCache`; system trusts reuse the boot-time `series`.
+- Metric explorer (`xmetric`) — search + domain chips over the catalogue;
+  England ranked table (top 30 / show all, distress-coloured, CSV), the
+  national distribution strip highlighting the current system, an overlay
+  chart of up to 6 ticked trusts with the dashed national median from
+  `sr_benchmarks`, and a line-split picker where the fact catalogue holds
+  splits. `XSPLIT_MAP` pairs status codes to their sibling fact codes
+  (dm01_6wk→dm01_6wk_test_pct, cancer_62→cancer_62_tumour_pct,
+  bed metrics→beds_specialty_occupied); exact code match is the fallback.
+- Extract grid (`xgrid`) — up to 12 metrics × scope (current system /
+  all-England acute / ≤20 custom trusts) × month range → PostgREST reads
+  paginated at 1,000 rows with a 20,000-value cap (deterministic order:
+  period, organisation, metric), pivoted org × period table (first 400
+  rows displayed), long-format CSV carrying source + confidence on every
+  value, and a copyable JSON query definition for reproducibility.
+
+Cross-links: the metric drill modal offers 'All trusts on this metric →'
+(xmetric) and 'Everything on <trust> →' (xentity); `openDrill` lazily
+fetches series for non-system trusts so drills work England-wide.

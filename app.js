@@ -5,6 +5,7 @@ const sb=window.supabase.createClient(SB_URL,SB_KEY);
 const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.topo.json";
 const NAV=[["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
 ["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
+["EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
 ["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
 ["DECIDE",[["decide","Decision journey"]]]];
@@ -138,13 +139,13 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
+const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
   const ph=document.getElementById('printhead');if(ph)ph.innerHTML=`System Intelligence — ${esc(system()?system().name:'')}<small>${esc(TITLES[stage]||'')} · ${esc(o.name||'')} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · source-tagged data — modelled and estimated figures are labelled</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
+  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
   fn(v);
 }
 const tip=document.getElementById('tip');
@@ -1160,8 +1161,12 @@ async function saveCriticality(){if(!isFacilitator()||!session)return;
   if(!rerr&&data)rows=data;
   closeDrill();render();authMsg('Criticality saved — distress re-scored across the system.');}
 window.openDistressInfo=openDistressInfo;window.adjCrit=adjCrit;window.saveCriticality=saveCriticality;
-async function openDrill(orgId,code){drill={orgId,code};showSourceValue=false;redrawDrill();}
-function drillSeries(r){let ser=seriesFor(drill.orgId,r.metric_id);if(drill.code==='shmi')ser=ser.filter(x=>x.confidence==='official');return ser;} /* A6/D7 · SHMI: official points only (stale ×100 modelled rows ignored) */
+async function openDrill(orgId,code){drill={orgId,code};showSourceValue=false;
+  /* Explorer opens drills on any English trust: series for non-system orgs is fetched lazily (cached). */
+  const r0=rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);
+  if(r0&&!seriesFor(orgId,r0.metric_id).length&&!xSeriesCache[orgId]){try{await xFetchOrgSeries(orgId)}catch(e){console.warn('drill series fetch failed',e);}}
+  redrawDrill();}
+function drillSeries(r){let ser=seriesFor(drill.orgId,r.metric_id);if(!ser.length&&xSeriesCache[drill.orgId])ser=xSeriesCache[drill.orgId][r.metric_id]||[];if(drill.code==='shmi')ser=ser.filter(x=>x.confidence==='official');return ser;} /* A6/D7 · SHMI: official points only (stale ×100 modelled rows ignored) */
 function redrawDrill(){if(!drill)return;renderMetricModal();const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r)return;const ser=drillSeries(r);if(charts.trendchart){try{charts.trendchart.destroy()}catch(e){}delete charts.trendchart;}
   const vals=ser.map(d=>Number(d.value));const sp=spc(vals,r.higher_is_better!==false);
   const guide=(v,dash)=>({data:ser.map(()=>v),borderColor:'#9aa0af',borderDash:dash,pointRadius:0,borderWidth:1,backgroundColor:'transparent'});
@@ -1197,6 +1202,7 @@ function renderMetricModal(){if(!drill)return;const r=rows.find(x=>x.organisatio
     ${(q25&&q75)?`<div class="kv"><span class="k">National quartiles (p25–p75)</span><b>${fmt(q25.value,r.unit)} – ${fmt(q75.value,r.unit)}</b></div>`:''}
     <div class="kv"><span class="k">Trend</span><b>${trend}${spChip}</b></div>${spNote}
     ${strip?`<div style="margin-top:11px"><div class="cap" style="margin-bottom:2px">All English acute trusts · latest published${fam?` · peers (${esc(fam.replace('|',' · '))}) darker`:''}</div>${strip}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost" style="font-size:11.5px;padding:6px 12px" onclick="xGoMetric('${r.metric_code}')">All trusts on this metric →</button>${o.type==='acute_trust'?`<button class="btn ghost" style="font-size:11.5px;padding:6px 12px" onclick="xGoOrg('${drill.orgId}')">Everything on ${esc(trustShort(o.code)||o.code||'this trust')} →</button>`:''}</div>
     <div class="prov">Source: ${r.source_url?`<a href="${r.source_url}" target="_blank" rel="noopener">${esc(r.source||'source')}</a>`:esc(r.source||'illustrative (modelled)')} · confidence: <b style="color:${r.confidence==='official'?'#166f4d':'#7a6200'}">${esc(r.confidence||'modelled')}</b> · ${r.period}${fresh&&fresh.loaded_at?` · loaded ${new Date(fresh.loaded_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`:''}</div>
     ${ovs.map(x=>{const st=x.state||'challenged';const stCol=st==='adjusted'?'#b45309':st==='dismissed'?'#6a7183':'#1f3a78';return `<div class="ovr">Challenge: ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)} <span class="pill" style="background:${stCol};margin-left:5px">${esc(st)}</span>${isFacilitator()&&st==='challenged'?`<div style="margin-top:7px"><button class="btn" style="font-size:11px;padding:5px 11px" onclick="setOverrideState('${x.id}','adjusted')">Accept as adjusted</button> <button class="btn ghost" style="font-size:11px;padding:5px 11px" onclick="setOverrideState('${x.id}','dismissed')">Dismiss</button></div>`:''}</div>`;}).join('')}
     <div style="margin-top:13px;border-top:1px solid var(--line2);padding-top:12px"><div class="h3" style="font-size:13px">Challenge this figure</div>${canCh?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/><textarea class="field" id="cwhy" rows="2" placeholder="Rationale (required)"></textarea><div style="margin-top:8px"><button class="btn" id="cbtn" onclick="submitChallenge()">Submit challenge</button></div><div class="note" id="chnote">${session?'':'Sign in to challenge — public data stays open to read.'}</div>`:`<div class="note">Only ${esc(o.name)} can challenge its own data — switch “Viewing as”.</div>`}</div></div></div>`;}
@@ -1221,7 +1227,8 @@ const TOUR_STEPS=[
  {sel:'.mapwrap',t:'The strategic map',b:'Population need, service distress, NHS sites, CQC-rated care and GP practices in one picture. Use the chips on the map to switch basis, need metric and layers; click a site or neighbourhood to interrogate it.'},
  {sel:'#nav button[data-stage="drivers"]',side:true,t:'Priority drivers',b:'The four pressures driving the review — service fragility, urgent & emergency care, elective backlog and cancer — benchmarked against every English trust. Click any figure to drill to trend, standard and source.'},
  {sel:'#nav button[data-stage="decide"]',side:true,t:'Decision journey',b:'Orient → Diagnose → Prioritise → Options → Commit: a governed journey from evidence to a defensible weighted decision, with workshop voting, saved lenses and board packs.'},
- {sel:'#authui',t:'Challenge anything',b:'Every figure carries its source and confidence tag — nothing is a black box. Trusts can challenge their own data and facilitators adjudicate: sign in to challenge or vote; reading stays open to all.'}];
+ {sel:'#authui',t:'Challenge anything',b:'Every figure carries its source and confidence tag — nothing is a black box. Trusts can challenge their own data and facilitators adjudicate: sign in to challenge or vote; reading stays open to all.'},
+ {sel:'#nav button[data-stage="xentity"]',side:true,t:'Or skip the story',b:'Or ignore our story entirely — the Explorer is uncurated: any metric, any English acute trust. Trust-by-trust, metric-by-metric across England, plus a raw extract grid with source and confidence on every value.'}];
 let tourIdx=-1;
 function maybeStartTour(){try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_done'))return;}catch(e){return;}startTour();}
 function startTour(){if(stage!=='overview')setStage('overview');tourIdx=0;drawTour();}
@@ -1256,7 +1263,8 @@ const GLOSSARY=[
  ['Near-failure','The strongest flag: a metric breaching its standard badly and still deteriorating (distress 70+).'],
  ['SPC special cause','Statistical process control: a run-chart rule fires (a point beyond mean±3σ, 7+ points one side of the mean, or 6+ consecutive rises/falls), meaning the change is signal rather than noise.'],
  ['Fragility composite','A derived 0–100 score of how close a service runs to the edge, combining occupancy, diagnostics, workforce, mortality and finance signals — components and weights published in-app.'],
- ['Confidence tags','official = published national statistic · actual = published operational data · derived = computed here from published inputs (method shown) · modelled = illustrative estimate pending ingestion. Every figure is labelled.']];
+ ['Confidence tags','official = published national statistic · actual = published operational data · derived = computed here from published inputs (method shown) · modelled = illustrative estimate pending ingestion. Every figure is labelled.'],
+ ['Explorer','Three uncurated surfaces over the full serving catalogue — Trust explorer (everything held on one trust), Metric explorer (every English acute trust ranked on one metric) and the Extract grid (raw org × period × metric extract). Catalogue-driven, so newly ingested metrics appear automatically; every value keeps its source and confidence.']];
 function openGlossary(){document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()" aria-label="Close dialog">×</button><h2>Glossary &amp; standards</h2><div class="ms">Plain-English definitions of the standards and scores used across this tool</div>`+
   GLOSSARY.map(g=>`<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><b style="font-size:13px">${esc(g[0])}</b><div style="font-size:12.5px;color:var(--ink2);margin-top:2px">${esc(g[1])}</div></div>`).join('')+`</div></div>`;}
 window.openGlossary=openGlossary;
@@ -1283,5 +1291,258 @@ document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;
 try{new MutationObserver(()=>{const m=document.querySelector('#modalroot .modal');
   if(m&&m.getAttribute('data-focused')!=='1'){m.setAttribute('data-focused','1');m.setAttribute('tabindex','-1');try{m.focus({preventScroll:true})}catch(e){}}
 }).observe(document.getElementById('modalroot'),{childList:true});}catch(e){}
+
+/* ===== EXPLORER · three uncurated surfaces over the full serving catalogue =====
+   xentity (Trust explorer) · xmetric (Metric explorer) · xgrid (Extract grid).
+   Catalogue-driven: sr_v_metric_catalog / sr_v_fact_catalog decide what is on offer, so
+   newly ingested metrics and line-level splits appear automatically. Fetches are lazy per
+   stage and cached (per trust / per metric·trust / catalogue once); extracts paginate
+   PostgREST at 1,000 rows and cap at 20,000 values. */
+let xSelOrg=null,xSelMetric=null,xQ='',xDom=null,xOvl=null,xSelSplit='',xShowAllRank=false;
+let xCatalog=null,xFactCat=null,xSeriesCache={},xMSeries={},xSplitData={};
+let xgSel=[],xgScope='system',xgOrgs=[],xgQ='',xgOrgQ='',xgFrom='',xgTo='',xgData=null,xgCapped=false,xgBusy=false;
+/* Status-metric code → sr_fact line-split code where the loader stores splits under a sibling code. */
+const XSPLIT_MAP={dm01_6wk:'dm01_6wk_test_pct',cancer_62:'cancer_62_tumour_pct',bed_occupancy:'beds_specialty_occupied',beds_ga_occupied:'beds_specialty_occupied',beds_ga_available:'beds_specialty_occupied'};
+function escAttr(s){return esc(s).replace(/"/g,'&quot;');}
+function sysTrustIds(){return TRUSTS.map(c=>(orgs.find(o=>o.code===c)||{}).id).filter(Boolean);}
+async function xEnsureCatalog(){if(xCatalog&&xFactCat)return;
+  const [c,f]=await Promise.all([sb.from('sr_v_metric_catalog').select('*').order('name').limit(2000),sb.from('sr_v_fact_catalog').select('*').limit(2000)]);
+  if(c.error)throw c.error;
+  xCatalog=c.data||[];xFactCat={};((f&&f.data)||[]).forEach(x=>{xFactCat[x.metric_code]=x;});}
+function xSplitCode(code){const fc=XSPLIT_MAP[code]||code;const f=xFactCat&&xFactCat[fc];return (f&&Number(f.split_count)>0)?fc:null;}
+function xSplitInfo(code){const fc=xSplitCode(code);return fc?xFactCat[fc]:null;}
+async function xFetchOrgSeries(orgId){if(xSeriesCache[orgId])return xSeriesCache[orgId];const m={};
+  if(sysOrgs().some(o=>o.id===orgId)&&Object.keys(series).length){Object.keys(series).forEach(k=>{const i=k.indexOf('|');if(k.slice(0,i)===orgId)m[k.slice(i+1)]=series[k];});}
+  else{const{data,error}=await sb.from('sr_metric_values').select('metric_id,period,value,confidence').is('service_id',null).eq('organisation_id',orgId).limit(20000);
+    if(error)throw error;
+    (data||[]).forEach(x=>{(m[x.metric_id]=m[x.metric_id]||[]).push(x);});Object.values(m).forEach(a=>a.sort((p,q)=>p.period<q.period?-1:1));}
+  xSeriesCache[orgId]=m;return m;}
+function xSer(orgId,r){let s=(xSeriesCache[orgId]||{})[r.metric_id]||[];if(r.metric_code==='shmi'){const off=s.filter(x=>x.confidence==='official');if(off.length)s=off;}return s;}
+async function xFetchSplits(orgId,factCode){const k=orgId+'|'+factCode;if(xSplitData[k])return xSplitData[k];
+  const{data}=await sb.from('sr_fact').select('line_code,period,value,unit,source,confidence').eq('organisation_id',orgId).eq('metric_code',factCode).not('line_code','is',null).limit(20000);
+  const a=data||[];a.sort((p,q)=>p.period<q.period?-1:1);xSplitData[k]=a;return a;}
+function xGoMetric(code){xSelMetric=code;xSelSplit='';xShowAllRank=false;closeDrill();setStage('xmetric');}
+function xGoOrg(orgId){xSelOrg=orgId;closeDrill();setStage('xentity');}
+window.xGoMetric=xGoMetric;window.xGoOrg=xGoOrg;
+
+/* --- Trust explorer (xentity): everything we hold on any English acute trust --- */
+function xSetOrg(id){xSelOrg=id;render();}
+window.xSetOrg=xSetOrg;
+async function renderXEntity(v){
+  v.innerHTML='<div class="loading">Loading the trust explorer…</div>';
+  try{await xEnsureCatalog();}catch(e){console.warn('catalogue failed',e);v.innerHTML='<div class="banner">The metric catalogue could not be loaded (network). <a href="#" onclick="location.reload();return false">Retry</a></div>';return;}
+  const acute=orgs.filter(o=>o.type==='acute_trust');
+  if(!xSelOrg||!orgById[xSelOrg]){const ids=sysTrustIds();xSelOrg=ids[0]||(acute[0]||{}).id;}
+  try{await xFetchOrgSeries(xSelOrg);}catch(e){console.warn('org series fetch failed',e);xSeriesCache[xSelOrg]=xSeriesCache[xSelOrg]||{};}
+  if(stage!=='xentity')return;
+  const o=orgById[xSelOrg]||{},meta=TRUSTMETA[o.code]||{},sysm=SYSTEMS.find(s=>s.slug===meta.icb);
+  const cq=CQC[o.code],dd=distByCode[o.code]||distByOrg[xSelOrg];
+  const orows=rows.filter(r=>r.organisation_id===xSelOrg&&!r.service_id&&r.value!=null);
+  const frag=orows.find(r=>r.metric_code==='fragility_index');
+  const bySys={};acute.forEach(t=>{const s=SYSTEMS.find(x=>x.slug===(TRUSTMETA[t.code]||{}).icb);const rg=s?s.region:'other';(bySys[rg]=bySys[rg]||[]).push(t);});
+  const cur=TRUSTS.map(c=>acute.find(t=>t.code===c)).filter(Boolean);
+  const opt=t=>`<option value="${t.id}" ${t.id===xSelOrg?'selected':''}>${esc(t.name)}</option>`;
+  const selHtml=`<select class="sel" id="xorgsel" aria-label="Select any English acute trust" onchange="xSetOrg(this.value)"><optgroup label="Current system · ${escAttr((system()||{}).name||'')}">`+cur.map(opt).join('')+`</optgroup>`+Object.keys(bySys).sort().map(rg=>`<optgroup label="${escAttr(rg.replace(/-/g,' '))}">`+bySys[rg].slice().sort((a,b)=>a.name<b.name?-1:1).map(opt).join('')+`</optgroup>`).join('')+`</select>`;
+  let h=`<h1 class="serif">Trust explorer</h1><div class="lead">Every published metric we hold, for any English acute trust — uncurated, benchmarked, source-tagged. Expand a row for the full series, line-level splits and the drill.</div>`;
+  h+=`<div class="filters">Trust ${selHtml}</div>`;
+  h+=`<div class="card" style="margin-bottom:4px"><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;justify-content:space-between"><div><div class="h3" style="font-size:18px">${esc(o.name||'')}</div><div class="cap" style="margin-bottom:0">${esc(o.code||'')}${meta.type?' · '+esc(meta.type):''}${sysm?' · '+esc(sysm.name)+' · '+esc((sysm.region||'').replace(/-/g,' ')):''}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cq&&cq[0]?`<span class="pill" style="background:${/inadequate/i.test(cq[0])?'#b3261e':/requires/i.test(cq[0])?'#b45309':/outstanding/i.test(cq[0])?'#166f4d':'#44639f'}">CQC · ${esc(cq[0])}</span>`:''}${frag?`<span class="pill" style="background:${color(frag.distress)}">fragility ${fmt(frag.value,'score')}/100</span>`:''}${dd?`<span class="pill" style="background:${color(dd.distress_index)}">distress ${dd.distress_index}/100 · ${dd.near_failure_count||0} near-failure</span>`:''}<span class="pill" style="background:#6a7183">${orows.length} metrics</span></div></div></div>`;
+  const extra=[...new Set(orows.map(r=>r.domain))].filter(d=>!DOMAINS.some(x=>x[0]===d)).sort();
+  const doms=DOMAINS.concat(extra.map(d=>[d,(d||'other').replace(/_/g,' ')])).filter(d=>orows.some(r=>r.domain===d[0]));
+  doms.forEach(dm=>{const rs=orows.filter(r=>r.domain===dm[0]).sort((a,b)=>(b.distress||0)-(a.distress||0));
+    h+=`<div class="eyebrow">${esc(dm[1])} · ${rs.length} ${rs.length===1?'metric':'metrics'}</div><div class="card" style="padding:4px 0;overflow-x:auto;position:relative"><a class="csvlink" href="#" onclick="xeCsv('${dm[0]}','${esc(o.code||'trust')}-${dm[0]}-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="xetbl_${dm[0]}"><thead><tr><th>Metric</th><th class="num">Latest</th><th class="num">vs standard</th><th class="num">vs nat. median</th><th style="width:112px">Trend · last 12</th><th>SPC</th><th></th></tr></thead><tbody>`;
+    rs.forEach((r,i)=>{const rid=dm[0]+'_'+i;const ser=xSer(xSelOrg,r);const sp=spc(ser.map(x=>Number(x.value)),r.higher_is_better!==false);
+      const spCol=sp?(sp.verdict.indexOf('deterioration')>=0?'#b45309':sp.verdict.indexOf('improvement')>=0?'#166f4d':'#6a7183'):null;
+      const goodCol=dv=>dv==null?'#9aa0af':dv===0?'#6a7183':((dv>0)===(r.higher_is_better!==false)?'#166f4d':'#b3261e');
+      const dfmt=dv=>dv==null?'—':(dv>0?'+':dv<0?'−':'')+fmt(Math.abs(dv),r.unit);
+      const dstd=(r.standard!=null&&r.value!=null)?Number(r.value)-Number(r.standard):null;
+      const dnm=(r.nm_value!=null&&r.value!=null)?Number(r.value)-Number(r.nm_value):null;
+      const split=xSplitInfo(r.metric_code);
+      h+=`<tr style="cursor:pointer" onclick="xToggleRow('${rid}','${r.metric_code}')"><td>${esc(r.metric_name)}${split?` <span class="pill" style="background:#44639f;font-size:8.5px;padding:2px 6px;vertical-align:2px" title="${split.split_count} line-level splits held in sr_fact">splits available</span>`:''}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num" style="color:${goodCol(dstd)}">${dfmt(dstd)}</td><td class="num" style="color:${goodCol(dnm)}">${dfmt(dnm)}</td><td>${ser.length>1?`<div style="height:24px">${spark(ser.slice(-12),'#1f3a78')}</div>`:'<span class="muted" style="font-size:10px">—</span>'}</td><td>${sp?`<span class="pill" style="background:${spCol}">${esc(sp.verdict.replace('special-cause ','').replace(' variation',''))}</span>`:'<span class="muted" style="font-size:10px">—</span>'}</td><td class="num muted" id="xch_${rid}" style="font-size:11px">▸</td></tr>`;
+      h+=`<tr class="xex" id="xe_${rid}" style="display:none"><td colspan="7" style="background:var(--surface2);padding:12px 14px"><div class="cap" style="margin-bottom:6px">${fmtPeriod(r.period)} · ${esc(r.source||'source pending')} · confidence ${esc(r.confidence||'—')} · <a href="#" onclick="event.stopPropagation();openDrill('${xSelOrg}','${r.metric_code}');return false">Open drill →</a></div><div class="chartbox sm"><canvas id="xec_${rid}"></canvas></div><div id="xesp_${rid}"></div></td></tr>`;});
+    h+=`</tbody></table></div>`;});
+  h+=`<div class="note" style="margin-top:14px">Latest positions from sr_v_metric_status; the trust's full series is fetched once and cached. Every figure keeps its source and confidence — the drill adds benchmarks, SPC detail and provenance.</div>`;
+  v.innerHTML=h;
+}
+async function xToggleRow(rid,code){const tr=document.getElementById('xe_'+rid);if(!tr)return;const open=tr.style.display==='none';
+  tr.style.display=open?'':'none';const ch=document.getElementById('xch_'+rid);if(ch)ch.textContent=open?'▾':'▸';
+  if(!open)return;
+  const r=rows.find(x=>x.organisation_id===xSelOrg&&x.metric_code===code&&!x.service_id);if(!r)return;
+  if(tr.dataset.drawn!=='1'){tr.dataset.drawn='1';const ser=xSer(xSelOrg,r);
+    if(ser.length>1)lineChart('xec_'+rid,ser.map(x=>fmtPeriod(x.period)),[{data:ser.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2},r.standard!=null?{data:ser.map(()=>Number(r.standard)),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2,backgroundColor:'transparent'}:null].filter(Boolean));
+    else{const cb=document.getElementById('xec_'+rid);if(cb&&cb.parentElement)cb.parentElement.innerHTML='<div class="note">A single published point — nothing to chart yet.</div>';}}
+  const fc=xSplitCode(code),spEl=document.getElementById('xesp_'+rid);
+  if(fc&&spEl&&spEl.dataset.done!=='1'){spEl.dataset.done='1';spEl.innerHTML='<div class="note">Loading line-level splits…</div>';
+    try{const f=await xFetchSplits(xSelOrg,fc);
+      const latest={};f.forEach(x=>{if(!latest[x.line_code]||x.period>latest[x.line_code].period)latest[x.line_code]=x;});
+      const ls=Object.values(latest).sort((a,b)=>Number(b.value)-Number(a.value));
+      spEl.innerHTML=ls.length?`<div class="cap" style="margin:10px 0 4px">Line-level splits (${esc(fc)}) · latest value per line · sr_fact</div><table class="dt"><thead><tr><th>Line</th><th class="num">Latest</th><th class="num">Period</th></tr></thead><tbody>`+ls.map(x=>`<tr><td>${esc((''+x.line_code).replace(/_/g,' '))}</td><td class="num">${fmt(x.value,x.unit)}</td><td class="num">${fmtPeriod(x.period)}</td></tr>`).join('')+`</tbody></table>`:`<div class="note">No line-level splits held for this trust on this metric.</div>`;
+    }catch(e){spEl.dataset.done='';spEl.innerHTML='<div class="note">Splits could not be loaded (network).</div>';}}}
+window.xToggleRow=xToggleRow;
+function xeCsv(dom,fname){const t=document.getElementById('xetbl_'+dom);if(!t)return;
+  const csv=[...t.querySelectorAll('tr')].filter(x=>!x.classList.contains('xex')).map(x=>[...x.children].slice(0,4).map(c=>{let s=(c.innerText||c.textContent||'').replace(/\s+/g,' ').trim();return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent('﻿'+csv);a.download=fname;document.body.appendChild(a);a.click();a.remove();}
+window.xeCsv=xeCsv;
+
+/* --- Metric explorer (xmetric): every English acute trust on one catalogue metric --- */
+function xmCovLine(c){return `${c.org_count} trusts · ${fmtPeriod(c.first_period)} → ${fmtPeriod(c.latest_period)} · ${Number(c.obs_count).toLocaleString()} obs`;}
+function xmList(){const q=(xQ||'').toLowerCase();
+  let l=xCatalog.filter(c=>(!xDom||c.domain===xDom)&&(!q||((c.name||'')+' '+(c.code||'')).toLowerCase().indexOf(q)>=0));
+  if(q)l=l.slice().sort((a,b)=>(b.org_count-a.org_count)||((a.name||'')<(b.name||'')?-1:1));
+  return l;}
+function xmRenderList(){const el=document.getElementById('xmlist');if(!el)return;const l=xmList();
+  el.innerHTML=(l.length?l.slice(0,150).map(c=>`<div class="row" onclick="xSelectMetric('${c.code}')" style="${c.code===xSelMetric?'background:var(--surface2)':''}"><span class="tag" style="background:${c.code===xSelMetric?'#191f2b':'#dcd9d0'}"></span><div class="m"><div class="t1">${esc(c.name)}</div><div class="t2">${esc(c.code)} · ${esc(c.domain||'—')} · ${xmCovLine(c)}</div><div class="t2">${esc(c.latest_source||'')}${c.confidences?' · '+esc(c.confidences):''}</div></div></div>`).join('')+(l.length>150?`<div class="note" style="padding:8px 14px">${l.length-150} more — narrow the search.</div>`:''):'<div class="note" style="padding:10px 14px">No metrics match.</div>');}
+function xSelectMetric(code){xSelMetric=code;xSelSplit='';xShowAllRank=false;render();}
+function xSetDom(d){xDom=xDom===d?null:d;render();}
+function xToggleOvl(id){if(!xOvl)xOvl=[];const i=xOvl.indexOf(id);if(i>=0)xOvl.splice(i,1);else{if(xOvl.length>=6){authMsg('Up to 6 trusts on the overlay — untick one first.');render();return;}xOvl.push(id);}render();}
+function xSetSplit(s){xSelSplit=s;render();}
+function xToggleRankAll(){xShowAllRank=!xShowAllRank;render();}
+window.xSelectMetric=xSelectMetric;window.xSetDom=xSetDom;window.xToggleOvl=xToggleOvl;window.xSetSplit=xSetSplit;window.xToggleRankAll=xToggleRankAll;
+async function xmFetchOverlay(mid,ids){const need=ids.filter(id=>!xMSeries[mid+'|'+id]);
+  if(need.length){const{data,error}=await sb.from('sr_metric_values').select('organisation_id,period,value').eq('metric_id',mid).is('service_id',null).in('organisation_id',need).limit(20000);
+    if(error)throw error;
+    need.forEach(id=>{xMSeries[mid+'|'+id]=[];});(data||[]).forEach(x=>{(xMSeries[mid+'|'+x.organisation_id]||(xMSeries[mid+'|'+x.organisation_id]=[])).push(x);});
+    need.forEach(id=>{xMSeries[mid+'|'+id].sort((a,b)=>a.period<b.period?-1:1);});}
+  const out={};ids.forEach(id=>{out[id]=xMSeries[mid+'|'+id]||[];});return out;}
+async function renderXMetric(v){
+  v.innerHTML='<div class="loading">Loading the metric catalogue…</div>';
+  try{await xEnsureCatalog();}catch(e){console.warn('catalogue failed',e);v.innerHTML='<div class="banner">The metric catalogue could not be loaded (network). <a href="#" onclick="location.reload();return false">Retry</a></div>';return;}
+  if(stage!=='xmetric')return;
+  if(!xOvl)xOvl=sysTrustIds().slice(0,6);
+  const doms=[...new Set(xCatalog.map(c=>c.domain).filter(Boolean))].sort();
+  const cat=xSelMetric?xCatalog.find(c=>c.code===xSelMetric):null;
+  const anyRow=xSelMetric?rows.find(r=>r.metric_code===xSelMetric&&!r.service_id):null;
+  let h=`<h1 class="serif">Metric explorer</h1><div class="lead">The full serving catalogue — ${xCatalog.length} metrics, uncurated. Search, pick one, and see every English acute trust ranked on it, the national distribution and overlay trends.</div>`;
+  h+=`<div class="xgrid2">`;
+  h+=`<div><input class="field" id="xmq" style="margin:0 0 8px" placeholder="Search ${xCatalog.length} metrics — name or code" value="${escAttr(xQ)}" oninput="xQ=this.value;xmRenderList()" aria-label="Search metrics"/>`;
+  h+=`<div class="chips" style="margin-bottom:8px">`+doms.map(d=>`<button class="chip ${xDom===d?'on':''}" onclick="xSetDom('${d}')" aria-pressed="${xDom===d?'true':'false'}">${esc(d.replace(/_/g,' '))}</button>`).join('')+`</div>`;
+  h+=`<div class="list" id="xmlist" style="max-height:560px;overflow:auto"></div></div>`;
+  let mid=null,unit='',name='';
+  if(!xSelMetric){h+=`<div class="card"><div class="h3">Pick a metric</div><div class="cap">Everything in the catalogue is fair game — coverage, source and confidence shown per metric. Selecting one ranks every English acute trust that holds it.</div></div>`;}
+  else{
+    name=cat?cat.name:(anyRow?anyRow.metric_name:xSelMetric);
+    unit=cat?cat.unit:(anyRow?anyRow.unit:'');
+    mid=cat?cat.metric_id:(anyRow?anyRow.metric_id:null);
+    const hib=cat?cat.higher_is_better!==false:(anyRow?anyRow.higher_is_better!==false:true);
+    const std=cat?cat.standard:(anyRow?anyRow.standard:null);
+    let rr=rows.filter(r=>r.metric_code===xSelMetric&&r.org_type==='acute_trust'&&!r.service_id&&r.value!=null);
+    rr.sort((a,b)=>hib?(Number(b.value)-Number(a.value)):(Number(a.value)-Number(b.value)));
+    const ids=sysTrustIds();
+    const shown=xShowAllRank?rr:rr.slice(0,30);
+    const spl=xSplitInfo(xSelMetric);
+    h+=`<div>`;
+    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">${esc(name)}</div><div class="cap">${esc(xSelMetric)}${cat?' · '+esc(cat.domain||'')+' · '+xmCovLine(cat):''}${std!=null?' · standard '+fmt(std,unit):''}${(cat&&cat.latest_source)||(anyRow&&anyRow.source)?' · '+esc((cat&&cat.latest_source)||anyRow.source):''}</div>`+
+      (rr.length>=10?`<div class="cap" style="margin:2px 0 2px">All English acute trusts · latest published · current system's trusts marked as diamonds</div>${distStrip(xSelMetric,ids)}`:'')+`</div>`;
+    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;position:relative;margin-bottom:14px"><a class="csvlink" href="#" onclick="csvTable('xmrank','${xSelMetric}-england-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="xmrank"><thead><tr><th style="width:34px">#</th><th>Overlay · trust</th><th class="num">Latest</th><th>Status</th><th class="num">Period</th></tr></thead><tbody>`;
+    shown.forEach((r,i)=>{const on=xOvl.indexOf(r.organisation_id)>=0;
+      h+=`<tr><td class="num muted">${i+1}</td><td><label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" ${on?'checked':''} onchange="xToggleOvl('${r.organisation_id}')" aria-label="Overlay ${escAttr(trustShort(r.org_code)||r.org_code||'')}"/> <span onclick="event.preventDefault();openDrill('${r.organisation_id}','${xSelMetric}')">${esc(trustShort(r.org_code)||r.org_code||'')}</span>${ids.indexOf(r.organisation_id)>=0?' <span class="pill" style="background:#191f2b;font-size:8.5px;padding:2px 6px;vertical-align:1px">system</span>':''}</label></td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td style="font-size:11.5px;color:${color(r.distress)}">${esc(slab(r.status))}</td><td class="num muted">${fmtPeriod(r.period)}</td></tr>`;});
+    h+=`</tbody></table>${rr.length>30?`<div style="padding:8px 14px;font-size:12px"><a href="#" onclick="xToggleRankAll();return false">${xShowAllRank?'Show the top 30':'Show all '+rr.length+' trusts'}</a></div>`:''}${rr.length?'':'<div class="note" style="padding:10px 14px">No latest-status rows held for this metric.</div>'}</div>`;
+    h+=`<div class="card"><div class="h3">Overlay · up to 6 trusts</div><div class="cap">Tick trusts in the ranked table · national median dashed where published${spl?` · ${spl.split_count} line-level splits available`:''}</div>${spl?`<div class="filters">Split <select class="sel" id="xmsplit" onchange="xSetSplit(this.value)" aria-label="Choose a line-level split"><option value="">Headline series</option></select></div>`:''}<div class="chartbox"><canvas id="xmchart"></canvas></div><div class="note" id="xmnote"></div></div>`;
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  v.innerHTML=h;xmRenderList();
+  if(!xSelMetric||!mid)return;
+  const ids6=(xOvl||[]).slice(0,6);
+  const leg={plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}};
+  try{
+    const fc=xSplitCode(xSelMetric);
+    if(fc){const packs=await Promise.all(ids6.map(id=>xFetchSplits(id,fc)));
+      if(stage!=='xmetric')return;
+      const all=[].concat(...packs);const lcs=[...new Set(all.map(x=>x.line_code))].sort();
+      const selEl=document.getElementById('xmsplit');
+      if(selEl)selEl.innerHTML=`<option value="">Headline series</option>`+lcs.map(l=>`<option value="${escAttr(l)}" ${l===xSelSplit?'selected':''}>${esc((''+l).replace(/_/g,' '))}</option>`).join('');
+      if(xSelSplit&&lcs.indexOf(xSelSplit)>=0){
+        const per=[...new Set(all.filter(x=>x.line_code===xSelSplit).map(x=>x.period))].sort().slice(-48);
+        const ds=ids6.map((id,i)=>{const by={};(xSplitData[id+'|'+fc]||[]).filter(x=>x.line_code===xSelSplit).forEach(x=>{by[x.period]=Number(x.value);});return{label:trustShort((orgById[id]||{}).code)||'?',data:per.map(p=>by[p]!=null?by[p]:null),borderColor:PALETTE[i%PALETTE.length],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2,spanGaps:true};});
+        if(per.length){lineChart('xmchart',per.map(fmtPeriod),ds,leg);const nEl=document.getElementById('xmnote');if(nEl)nEl.textContent='Line-level split from sr_fact ('+fc+') · '+xSelSplit.replace(/_/g,' ')+' · trusts without this split simply show no line.';return;}
+        const nEl=document.getElementById('xmnote');if(nEl)nEl.textContent='No values for that split among the ticked trusts.';return;}}
+    const sers=await xmFetchOverlay(mid,ids6);
+    if(stage!=='xmetric')return;
+    const per=[...new Set([].concat(...ids6.map(id=>sers[id].map(x=>x.period))))].sort().slice(-48);
+    const ds=ids6.map((id,i)=>{const by={};sers[id].forEach(x=>{by[x.period]=Number(x.value);});return{label:trustShort((orgById[id]||{}).code)||'?',data:per.map(p=>by[p]!=null?by[p]:null),borderColor:PALETTE[i%PALETTE.length],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2,spanGaps:true};});
+    const nm=benchSeries(mid,'national_median');
+    if(nm.length){const by={};nm.forEach(x=>{by[x.period]=Number(x.value);});ds.push({label:'National median',data:per.map(p=>by[p]!=null?by[p]:null),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.5,backgroundColor:'transparent',spanGaps:true});}
+    if(per.length)lineChart('xmchart',per.map(fmtPeriod),ds,leg);
+    else{const nEl=document.getElementById('xmnote');if(nEl)nEl.textContent='No series held for the ticked trusts on this metric.';}
+  }catch(e){console.warn('overlay failed',e);const nEl=document.getElementById('xmnote');if(nEl)nEl.textContent='Overlay series could not be loaded (network).';}
+}
+
+/* --- Extract grid (xgrid): raw org × period × metric extract, reproducible --- */
+function xgMonth(y,m){y+=Math.floor((m-1)/12);m=((m-1)%12+12)%12+1;return y+'-'+String(m).padStart(2,'0');}
+function xgNext(ym){const p=(ym||'').split('-').map(Number);if(!p[0]||!p[1])return ym;return xgMonth(p[0],p[1]+1)+'-01';}
+function xgToggleMetric(code){const i=xgSel.indexOf(code);if(i>=0)xgSel.splice(i,1);else{if(xgSel.length>=12){authMsg('Up to 12 metrics per extract.');xgRenderMetricList();return;}xgSel.push(code);}
+  /* no list re-render on a plain toggle — replacing the checkbox mid-interaction loses focus/state */
+  const c=document.getElementById('xgcount');if(c)c.textContent=xgSel.length+' of 12 selected';}
+function xgRenderMetricList(){const el=document.getElementById('xgmlist');if(!el)return;const q=(xgQ||'').toLowerCase();
+  let l=xCatalog.filter(c=>!q||((c.name||'')+' '+(c.code||'')).toLowerCase().indexOf(q)>=0);
+  if(q)l=l.slice().sort((a,b)=>(b.org_count-a.org_count)||((a.name||'')<(b.name||'')?-1:1));
+  el.innerHTML=l.slice(0,120).map(c=>`<label class="row" style="cursor:pointer"><input type="checkbox" ${xgSel.indexOf(c.code)>=0?'checked':''} onchange="xgToggleMetric('${c.code}')" aria-label="${escAttr(c.name)}"/><div class="m"><div class="t1" style="font-weight:500;font-size:12.5px">${esc(c.name)}</div><div class="t2">${esc(c.code)} · ${c.org_count} trusts · ${fmtPeriod(c.first_period)} → ${fmtPeriod(c.latest_period)}</div></div></label>`).join('')||'<div class="note" style="padding:10px 14px">No metrics match.</div>';}
+function xgSetScope(s){xgScope=s;render();}
+function xgToggleOrg(id){const i=xgOrgs.indexOf(id);if(i>=0)xgOrgs.splice(i,1);else{if(xgOrgs.length>=20){authMsg('Up to 20 trusts in a custom scope.');xgRenderOrgList();return;}xgOrgs.push(id);}
+  const c=document.getElementById('xgocount');if(c)c.textContent=xgOrgs.length+' of 20 selected';}
+function xgRenderOrgList(){const el=document.getElementById('xgolist');if(!el)return;const q=(xgOrgQ||'').toLowerCase();
+  const l=orgs.filter(o=>o.type==='acute_trust'&&(!q||((o.name||'')+' '+(o.code||'')).toLowerCase().indexOf(q)>=0)).slice().sort((a,b)=>a.name<b.name?-1:1);
+  el.innerHTML=l.slice(0,80).map(o=>`<label class="row" style="cursor:pointer"><input type="checkbox" ${xgOrgs.indexOf(o.id)>=0?'checked':''} onchange="xgToggleOrg('${o.id}')" aria-label="${escAttr(o.name)}"/><div class="m"><div class="t1" style="font-weight:500;font-size:12.5px">${esc(o.name)}</div><div class="t2">${esc(o.code)}</div></div></label>`).join('');
+  const c=document.getElementById('xgocount');if(c)c.textContent=xgOrgs.length+' of 20 selected';}
+window.xgToggleMetric=xgToggleMetric;window.xgSetScope=xgSetScope;window.xgToggleOrg=xgToggleOrg;
+function xgScopeIds(){return xgScope==='system'?sysTrustIds():xgScope==='custom'?xgOrgs.slice():orgs.filter(o=>o.type==='acute_trust').map(o=>o.id);}
+async function xgRun(){if(xgBusy)return;
+  const mids=xgSel.map(c=>(xCatalog.find(x=>x.code===c)||{}).metric_id).filter(Boolean);
+  if(!mids.length){authMsg('Pick at least one metric first.');return;}
+  const oids=xgScopeIds();
+  if(!oids.length){authMsg('Pick at least one trust first.');return;}
+  if(!xgFrom||!xgTo||xgFrom>xgTo){authMsg('Set a valid period range first.');return;}
+  xgBusy=true;xgCapped=false;const out=[];const st=document.getElementById('xgstatus');const btn=document.getElementById('xgrun');if(btn)btn.disabled=true;
+  try{for(let off=0;off<20000;off+=1000){
+    if(st)st.textContent='Fetching… '+out.length.toLocaleString()+' values so far';
+    const{data,error}=await sb.from('sr_metric_values').select('organisation_id,metric_id,period,value,source,confidence').is('service_id',null).in('metric_id',mids).in('organisation_id',oids).gte('period',xgFrom+'-01').lt('period',xgNext(xgTo)).order('period',{ascending:true}).order('organisation_id',{ascending:true}).order('metric_id',{ascending:true}).range(off,off+999);
+    if(error)throw error;const page=data||[];for(const r of page)out.push(r);
+    if(page.length<1000)break;
+    if(off+1000>=20000)xgCapped=true;}
+    xgData=out;
+  }catch(e){console.warn('extract failed',e);xgBusy=false;if(btn)btn.disabled=false;if(st)st.textContent='Extract failed — '+(e.message||'network')+'. Try a narrower selection.';return;}
+  xgBusy=false;render();}
+function xgCsv(){if(!xgData||!xgData.length)return;const codeBy={},nameBy={},unitBy={};xCatalog.forEach(c=>{codeBy[c.metric_id]=c.code;nameBy[c.metric_id]=c.name;unitBy[c.metric_id]=c.unit;});
+  const q=s=>{s=(s==null?'':''+s);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const lines=['org_code,organisation,metric_code,metric,period,value,unit,source,confidence'];
+  xgData.forEach(r=>{const o=orgById[r.organisation_id]||{};lines.push([o.code||'',q(o.name),codeBy[r.metric_id]||r.metric_id,q(nameBy[r.metric_id]),r.period,r.value,unitBy[r.metric_id]||'',q(r.source),r.confidence||''].join(','));});
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sr-extract-'+new Date().toISOString().slice(0,10)+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{try{URL.revokeObjectURL(a.href);a.remove();}catch(e){}},500);}
+function xgCopyDef(){const def={source:'sr_metric_values',service_id:null,metrics:xgSel.slice(),organisations:xgScopeIds().map(id=>(orgById[id]||{}).code||id),scope:xgScope,period_gte:xgFrom+'-01',period_lt:xgNext(xgTo),order:'period,organisation_id,metric_id',cap:20000,rows_returned:xgData?xgData.length:null,capped:xgCapped,generated:new Date().toISOString()};
+  const s=JSON.stringify(def,null,1);
+  try{navigator.clipboard.writeText(s).then(()=>authMsg('Query definition copied to the clipboard.'),()=>prompt('Copy the query definition:',s));}catch(e){prompt('Copy the query definition:',s);}}
+window.xgRun=xgRun;window.xgCsv=xgCsv;window.xgCopyDef=xgCopyDef;
+async function renderXGrid(v){
+  v.innerHTML='<div class="loading">Loading the extract builder…</div>';
+  try{await xEnsureCatalog();}catch(e){console.warn('catalogue failed',e);v.innerHTML='<div class="banner">The metric catalogue could not be loaded (network). <a href="#" onclick="location.reload();return false">Retry</a></div>';return;}
+  if(stage!=='xgrid')return;
+  if(!xgFrom){const d=new Date();xgTo=xgMonth(d.getFullYear(),d.getMonth()+1);xgFrom=xgMonth(d.getFullYear(),d.getMonth()+1-23);}
+  let h=`<h1 class="serif">Extract grid</h1><div class="lead">Uncurated extract. Every value carries source and confidence in the CSV. Pick up to 12 metrics, a trust scope and a period range — no story, no curation, reproducible via the query definition.</div>`;
+  h+=`<div class="xgrid2">`;
+  h+=`<div><div class="eyebrow" style="margin-top:0">Metrics · <span id="xgcount">${xgSel.length} of 12 selected</span></div>`;
+  h+=`<input class="field" id="xgq" style="margin:0 0 8px" placeholder="Search the catalogue" value="${escAttr(xgQ)}" oninput="xgQ=this.value;xgRenderMetricList()" aria-label="Search metrics for the extract"/>`;
+  h+=`<div class="list" id="xgmlist" style="max-height:430px;overflow:auto"></div></div>`;
+  h+=`<div><div class="eyebrow" style="margin-top:0">Scope &amp; period</div><div class="card">`;
+  h+=`<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px">`+[['system','Current system trusts'],['england','All England acute trusts'],['custom','Custom picker (max 20)']].map(s=>`<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="xgscope" value="${s[0]}" ${xgScope===s[0]?'checked':''} onchange="xgSetScope('${s[0]}')"/>${s[1]}</label>`).join('')+`</div>`;
+  if(xgScope==='custom')h+=`<div style="margin-top:10px"><input class="field" id="xgoq" style="margin:0 0 8px" placeholder="Search trusts" value="${escAttr(xgOrgQ)}" oninput="xgOrgQ=this.value;xgRenderOrgList()" aria-label="Search trusts for the extract"/><div class="list" id="xgolist" style="max-height:230px;overflow:auto"></div><div class="note"><span id="xgocount">${xgOrgs.length} of 20 selected</span></div></div>`;
+  h+=`<div class="filters" style="margin:12px 0 0">From <input type="month" class="sel" id="xgfrom" value="${xgFrom}" onchange="xgFrom=this.value" aria-label="Extract period from"/> To <input type="month" class="sel" id="xgto" value="${xgTo}" onchange="xgTo=this.value" aria-label="Extract period to"/> <button class="btn" id="xgrun" onclick="xgRun()">Run extract</button></div>`;
+  h+=`<div class="note" id="xgstatus">${xgData?xgData.length.toLocaleString()+' values fetched.':'Nothing run yet. Extracts read sr_metric_values live (service-level rows excluded), paginate at 1,000 and cap at 20,000 values.'}</div></div></div>`;
+  h+=`</div>`;
+  if(xgData&&xgData.length){
+    const codeBy={},unitBy={};xCatalog.forEach(c=>{codeBy[c.metric_id]=c.code;unitBy[c.code]=c.unit;});
+    const cols=xgSel.filter(c=>xgData.some(r=>codeBy[r.metric_id]===c));
+    const piv={};xgData.forEach(r=>{const k=r.organisation_id+'|'+r.period;(piv[k]=piv[k]||{o:r.organisation_id,p:r.period,v:{}}).v[codeBy[r.metric_id]]=r.value;});
+    const prows=Object.values(piv).sort((a,b)=>{const an=(orgById[a.o]||{}).name||'',bn=(orgById[b.o]||{}).name||'';return an<bn?-1:an>bn?1:(a.p<b.p?-1:1);});
+    const MAXR=400;
+    h+=`<div class="eyebrow">Extract · ${xgData.length.toLocaleString()} values · ${prows.length.toLocaleString()} org × period rows${xgCapped?' · capped':''}</div>`;
+    if(xgCapped)h+=`<div class="banner">Capped at 20,000 values — narrow the metric, trust or period selection for a complete extract.</div>`;
+    h+=`<div class="card" style="padding:4px 0;overflow-x:auto"><table class="dt" id="xgtable"><thead><tr><th>Trust</th><th class="num">Period</th>`+cols.map(c=>`<th class="num" title="${escAttr(c)}">${esc(c)}</th>`).join('')+`</tr></thead><tbody>`;
+    prows.slice(0,MAXR).forEach(r=>{const o=orgById[r.o]||{};h+=`<tr><td>${esc(trustShort(o.code)||o.name||'')}</td><td class="num">${fmtPeriod(r.p)}</td>`+cols.map(c=>`<td class="num">${r.v[c]!=null?fmt(r.v[c],unitBy[c]):'—'}</td>`).join('')+`</tr>`;});
+    h+=`</tbody></table>${prows.length>MAXR?`<div class="note" style="padding:8px 14px">First ${MAXR} of ${prows.length.toLocaleString()} pivot rows shown — the CSV carries everything.</div>`:''}</div>`;
+    h+=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" id="xgcsv" onclick="xgCsv()">Download CSV — long format with source &amp; confidence</button><button class="btn ghost" id="xgcopy" onclick="xgCopyDef()">Copy query definition</button></div>`;
+  }else if(xgData){h+=`<div class="banner" style="margin-top:14px">No values matched that selection — widen the period, scope or metric set.</div>`;}
+  v.innerHTML=h;xgRenderMetricList();if(xgScope==='custom')xgRenderOrgList();
+}
+
 initAuth();
 loadAll();
