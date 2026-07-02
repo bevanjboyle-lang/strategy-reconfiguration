@@ -406,9 +406,9 @@ function renderDrivers(v){
   DRIVERS.forEach(dv=>{
     const hcode=DRIVER_HEADLINE[dv[0]];const anyR=rows.find(x=>x.metric_code===hcode);if(!anyR)return;
     const mid=anyR.metric_id;const nm=benchSeries(mid,'national_median').slice(-24);
-    const rd1=(orgs.find(o=>o.code==='RD1')||{}).id;const labels=(seriesFor(rd1,mid)||[]).slice(-24).map(x=>x.period.slice(2,7));
+    const t0=(orgs.find(o=>o.code===TRUSTS[0])||{}).id;const labels=(seriesFor(t0,mid)||[]).slice(-24).map(x=>x.period.slice(2,7));
     const ds=TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s=seriesFor(oid,mid).slice(-24);return{label:PLACE_SITE[tc],data:s.map(x=>Number(x.value)),borderColor:TRUSTCOL[tc],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2};});
-    if(nm.length)ds.push({label:'National median',data:labels.map((l,i)=>{const p=(seriesFor(rd1,mid).slice(-24)[i]||{}).period;const b=nm.find(x=>x.period===p);return b?Number(b.value):null;}),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.5,backgroundColor:'transparent'});
+    if(nm.length)ds.push({label:'National median',data:labels.map((l,i)=>{const p=(seriesFor(t0,mid).slice(-24)[i]||{}).period;const b=nm.find(x=>x.period===p);return b?Number(b.value):null;}),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.5,backgroundColor:'transparent'});
     lineChart('drv_'+dv[0],labels,ds,{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
   });
 }
