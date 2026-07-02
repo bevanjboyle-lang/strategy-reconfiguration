@@ -81,3 +81,78 @@ serving scripts = <real folder>/scripts/serving; lake = DuckDB read-only.
 - [x] Tour 6th step ('Or skip the story' → Explorer nav, drawer-aware) + Glossary 'Explorer' entry. One shared css addition `.xgrid2` (responsive 340px/1fr grid); no new colours — pills/strips/mono/hairlines reused.
 - [x] Tests 13–15 (Trust explorer non-BSW trust: domains + sparks + expand chart; Metric explorer: search 'occupancy' → select → ranked table >10 + overlay canvas; Extract grid: 2 metrics current-system → pivot rows + CSV/copy buttons). Suite now 15 tests — 15/15 green twice consecutively (~60s). Real bug found by test 15 and fixed: xgToggleMetric/xgToggleOrg re-rendered the checklist on every toggle, destroying the just-clicked checkbox mid-interaction (focus/state loss for keyboard users and automation) — now only the count updates; the list re-renders only when the 12/20 cap forces a revert.
 - Verification (2 Jul 2026): node --check clean throughout; headless probe beyond the suite — modal cross-link → xmetric ranked table (30 rows), non-system drill (RX1) lazy series + SPC line, cross-link → xentity card, dm01 splits expand (13 test lines), xmetric split picker (14 options) charting a split, England-scope extract 1,486 values / 400 pivot rows / CSV + copy present — zero console errors.
+
+
+## Full-Depth Programme — WP1 · WP3 · WP4 · WP5 (2 Jul 2026)
+
+Environment note: implemented against a clean clone of `main` (b0027ae). The E2E Playwright
+suite could NOT be run in the authoring sandbox (no browser libs; Supabase REST proxy-blocked)
+and there was no push credential — so acceptance was verified at the **data level via the
+Supabase MCP** and `node --check`, and the suite is handed to the Mac to run before push.
+DB ground-truth reconfirmed: `sr_metric_values` 114,353 rows / 141 metrics / 137 orgs;
+`sr_fact` 117,628 / 44 codes; views `sr_v_metric_status` + `sr_v_metric_catalog` present.
+
+### WP1 — de-BSW audit & journey copy  [done, code]
+Rendered-copy BSW/place literals removed so nothing reads BSW-specific for a non-BSW system.
+BSW stays the default flagship (all `sysSlug===BSW_SLUG` logic retained as data).
+
+| Site (function) | Was | Class | Fix |
+|---|---|---|---|
+| `sysNote()` banner | "the BSW flagship system" | PARAMETERISE | "the flagship system" |
+| `renderFlow` empty-state | "the BSW flagship system" | PARAMETERISE | "the flagship system" |
+| `renderModelling` banner | "the BSW flagship system" | PARAMETERISE | "the flagship system" |
+| `renderOptions` banner | "belongs to the BSW flagship system" | PARAMETERISE | "the flagship system" |
+| `renderCapacity` lead | "across the BSW Hospitals Group" | PARAMETERISE | "for the flagship system" |
+| `renderEstate` lead + KPI sub | "across BSW sites" / "all BSW sites" | PARAMETERISE | "flagship system's sites" / "all flagship sites" |
+| `renderPopulation` fallback KPIs | "1.0m / BSW ICS", "+35% / per ASR" | REMOVE (wrong number) | "—" placeholders |
+| `methodHtml` data dictionary | `orgs.find(code==='RD1')` + "(RD1 or first trust)" | PARAMETERISE | `sysTrusts()[0]||RD1` + "(first trust in scope)" |
+| TOUR step | "The BSW flagship carries…" | PARAMETERISE | "The flagship system carries…" |
+| sensitivity method row | "(BSW trusts only this wave)" | PARAMETERISE | "(flagship trusts only this wave)" |
+| `BSW_SLUG`, `sysSlug` default, `sysOrgs` icb/provider_group, `sysNote` guard, `renderOptions` guard, `dSurface` auto-draft gate | — | KEEP-AS-DATA | unchanged (correct default-flagship logic) |
+
+Only residual "BSW" in the file is a non-rendered code comment (UEC chain, L~473).
+Auto-draft register default (`dSurface`: non-BSW + no owned `sr_issues` → `draftIssuesCard()`) confirmed present and retained.
+
+### WP3 — domain pages on the national curated layer  [done, code + data-verified]
+New shared helpers (after `officialSeries`): `sysLabel`, `focusTrust` (selected org if an acute
+trust, else the system's first trust — curated national coverage is trust-level, not group/ICB),
+`curatedRow`, `curatedCards`, `natTrustTable`, `covNote`, `nationalBlock`. Each domain page now
+opens with a **populated national primary panel** (KPI cards for the focus trust + a system-trusts×metrics
+table, all click-through to the drill) and demotes the old modelled `sr_fact` panels to clearly
+labelled "flagship detail", guarded so a non-flagship system shows a **coverage note, never an empty panel**.
+
+Per-page national metric_codes (all confirmed non-null for RD1/RA9/RJ1 = BSW/Devon/London):
+- Finance: cards `of_of0079, of_of4003, of_of4103, of_of0085`; table `deficit, of_of0079, of_of0085, of_of4103` (+ existing deficit/segment published block). Modelled I&E/pay/BS/CF guarded (`hasFin`) → flagship only.
+- Workforce: cards `sickness_rate, staff_engagement, of_of4004, of_of4104`; table `sickness_rate, staff_engagement, of_of0084, of_of4104`. Staff-group establishment guarded (`hasWf`) → flagship only.
+- Capacity: cards+table `bed_occupancy, beds_ga_available, delayed_discharge_beddays, vw_occupancy_pct`. Per-site beds/occupancy/assets guarded (`bedSites.length`) → flagship only.
+- Activity: cards `ae_attendances, emerg_admissions, adm_elective, op_attendances`; table `+adm_emergency, rtt_total`. Specialty×POD framed "flagship activity detail".
+- Performance: cards `rtt_18wk, cancer_62, dm01_6wk, ae_4hr`; table `+rtt_52wk, cancer_fds_28`. RTT×specialty heatmap framed "flagship-grade detail"; DM01-by-test (national) + cancer-by-tumour (flagship) drills unchanged.
+- Estate: no national curated estate domain exists → primary is the ERIC per-site set for the flagship, else a coverage note pointing to WP2(a). (This page's full "real values for Devon/London" acceptance is WP2-gated.)
+
+Acceptance (data level, Supabase MCP): for BSW/Devon/London focus trusts every wired code resolves
+to a real latest value — activity 6/6, capacity 4/4, finance 5/5, performance 6/6, workforce 5/5.
+
+### WP4 — decision-journey clarity  [done, code + migration]
+`dJourneyGuide()` injects a per-stage "What you do here:" action sentence + a five-stage completion
+strip (`.jchip` ✓/○, data-driven) above `#dbody`; the five interactive stage chips are unchanged.
+`dCommit` gains a facilitator-only "Commit agreed priorities" button → inserts the ranked top-5 + lens
+into new table **`sr_commitments`** (migration `wp4_sr_commitments`, applied: RLS anon-select /
+authenticated-insert, mirrors `sr_lens_votes`); `loadCommitment()` reloads + shows "Last committed …".
+Persistence degrades gracefully if the table is absent (print always works).
+
+### WP5 — Playwright suite  [authored; run on Mac]
+`tests/smoke.spec.js` extended 15 → **22** tests (16–22): BSW / Devon / South-East-London each assert
+every domain page shows the "Published national position" primary panel with ≥1 numeric value and no
+`undefined`/`NaN`; estate coverage-note-vs-KPI; de-BSW copy check on a non-flagship system; journey
+guidance + five completion chips + intact stage chips; commit gating. `node --check` clean on app.js
+and the spec. **Not yet run** (no browser/Supabase reachability in the authoring sandbox).
+
+### WP2 — national split loaders  [deferred to Mac — needs the DuckDB lake + ERIC CSVs, absent here]
+WP3 does not depend on WP2 (national curated layer already loaded). Run on the Mac from the repo,
+pattern = `scripts/serving/load_national_serving.py` (env from `webapp/.env.local`, PostgREST,
+idempotent `source`/`source_url` tags, `--live`):
+- (a) ERIC 2024/25 → per-trust estate metrics + per-site `sr_fact` `estates_*` rows for ALL trusts. Tag `[wp2-eric-v1]`. (Unblocks Estate nationally — the one WP3 page still flagship-only.)
+- (b) Workforce staff-in-post FTE by staff group per trust monthly → `sr_fact` `staff_group` + `total_fte`. Tag `[wp2-wf-v1]`.
+- (c) Elective activity by TFC → `sr_fact` `rtt_completed_pathways` specialty rows, 24mo. Tag `[wp2-rttact-v1]`.
+- (d) RTT incomplete by TFC, all English trusts, 24mo, exclude `C_999` (~120k rows, batch ≤5k). Tag `[wp2-rttnat-v1]`.
+Acceptance: each tag idempotent (re-run adds 0 rows); national org counts; no modelled rows duplicated.

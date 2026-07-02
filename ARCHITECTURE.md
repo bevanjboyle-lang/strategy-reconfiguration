@@ -72,3 +72,28 @@ app change:
 Cross-links: the metric drill modal offers 'All trusts on this metric →'
 (xmetric) and 'Everything on <trust> →' (xentity); `openDrill` lazily
 fetches series for non-system trusts so drills work England-wide.
+
+## Domain pages on the national curated layer (Full-Depth Programme, 2 Jul 2026)
+
+The six EXPLORE domain pages (Activity, Performance, Capacity, Estate, Finance,
+Workforce) previously read only the modelled `sr_fact` scheme (rich for the BSW
+flagship, sparse elsewhere), so non-flagship systems saw half-empty pages. They
+now open with a **national primary panel** built from the boot-loaded curated
+layer — `rows` (`sr_v_metric_status`) for latest values and `series`
+(`sr_metric_values`, `service_id` null) for trends — which is populated for every
+English acute trust. Shared helpers (defined just after `officialSeries`):
+
+- `focusTrust()` — the selected org if it is an acute trust, else the system's
+  first trust (curated national coverage is trust-level; the BSW group/ICB orgs
+  carry only ~30/19 curated metrics, so pages key off trusts).
+- `curatedCards(codes)` / `natTrustTable(codes)` / `nationalBlock(cardCodes,tableCodes,note)` —
+  KPI cards for the focus trust + a system-trusts × metrics table (click → `openDrill`).
+- `covNote(msg)` — the "coverage note instead of an empty primary panel" primitive.
+
+The legacy modelled panels remain as clearly labelled "flagship detail", each
+guarded (`hasFin` / `hasWf` / `bedSites.length` / `hasEst`) so a non-flagship
+system renders a coverage note rather than zero-valued cards/charts. `system()`
+name / `sysLabel()` / `sysTrusts()[0]` replace former hard-coded BSW/RD1 literals.
+
+`sr_commitments` (new serving table, RLS anon-select / authenticated-insert)
+persists the Decision-journey Commit stage's agreed top-5 + lens per system.

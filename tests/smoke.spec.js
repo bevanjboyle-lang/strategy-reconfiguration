@@ -241,4 +241,94 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('#xgcopy'), 'copy query definition').toBeVisible();
     await expect(page.locator('.view')).toContainText(/values/i);
   });
+
+  // ===== WP3/WP4/WP1 · national domain pages, estate coverage, de-BSW, journey =====
+  const DOMAINS_MAIN = ['Finance', 'Workforce', 'Capacity', 'Activity', 'Performance'];
+
+  async function switchSystem(page, slug) {
+    await page.selectOption('#syssel', slug);
+    // setSystem() reloads series then re-renders; give the live fetch room.
+    await page.waitForTimeout(2200);
+  }
+
+  async function assertDomainPopulated(page, label) {
+    await nav(page, label);
+    await expect(
+      page.locator('.view .eyebrow').filter({ hasText: 'Published national position' }).first(),
+      label + ' national primary panel header'
+    ).toBeVisible({ timeout: 25000 });
+    const kpiNums = await page.locator('.view .grid.kpis .card.kpi .v').allInnerTexts();
+    const tblNums = await page.locator('.view table.dt td.num').allInnerTexts();
+    const nums = kpiNums.concat(tblNums).filter((t) => /\d/.test(t));
+    expect(nums.length, label + ' has numeric primary values').toBeGreaterThan(0);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt), label + ' must not render undefined/NaN').toBeFalsy();
+  }
+
+  test('16 BSW · every domain page renders a populated national primary panel', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    for (const d of DOMAINS_MAIN) await assertDomainPopulated(page, d);
+  });
+
+  test('17 Devon · every domain page renders a populated national primary panel', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await switchSystem(page, 'nhs-devon-icb');
+    for (const d of DOMAINS_MAIN) await assertDomainPopulated(page, d);
+  });
+
+  test('18 South East London · every domain page renders a populated national primary panel', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await switchSystem(page, 'nhs-south-east-london-icb');
+    for (const d of DOMAINS_MAIN) await assertDomainPopulated(page, d);
+  });
+
+  test('19 Estate · flagship shows ERIC KPIs; a non-flagship system shows a coverage note, never an empty panel', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await nav(page, 'Estate');
+    await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'BSW estate KPIs').toBeVisible({ timeout: 25000 });
+    await switchSystem(page, 'nhs-devon-icb');
+    await nav(page, 'Estate');
+    await expect(page.locator('.view'), 'Devon estate coverage note').toContainText(
+      /ERIC 2024\/25 estate ingestion is scheduled|flagship system only/i, { timeout: 25000 });
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('20 de-BSW · a non-flagship system shows no BSW / place literal in domain copy', async ({ page }) => {
+    test.slow();
+    await boot(page);
+    await switchSystem(page, 'nhs-devon-icb');
+    for (const d of ['Finance', 'Capacity', 'Estate', 'Workforce']) {
+      await nav(page, d);
+      await expect(page.locator('.view h1')).toBeVisible({ timeout: 25000 });
+      const txt = await page.locator('.view').innerText();
+      expect(/\bBSW\b|Bath|Swindon|Wiltshire|Salisbury/.test(txt), d + ' leaks a BSW/place literal for Devon').toBeFalsy();
+    }
+  });
+
+  test('21 decision journey · per-stage guidance + five completion chips + intact stage chips', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Decision journey');
+    await expect(page.locator('.view')).toContainText('What you do here:');
+    for (const s of ['Orient', 'Surface', 'Frame', 'Prioritise', 'Commit']) {
+      await expect(page.locator('.view .jchip').filter({ hasText: s }).first()).toBeVisible();
+    }
+    const chips = page.locator('.view .lenses').first().locator('.lensbtn');
+    await expect(chips).toHaveCount(5);
+    await expect(chips.nth(0)).toContainText('Orient');
+    await expect(chips.nth(4)).toContainText('Commit');
+  });
+
+  test('22 commit stage · export always available; commit gated to a signed-in facilitator', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Decision journey');
+    await page.locator('.view .lenses').first().locator('.lensbtn').filter({ hasText: 'Commit' }).click();
+    await expect(page.getByRole('button', { name: 'Export priority pack' })).toBeVisible();
+    await expect(page.locator('.view'), 'signed-out commit gate').toContainText('Sign in as a facilitator to commit');
+  });
+
 });
