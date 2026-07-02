@@ -290,23 +290,29 @@ function needExpr(){const m=mapState.metric;
   if(m==='c20')return ['case',['==',['get','c20'],1],'#1f3a78','#efece1'];
   if(m==='imd')return ['interpolate',['linear'],['coalesce',['get','imd'],5],1,'#1f3a78',4,'#7c93c4',7,'#d8dfec',10,'#efece1'];
   return ['interpolate',['linear'],['coalesce',['get',m],0],0,RAMP[0],20,RAMP[1],40,RAMP[2],60,RAMP[3],80,RAMP[4],100,RAMP[5]];}
+let initMapSeq=0;
 async function initMap(){
   const el=document.getElementById('mlmap');if(!el||!window.maplibregl)return;
+  const runId=++initMapSeq;
   if(ml){try{ml.remove()}catch(e){}ml=null;}
-  const icbs=await geo('icbs-need.json');
-  ml=new maplibregl.Map({container:'mlmap',style:'https://tiles.openfreemap.org/styles/positron',bounds:sysBBox(icbs),fitBoundsOptions:{padding:34},attributionControl:{compact:true}});
-  ml.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
-  ml.on('load',async()=>{
-    ml.addSource('icbs',{type:'geojson',data:icbs});
-    ml.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]],'fill-opacity':0.28}});
-    ml.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
-    ml.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
-    ml.on('click','icb-fill',e=>{const p=e.features[0].properties;if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
-    ml.on('mousemove','icb-fill',e=>{ml.getCanvas().style.cursor='pointer';});
-    ml.on('mouseleave','icb-fill',()=>{ml.getCanvas().style.cursor='';});
+  const m=new maplibregl.Map({container:'mlmap',style:'https://tiles.openfreemap.org/styles/positron',bounds:[[-6.5,49.75],[1.95,55.95]],fitBoundsOptions:{padding:34},attributionControl:{compact:true}});
+  ml=m;
+  m.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+  const boot=async()=>{try{
+    if(runId!==initMapSeq||ml!==m)return;
+    const icbs=await geo('icbs-need.json');
+    if(runId!==initMapSeq||ml!==m)return;
+    m.addSource('icbs',{type:'geojson',data:icbs});
+    m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]],'fill-opacity':0.28}});
+    m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
+    m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
+    m.on('click','icb-fill',e=>{const p=e.features[0].properties;if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
+    m.on('mousemove','icb-fill',e=>{ml.getCanvas().style.cursor='pointer';});
+    m.on('mouseleave','icb-fill',()=>{ml.getCanvas().style.cursor='';});
     await refreshSystemLayers();
     renderChips();
-  });
+  }catch(e){console.error('map init failed',e);}};
+  if(m.loaded())boot();else m.once('load',boot);
 }
 async function refreshSystemLayers(){
   if(!ml)return;
@@ -371,7 +377,7 @@ function renderLegend(){const el=document.getElementById('mlegend');if(!el)retur
   else rows2=[0,20,40,60,80,100].map((v,i)=>`<div class="lgrow"><span class="sw" style="background:${RAMP[i]};${i===0?'border:1px solid #dcd9d0':''}"></span>${v}${i===5?' · highest':''}</div>`).join('');
   el.innerHTML=`<div class="ttl2">${NEED_LEGEND[mapState.metric]||''}</div>${rows2}<div class="lgrow" style="margin-top:6px;color:#9aa0af">Sites coloured by trust CQC rating</div>`;}
 
-function kpi(l,val,suf,sub,ser,col){const sp=ser&&ser.length>1?`<div class="spark">${spark(ser.slice(-12),col)}</div>`:'';const num=(typeof val==='number')?`<span class="cu" data-target="${val}">0</span>`:esc(val);return `<div class="card kpi"><div class="l">${l}</div><div class="v" style="color:${col}">${num}${suf?`<small>${suf}</small>`:''}</div><div class="s">${esc(sub)}</div>${sp}</div>`;}
+function kpi(l,val,suf,sub,ser,col){if(typeof ser==='string'){col=col||ser;ser=null;}const sp=Array.isArray(ser)&&ser.length>1?`<div class="spark">${spark(ser.slice(-12),col)}</div>`:'';const num=(typeof val==='number')?`<span class="cu" data-target="${val}">0</span>`:esc(val);return `<div class="card kpi"><div class="l">${l}</div><div class="v" style="color:${col}">${num}${suf?`<small>${suf}</small>`:''}</div><div class="s">${esc(sub)}</div>${sp}</div>`;}
 function rrow(r){return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;}
 function countUps(){document.querySelectorAll('.cu').forEach(el=>{const t=Number(el.dataset.target);if(isNaN(t))return;const st=performance.now();(function f(n){const p=Math.min(1,(n-st)/650);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f);})(st);});}
 function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(31,58,120,.16)',borderColor:'#1f3a78',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa0af'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#3c4354'}}},responsive:true,maintainAspectRatio:false}});}
