@@ -1,0 +1,188 @@
+// Smoke suite for the System Intelligence single-file app (register item E1, test half).
+// Tests only — the app (../index.html) is never modified by this suite.
+// The app pulls live Supabase data (anon reads) and ./geo/* files, so waits are generous.
+const { test, expect } = require('@playwright/test');
+
+// Console noise that is not an app defect: maplibre tile aborts, basemap tile hiccups,
+// favicon 404 from the bare static server.
+const NOISE = /favicon|openfreemap|maplibre|tile|abort|err_aborted|signal is aborted|failed to fetch/i;
+
+// Boot = navigate + wait for the Overview exec summary, which only renders once
+// loadAll() has pulled the full Supabase model — i.e. "the app is genuinely up".
+async function boot(page) {
+  await page.goto('/index.html');
+  await expect(page.locator('.exec'), 'exec summary renders once data loads').toBeVisible({ timeout: 25000 });
+}
+
+async function nav(page, label) {
+  await page.locator('#nav button', { hasText: label }).click();
+}
+
+test.describe('System Intelligence — smoke (E1)', () => {
+
+  test('01 loads: title, KPMG mark, no console errors', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(((m.location() || {}).url || '') + ' :: ' + m.text());
+    });
+    await boot(page);
+    await expect(page).toHaveTitle(/System Intelligence/);
+    await expect(page.locator('aside.side svg.kpmg')).toBeVisible();
+    await page.waitForTimeout(3000); // let map/charts settle so late errors surface
+    const real = errors.filter((t) => !NOISE.test(t));
+    expect(real, 'unexpected console errors:\n' + real.join('\n')).toEqual([]);
+  });
+
+  test('02 overview: exec summary distress index + four-driver ribbon', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('.exec')).toContainText(/Distress index\s*\d+\/100/);
+    const ribbon = page.locator('.card.kpi:has-text("open driver")');
+    await expect(ribbon).toHaveCount(4);
+    for (const name of ['Service fragility', 'Urgent & emergency care', 'Elective backlog', 'Cancer pathway']) {
+      await expect(ribbon.filter({ hasText: name })).toHaveCount(1);
+    }
+  });
+
+  test('03 map boots: canvas + icb-fill and sites-c layers', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('#mlmap canvas').first()).toBeAttached({ timeout: 20000 });
+    await page.waitForFunction(() => {
+      try {
+        const m = (typeof ml !== 'undefined' && ml) ? ml : window.ml;
+        if (!m || !m.getStyle) return false;
+        const ids = (m.getStyle().layers || []).map((l) => l.id);
+        return ids.includes('icb-fill') && ids.includes('sites-c');
+      } catch (e) { return false; }
+    }, null, { timeout: 20000 });
+  });
+
+  test('04 system switch: Devon exec summary + org selector repopulates', async ({ page }) => {
+    await boot(page);
+    await page.selectOption('#syssel', 'nhs-devon-icb');
+    await expect(page.locator('.exec')).toContainText('Devon', { timeout: 25000 });
+    await expect(page.locator('#orgsel option')).toHaveCount(3);
+  });
+
+  test('05 priority drivers: four tables with numeric cells + CSV links', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Priority drivers');
+    await expect(page.locator('h1')).toContainText('four priority drivers');
+    for (const d of ['service_fragility', 'uec', 'elective_backlog', 'cancer']) {
+      const tbl = page.locator('#dtbl_' + d);
+      await expect(tbl).toBeVisible();
+      const nums = await tbl.locator('td.num').allInnerTexts();
+      expect(nums.filter((t) => /\d/.test(t)).length, d + ' has numeric cells').toBeGreaterThan(0);
+    }
+    expect(await page.locator('a.csvlink').count(), 'CSV links').toBeGreaterThanOrEqual(4);
+  });
+
+  test('06 metric drill: benchmark rows + SPC chip + provenance', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Priority drivers');
+    await page.locator('#dtbl_uec td.num[onclick^="openDrill"]').first().click();
+    const modal = page.locator('.modal');
+    await expect(modal).toBeVisible();
+    await expect(modal.locator('.kv', { hasText: 'Standard' })).toBeVisible();
+    await expect(modal.locator('.kv', { hasText: 'National median' })).toBeVisible();
+    await expect(modal.locator('.kv', { hasText: 'Peer median' })).toBeVisible();
+    await expect(modal.locator('.kv', { hasText: 'Trend' }).locator('.pill'), 'SPC verdict chip').toBeVisible();
+    await expect(modal).toContainText(/SPC:/);
+    await expect(modal.locator('.prov')).toContainText('Source:');
+  });
+
+  test('07 access & travel: four KPIs + site what-if changes deltas', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Access & travel');
+    const kpis = page.locator('.view .grid.kpis .card.kpi');
+    await expect(kpis).toHaveCount(4, { timeout: 20000 });
+    const before = (await kpis.allInnerTexts()).join(' | ');
+    await page.locator('.view .card input[type="checkbox"]').first().uncheck();
+    await expect(kpis.first()).toContainText('Δ', { timeout: 15000 });
+    const after = (await kpis.allInnerTexts()).join(' | ');
+    expect(after).toContain('baseline');
+    expect(after).not.toEqual(before);
+  });
+
+  test('08 modelling studio: 8 sliders, requirement cards, dictionary + freshness', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Modelling studio');
+    await expect(page.locator('#reqcards .card')).toHaveCount(6, { timeout: 25000 });
+    await expect(page.locator('.view input[type="range"]')).toHaveCount(8);
+    const details = page.locator('.view details', { hasText: 'Method & data' });
+    await details.locator('summary').click();
+    const dictRows = details.locator('table.dt').first().locator('tbody tr');
+    await expect(dictRows.nth(15)).toBeAttached(); // > 15 rows in the data dictionary
+    expect(await dictRows.count(), 'data dictionary rows').toBeGreaterThan(15);
+    await expect(details).toContainText('Data freshness');
+    await expect(details.locator('table.dt').nth(1)).toBeAttached(); // freshness table
+  });
+
+  test('09 options & appraisal: 4 cards + matrix + option modal tally', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Options & appraisal');
+    const cards = page.locator('.view .card[onclick^="openOption"]');
+    await expect(cards).toHaveCount(4, { timeout: 25000 });
+    await expect(page.locator('#optmatrix')).toBeVisible();
+    await expect(page.locator('#optmatrix tbody tr')).toHaveCount(4);
+    await cards.first().click();
+    const modal = page.locator('.modal');
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText('Impact appraisal by domain');
+    await expect(modal.locator('.pill').first()).toBeVisible();
+    await expect(modal).toContainText(/tests:\s*\d+\/\d+\s*met/i); // statutory-test tally
+  });
+
+  test('10 tests & packs: statutory tests render (~27 rows)', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Tests & packs');
+    await expect(page.locator('.view')).toContainText('statutory tests', { timeout: 25000 });
+    const rows = page.locator('.view .list .row');
+    await expect(rows.first()).toBeVisible();
+    const n = await rows.count();
+    expect(n, 'statutory test rows').toBeGreaterThanOrEqual(24);
+    expect(n, 'statutory test rows').toBeLessThanOrEqual(30);
+  });
+
+  test('11 decision journey: 5 stage chips, ranked list + robust badge, issue provenance', async ({ page }) => {
+    await boot(page);
+    await nav(page, 'Decision journey');
+    const chips = page.locator('.view .lenses').first().locator('.lensbtn');
+    await expect(chips).toHaveCount(5);
+    await expect(chips.nth(0)).toContainText('Orient');
+    await expect(chips.nth(4)).toContainText('Commit');
+    await chips.filter({ hasText: 'Prioritise' }).click();
+    const ranks = page.locator('.view .rank');
+    await expect(ranks.first()).toBeVisible();
+    await expect(page.locator('.view .robust').first(), 'robustness badge').toBeVisible();
+    await ranks.first().click();
+    await expect(page.locator('.modal')).toContainText('Score provenance:'); // provenance tag line
+  });
+
+  test('12 auth gating: signed-out drill shows sign-in note; challenge write is inert', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('#authui')).toContainText('Sign in'); // no session
+    // The challenge form only renders when "viewing as" the drilled trust itself.
+    const trustId = await page.evaluate(() => {
+      const t = orgs.find((o) => o.type === 'acute_trust' && TRUSTS.includes(o.code));
+      return t ? t.id : null;
+    });
+    expect(trustId, 'system includes an acute trust org').toBeTruthy();
+    await page.selectOption('#orgsel', trustId);
+    await nav(page, 'Priority drivers');
+    await page.locator(`#dtbl_uec td.num[onclick^="openDrill"][onclick*="${trustId}"]`).first().click();
+    const modal = page.locator('.modal');
+    await expect(modal).toContainText('Challenge this figure');
+    const note = modal.locator('#chnote');
+    await expect(note, 'signed-out sign-in note').toContainText('Sign in to challenge');
+    // Gate check: submitting with a rationale must not create a challenge while signed out.
+    const pre = await modal.locator('.ovr').count();
+    if (await modal.locator('#cbtn').count()) {
+      await modal.locator('#cwhy').fill('smoke-test rationale — must not submit while signed out');
+      await modal.locator('#cbtn').click();
+      await expect(note).toContainText('Sign in to challenge'); // still gated
+      await page.waitForTimeout(800);
+      expect(await modal.locator('.ovr').count(), 'no challenge row appears').toBe(pre);
+    }
+  });
+});

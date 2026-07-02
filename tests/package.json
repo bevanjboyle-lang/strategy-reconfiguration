@@ -1,0 +1,12 @@
+{
+  "name": "sr-smoke-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright smoke suite for the System Intelligence single-file app (register item E1, test half). Run: npm test",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0"
+  }
+}
