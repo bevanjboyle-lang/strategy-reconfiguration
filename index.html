@@ -298,21 +298,24 @@ async function initMap(){
   const m=new maplibregl.Map({container:'mlmap',style:'https://tiles.openfreemap.org/styles/positron',bounds:[[-6.5,49.75],[1.95,55.95]],fitBoundsOptions:{padding:34},attributionControl:{compact:true}});
   ml=m;
   m.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+  let bootDone=false;
   const boot=async()=>{try{
-    if(runId!==initMapSeq||ml!==m)return;
+    if(bootDone||runId!==initMapSeq||ml!==m)return;
+    if(!m.isStyleLoaded()){setTimeout(boot,140);return;}
+    bootDone=true;
     const icbs=await geo('icbs-need.json');
     if(runId!==initMapSeq||ml!==m)return;
-    m.addSource('icbs',{type:'geojson',data:icbs});
-    m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]],'fill-opacity':0.28}});
-    m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
-    m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
+    if(!m.getSource('icbs'))m.addSource('icbs',{type:'geojson',data:icbs});
+    if(!m.getLayer('icb-fill'))m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]],'fill-opacity':0.28}});
+    if(!m.getLayer('icb-line'))m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
+    if(!m.getLayer('icb-sel'))m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
     m.on('click','icb-fill',e=>{const p=e.features[0].properties;if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
     m.on('mousemove','icb-fill',e=>{ml.getCanvas().style.cursor='pointer';});
     m.on('mouseleave','icb-fill',()=>{ml.getCanvas().style.cursor='';});
     await refreshSystemLayers();
     renderChips();
   }catch(e){console.error('map init failed',e);}};
-  if(m.loaded())boot();else m.once('load',boot);
+  setTimeout(boot,60);
 }
 async function refreshSystemLayers(){
   if(!ml)return;
@@ -320,7 +323,7 @@ async function refreshSystemLayers(){
   if(ml.getSource('lsoa')){ml.getSource('lsoa').setData(lsoa||{type:'FeatureCollection',features:[]});}
   else if(lsoa){
     ml.addSource('lsoa',{type:'geojson',data:lsoa});
-    ml.addLayer({id:'lsoa-fill',type:'fill',source:'lsoa',paint:{'fill-color':needExpr(),'fill-opacity':0.66,'fill-outline-color':'rgba(255,255,255,.25)'}},'icb-line');
+    ml.addLayer({id:'lsoa-fill',type:'fill',source:'lsoa',paint:{'fill-color':needExpr(),'fill-opacity':0.66,'fill-outline-color':'rgba(255,255,255,.25)'}},ml.getLayer('icb-line')?'icb-line':undefined);
     ml.on('click','lsoa-fill',e=>{const p=e.features[0].properties;new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>Neighbourhood ${esc(p.c)}</b><div class="r"><span>Population</span><span>${Number(p.pop).toLocaleString()}</span></div><div class="r"><span>Composite need</span><span>${p.need}</span></div><div class="r"><span>IMD decile</span><span>${p.imd}</span></div><div class="r"><span>Core20</span><span>${p.c20?'Yes':'No'}</span></div><div class="r"><span>Deprivation</span><span>${p.n1}</span></div><div class="r"><span>Health dep</span><span>${p.n2}</span></div><div class="r"><span>Disease</span><span>${p.n3}</span></div><div class="r"><span>Access</span><span>${p.n4}</span></div><div class="r"><span>Outcomes</span><span>${p.n5}</span></div>`).addTo(ml);});
   }
   // sites for this system's trusts
