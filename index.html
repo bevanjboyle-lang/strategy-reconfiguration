@@ -113,7 +113,7 @@ const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.top
 const NAV=[["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
 ["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
-["DECIDE",[["decide","Decision module"]]]];
+["DECIDE",[["decide","Decision journey"]]]];
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
 const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
 const PLACE_MAP={RD1:"Bath and North East Somerset",RN3:"Swindon",RNZ:"Wiltshire"},PLACE_SITE={RD1:"RUH Bath",RN3:"Great Western",RNZ:"Salisbury"};
@@ -143,7 +143,7 @@ async function loadAll(){
     sb.from('sr_organisations').select('*'),sb.from('sr_v_org_distress').select('*'),sb.from('sr_v_metric_status').select('*'),
     sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
     sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
-    sb.from('sr_metric_values').select('organisation_id,metric_id,period,value').limit(20000),
+    sb.from('sr_metric_values').select('organisation_id,metric_id,period,value').is('service_id',null).limit(20000),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
     sb.from('sr_dim_staff_group').select('*').order('sort'),sb.from('sr_dim_finance_line').select('*').order('sort'),sb.from('sr_dim_site').select('*').order('sort')]);
   const bm=await sb.from('sr_benchmarks').select('*').limit(5000);bench=bm.data||[];
