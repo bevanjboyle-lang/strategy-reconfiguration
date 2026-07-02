@@ -132,7 +132,7 @@ input[type=range]{width:100%;accent-color:var(--ink);cursor:pointer}
       <div class="prod">System Intelligence<small>Acute strategy &amp; reconfiguration</small></div>
     </div>
     <div id="nav"></div>
-    <div class="foot">Live published NHS data: RTT, A&amp;E, cancer, diagnostics, beds, ambulance handovers, discharge · CQC ratings · IMD &amp; census need · finance and site detail modelled, tagged as such.<br><br><span style="letter-spacing:.8px;font-weight:700;text-transform:uppercase;font-size:9px">KPMG · working prototype</span></div>
+    <div class="foot">Live published NHS data: RTT, A&amp;E, cancer, diagnostics, beds, ambulance handovers, discharge · DM01 by test · cancer by tumour · activity · finance variance · projections · CQC ratings · IMD &amp; census need · finance and site detail modelled, tagged as such.<br><br><span style="letter-spacing:.8px;font-weight:700;text-transform:uppercase;font-size:9px">KPMG · working prototype</span></div>
   </aside>
   <div class="main">
     <div class="topbar"><div class="ttl" id="topttl">Loading…<small id="topsub"></small></div>
@@ -154,6 +154,7 @@ const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.top
 const NAV=[["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
 ["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
+["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
 ["DECIDE",[["decide","Decision journey"]]]];
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
 const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
@@ -166,6 +167,7 @@ const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour
 'financial-sustainability-reconfiguration-case':["Clinical services strategy and site reconfiguration to close the structural deficit","Long"]};
 let TRUSTS=[],TRUSTCOL={}; /* dynamic per system */
 let orgs=[],orgdist=[],rows=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[],series={},bench=[];
+let issueEvidence=[],evidenceItems=[],lastEnsureError=null,showSourceValue=false,popProjCache={},sysDistressMap=null;
 let specs=[],pods=[],sgs=[],flines=[],sites=[];
 let orgById={},distByOrg={},distByCode={},topo=null,fcache={};
 let stage='overview',sel=null,driver=null,drill=null,lensName='Balanced',weights={},charts={};
@@ -174,6 +176,12 @@ function color(d){if(d==null)return '#9aa0af';if(d>=70)return '#b3261e';if(d>=55
 function slab(s){return {near_failure:'near-failure',serious:'serious',watch:'watch',stable:'stable'}[s]||s;}
 function fmt(v,u){if(v==null||v==='')return '—';v=Number(v);if(u==='pct')return (Math.round(v*10)/10)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(Math.round(v*10)/10).toLocaleString()+'m';if(u==='count'||u==='wte')return Math.round(v).toLocaleString();if(u==='days')return (Math.round(v*10)/10)+' days';if(u==='m2')return Math.round(v).toLocaleString()+' m²';if(u==='flag')return v?'Yes':'No';if(u==='score'||u==='ratio')return ''+(Math.round(v*10)/10);return ''+v;}
 function esc(s){return (s==null?'':''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+const MONTHS_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtPeriod(p){if(!p)return '';const s=''+p;const m=parseInt(s.slice(5,7),10);if(!m||m<1||m>12)return s.slice(2,7);return MONTHS_ABBR[m-1]+' '+s.slice(2,4);}
+/* Interim facilitator affordance until auth (U3) ships: append ?facilitator to the URL to adjudicate challenges. */
+const isFacilitator=new URLSearchParams(location.search).has('facilitator');
+const SEEDED_ISSUES=['uec-flow-capacity-pressure','elective-backlog-structural-recovery','cancer-pathway-standard-risk','gwh-quality-fragility-watch','financial-sustainability-reconfiguration-case'];
+function adjustedOverride(mvId){return mvId?overrides.find(x=>x.metric_value_id===mvId&&x.state==='adjusted'&&x.proposed_value!=null):null;}
 function orgRows(){return rows.filter(r=>r.organisation_id===sel);}
 function killCharts(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
 function orgName(){return (orgById[sel]||{}).name||'';}
@@ -184,7 +192,7 @@ let SYSTEMS=[],TRUSTMETA={},SITES=[],CQC={};
 let sysSlug=(function(){try{return localStorage.getItem('sr_system')||BSW_SLUG}catch(e){return BSW_SLUG}})();
 function system(){return SYSTEMS.find(s=>s.slug===sysSlug)||SYSTEMS[0];}
 const PALETTE=['#1f3a78','#8a6a1e','#166f4d','#44639f','#b3261e','#7c93c4','#7c93c4'];
-function trustShort(c){const t=TRUSTMETA[c];if(!t)return c;return t.name.replace(/Nhs Foundation Trust|Nhs Trust|Foundation Trust|Hospitals Nhs/gi,'').replace(/\s+/g,' ').trim();}
+function trustShort(c){const t=TRUSTMETA[c];if(!t)return c;return t.name.replace(/Nhs Foundation Trust|Nhs Trust|Foundation Trust|Hospitals Nhs/gi,'').replace(/\bNhs\b/gi,'').replace(/\s+/g,' ').trim();}
 function applySystem(){const s=system();TRUSTS=s?s.trusts.slice():[];PLACE_SITE={};TRUSTCOL={};TRUSTS.forEach((c,i)=>{PLACE_SITE[c]=trustShort(c);TRUSTCOL[c]=PALETTE[i%PALETTE.length];});}
 function sysNote(){if(sysSlug===BSW_SLUG)return '';return `<div class="banner">Viewing ${esc(system()?system().name:'')}. Headline performance, benchmarking and the strategic map run on live national data; detailed activity, finance, workforce, estate and the issue register carry the full dataset for the BSW flagship system in this working prototype.</div>`;}
 function sysOrgs(){return orgs.filter(x=>TRUSTS.includes(x.code)||(sysSlug===BSW_SLUG&&['icb','provider_group'].includes(x.type)));}
@@ -201,27 +209,40 @@ async function setSystem(slug){sysSlug=slug;try{localStorage.setItem('sr_system'
 window.setSystem=setSystem;
 
 async function loadAll(){
+  try{
   const [gs,gt,gsite,gcqc]=await Promise.all([fetch('geo/systems.json'),fetch('geo/trusts.json'),fetch('geo/sites.json'),fetch('geo/cqc.json')]);
   SYSTEMS=await gs.json();TRUSTMETA=await gt.json();SITES=await gsite.json();CQC=await gcqc.json();
   if(!SYSTEMS.find(s=>s.slug===sysSlug))sysSlug=BSW_SLUG;
-  const [o,d,r,ov,cr,ln,iss,isc,sp,pd,sg,fl,si,bm]=await Promise.all([
+  const [o,d,r,ov,cr,ln,iss,isc,sp,pd,sg,fl,si,bm,iev,evi]=await Promise.all([
     sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_v_metric_status').select('*').limit(20000),
     sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
     sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
     sb.from('sr_dim_staff_group').select('*').order('sort'),sb.from('sr_dim_finance_line').select('*').order('sort'),sb.from('sr_dim_site').select('*').order('sort'),
-    sb.from('sr_benchmarks').select('*').limit(5000)]);
+    sb.from('sr_benchmarks').select('*').limit(20000),
+    sb.from('sr_issue_evidence').select('*'),sb.from('sr_evidence_items').select('*')]);
   orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];bench=bm.data||[];
+  issueEvidence=iev.data||[];evidenceItems=evi.data||[];
+  const today=new Date().toISOString().slice(0,10);bench=bench.filter(b=>!b.period||b.period<=today); /* drop stray future-dated benchmark rows */
   specs=sp.data||[];pods=pd.data||[];sgs=sg.data||[];flines=fl.data||[];sites=si.data||[];
   orgById={};orgs.forEach(x=>orgById[x.id]=x);distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
   distByCode={};orgdist.forEach(x=>{if(x.org_code)distByCode[x.org_code]=x;});
   applySystem();pickDefaultOrg(false);
   const L=lenses.find(x=>x.name===lensName)||lenses[0];if(L){lensName=L.name;weights=Object.assign({},L.weights);}
   await loadSeries();
+  }catch(e){
+    console.error('loadAll failed',e);
+    document.getElementById('view').innerHTML=`<div class="banner">Could not load the system model (network). <button class="btn ghost" style="margin-left:8px;font-size:11.5px;padding:5px 12px" onclick="location.reload()">Retry</button></div>`;
+    return;
+  }
   renderSystems();renderNav();renderSelect();render();
 }
 
-async function ensure(domain){if(fcache[domain])return fcache[domain];const{data}=await sb.from('sr_fact').select('*').eq('domain',domain).limit(20000);fcache[domain]=data||[];return fcache[domain];}
+async function ensure(domain){const key=domain+'|'+sysSlug;if(fcache[key])return fcache[key];
+  /* Scoped to the selected system's organisations: line-level facts (DM01 by test) now span all trusts nationally. */
+  try{const{data,error}=await sb.from('sr_fact').select('*').eq('domain',domain).in('organisation_id',sysOrgs().map(x=>x.id)).limit(20000);if(error)throw error;fcache[key]=data||[];lastEnsureError=null;return fcache[key];}
+  catch(e){console.warn('sr_fact fetch failed for '+domain,e);lastEnsureError=domain;return [];}}
+function ensureNote(domain){return lastEnsureError===domain?`<div class="banner">Detail data for this page could not be loaded (network) — showing what is available. <a href="#" onclick="location.reload();return false">Retry</a></div>`:'';}
 function renderNav(){document.getElementById('nav').innerHTML=NAV.map(g=>`<div class="navgrp"><div class="lab">${g[0]}</div><div class="nav">`+g[1].map(s=>`<button class="${stage===s[0]?'on':''}" onclick="setStage('${s[0]}')"><span class="ic"></span><span>${s[1]}</span></button>`).join('')+`</div></div>`).join('');}
 function renderSelect(){const s=sysOrgs();document.getElementById('orgsel').innerHTML=s.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('');}
 document.getElementById('orgsel').addEventListener('change',e=>{sel=e.target.value;driver=null;render();});
@@ -232,12 +253,12 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision journey'};
+const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
-  const lc=document.getElementById('lenschip');if(stage==='decide'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
+  const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,modelling:renderModelling,decide:renderDecide}[stage];
+  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
   fn(v);
 }
 const tip=document.getElementById('tip');
@@ -247,6 +268,7 @@ function hideTip(){tip.style.opacity=0;}
 window.moveTip=moveTip;window.hideTip=hideTip;window.showTip=showTip;
 function spark(arr,col){if(!arr||arr.length<2)return '';const v=arr.map(a=>Number(a.value));const mn=Math.min(...v),mx=Math.max(...v),w=150,h=28,r=(mx-mn)||1;const p=v.map((x,i)=>[i/(v.length-1)*w,h-((x-mn)/r)*(h-4)-2]);return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:100%"><path d="M0 ${h} ${p.map(q=>'L'+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')} L${w} ${h} Z" fill="${col}22"/><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></svg>`;}
 function seriesFor(o,m){return series[o+'|'+m]||[];}
+function officialSeries(o,m){const s=seriesFor(o,m);const off=s.filter(x=>x.confidence==='official');return off.length?off:s;}
 function lineChart(id,labels,datasets,opt){const cv=document.getElementById(id);if(!cv||!window.Chart)return;charts[id]=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets},options:Object.assign({plugins:{legend:{display:datasets.length>1,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{x:{ticks:{maxTicksLimit:8,font:{size:9},color:'#9aa0af'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false},opt||{})});}
 function barChart(id,labels,data,colors,opt){const cv=document.getElementById(id);if(!cv||!window.Chart)return;charts[id]=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5,maxBarThickness:46}]},options:Object.assign({plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false},opt||{})});}
 function latestPeriod(fr){return fr.reduce((m,x)=>x.period>m?x.period:m,'');}
@@ -259,8 +281,8 @@ function renderOverview(v){
   const tnames=TRUSTS.map(c=>trustShort(c));
   const tlist=tnames.length>1?tnames.slice(0,-1).join(', ')+' and '+tnames[tnames.length-1]:(tnames[0]||'');
   const closest=rows.filter(r=>r.org_type==='acute_trust'&&TRUSTS.includes(r.org_code)&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,7);
-  let h=`<div class="exec"><div class="e1">Acute system intelligence · ${esc(system()?system().name:'')}</div><p>One agreed picture of the acute system across <span class="hl">${esc(tlist)}</span>, built from live published NHS data and benchmarked against every English trust. ${od?`Distress index <span class="hl">${od.distress_index}/100</span> with <span class="${od.near_failure_count?'crit':'hl'}">${od.near_failure_count} near-failure flags</span>. `:''}Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>${deficit?`; financial position <span class="${deficit.value<0?'crit':'hl'}">${fmt(deficit.value,'gbp_m')}</span> vs plan`:''}. Interrogate the geography below, open the <a href="#" onclick="setStage('drivers');return false">priority drivers</a>, or take the evidence into the <a href="#" onclick="setStage('decide');return false">decision journey</a>.</p></div>`;
-  h+=`<div class="mapwrap"><div id="mlmap"></div><div class="mapui"><div class="chips" id="needchips"></div><div class="chips" id="layerchips"></div></div><div class="maplegend" id="mlegend"></div></div>`;
+  let h=`<div class="exec"><div class="e1">Acute system intelligence · ${esc(system()?system().name:'')}</div><p>One agreed picture of the acute system across <span class="hl">${esc(tlist)}</span>, built from live published NHS data and benchmarked against every English trust. ${od?`Distress index <span class="hl">${od.distress_index}/100</span> with <span class="${od.near_failure_count?'crit':'hl'}">${od.near_failure_count} near-failure flags</span>. `:''}Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>${deficit?`; financial position <span class="${deficit.value<0?'crit':'hl'}">${fmt(deficit.value,deficit.unit)}</span> vs plan (published YTD variance)`:''}. Interrogate the geography below, open the <a href="#" onclick="setStage('drivers');return false">priority drivers</a>, or take the evidence into the <a href="#" onclick="setStage('decide');return false">decision journey</a>.</p></div>`;
+  h+=`<div class="mapwrap"><div id="mlmap"></div><div class="mapui"><div class="chips" id="basischips"></div><div class="chips" id="needchips"></div><div class="chips" id="layerchips"></div></div><div class="maplegend" id="mlegend"></div></div>`;
   h+=`<div class="eyebrow">System position</div><div class="grid kpis">`+
    kpi('System distress',od?od.distress_index:'—','/100',esc(o.name||''),null,color(od&&od.distress_index))+
    kpi('Near-failure flags',od?od.near_failure_count:'—','','breaching · deteriorating',null,od&&od.near_failure_count?'#b3261e':'#191f2b')+
@@ -279,7 +301,7 @@ function renderOverview(v){
   v.innerHTML=h;initMap();drawRadar();countUps();
 }
 /* ===== MAPLIBRE STRATEGIC MAP ===== */
-let ml=null,geoCache={},mapState={metric:'need',sites:true,poi:false,practices:false};
+let ml=null,geoCache={},mapState={metric:'need',basis:'need',sites:true,poi:false,practices:false};
 const NEED_METRICS=[['need','Need'],['n1','Deprivation'],['n2','Health dep'],['n3','Disease'],['n4','Access'],['n5','Outcomes'],['imd','IMD'],['c20','Core20']];
 const NEED_LEGEND={need:'Composite need score',n1:'Deprivation (IMD-based)',n2:'Health deprivation & disability',n3:'Disease burden',n4:'Access barriers',n5:'Outcomes gap',imd:'IMD decile (1 = most deprived)',c20:'Core20: most deprived 20% of England'};
 const RAMP=['#efece1','#d8dfec','#b7c4de','#7c93c4','#44639f','#1f3a78'];
@@ -290,6 +312,12 @@ function needExpr(){const m=mapState.metric;
   if(m==='c20')return ['case',['==',['get','c20'],1],'#1f3a78','#efece1'];
   if(m==='imd')return ['interpolate',['linear'],['coalesce',['get','imd'],5],1,'#1f3a78',4,'#7c93c4',7,'#d8dfec',10,'#efece1'];
   return ['interpolate',['linear'],['coalesce',['get',m],0],0,RAMP[0],20,RAMP[1],40,RAMP[2],60,RAMP[3],80,RAMP[4],100,RAMP[5]];}
+/* U5 · service-distress basis for the ICB fill: paper → amber → red */
+function distressRampColor(v){const L=(a,b,t)=>'rgb('+a.map((x,i)=>Math.round(x+(b[i]-x)*t)).join(',')+')';const P=[239,236,225],A=[180,83,9],R=[179,38,30];v=Math.max(0,Math.min(100,Number(v)||0));return v<=55?L(P,A,v/55):L(A,R,(v-55)/45);}
+function systemDistress(){if(sysDistressMap)return sysDistressMap;sysDistressMap={};SYSTEMS.forEach(s=>{const vals=(s.trusts||[]).map(c=>distByCode[c]).filter(Boolean).map(d=>Number(d.distress_index)).filter(x=>!isNaN(x));if(vals.length)sysDistressMap[s.slug]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);});return sysDistressMap;}
+function icbFillExpr(){
+  if(mapState.basis==='distress'){const m=systemDistress();const expr=['match',['get','slug']];Object.keys(m).forEach(slug=>{expr.push(slug,distressRampColor(m[slug]));});expr.push('#efece1');return Object.keys(m).length?expr:'#efece1';}
+  return ['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]];}
 let initMapSeq=0;
 async function initMap(){
   const el=document.getElementById('mlmap');if(!el||!window.maplibregl)return;
@@ -306,7 +334,7 @@ async function initMap(){
     try{if(!m.getSource('icbs'))m.addSource('icbs',{type:'geojson',data:icbs});}
     catch(err){setTimeout(boot,250);return;}
     bootDone=true;
-    if(!m.getLayer('icb-fill'))m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':['interpolate',['linear'],['get','need'],20,RAMP[1],40,RAMP[2],55,RAMP[3],70,RAMP[4]],'fill-opacity':0.28}});
+    if(!m.getLayer('icb-fill'))m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':icbFillExpr(),'fill-opacity':mapState.basis==='distress'?0.55:0.28}});
     if(!m.getLayer('icb-line'))m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
     if(!m.getLayer('icb-sel'))m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
     m.on('click','icb-fill',e=>{const p=e.features[0].properties;if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
@@ -319,7 +347,7 @@ async function initMap(){
 }
 async function refreshSystemLayers(){
   if(!ml)return;
-  const lsoa=await geo('lsoa/'+sysSlug+'.json').catch(()=>null);
+  const lsoa=await geo('lsoa/'+sysSlug+'.json').catch(e=>{console.warn('lsoa layer failed',e);return null;});
   if(ml.getSource('lsoa')){ml.getSource('lsoa').setData(lsoa||{type:'FeatureCollection',features:[]});}
   else if(lsoa){
     ml.addSource('lsoa',{type:'geojson',data:lsoa});
@@ -337,7 +365,7 @@ async function refreshSystemLayers(){
     ml.on('mouseleave','sites-c',()=>{ml.getCanvas().style.cursor='';});
   }
   // CQC-rated care POIs
-  const poi=await geo('poi/'+sysSlug+'.json').catch(()=>[]);
+  const poi=await geo('poi/'+sysSlug+'.json').catch(e=>{console.warn('poi layer failed',e);return [];});
   const pfc={type:'FeatureCollection',features:(poi||[]).map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[p[2],p[1]]},properties:{kind:p[0],name:p[3],rating:p[4]||''}}))};
   if(ml.getSource('poi'))ml.getSource('poi').setData(pfc);
   else{
@@ -346,7 +374,7 @@ async function refreshSystemLayers(){
     ml.on('click','poi-c',e=>{const p=e.features[0].properties;new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>${esc(p.name)}</b><div class="r"><span>Kind</span><span>${esc(p.kind.replace(/_/g,' '))}</span></div><div class="r"><span>CQC</span><span>${esc(p.rating||'Not rated')}</span></div>`).addTo(ml);});
   }
   // GP practices with prevalence
-  const pr=await geo('practices/'+sysSlug+'.json').catch(()=>[]);
+  const pr=await geo('practices/'+sysSlug+'.json').catch(e=>{console.warn('practices layer failed',e);return [];});
   const gfc={type:'FeatureCollection',features:(pr||[]).map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[p.lng,p.lat]},properties:{name:p.name,list:p.list,fte:p.gp_fte,rating:p.rating||'',prev:JSON.stringify(p.prev||{})}}))};
   if(ml.getSource('gp'))ml.getSource('gp').setData(gfc);
   else{
@@ -360,19 +388,24 @@ async function refreshSystemLayers(){
   ml.fitBounds(sysBBox(icbs),{padding:34,duration:900});
 }
 function applyMapState(){if(!ml)return;
-  if(ml.getLayer('lsoa-fill')){ml.setPaintProperty('lsoa-fill','fill-color',needExpr());ml.setLayoutProperty('lsoa-fill','visibility',mapState.metric==='off'?'none':'visible');}
+  if(ml.getLayer('icb-fill')){ml.setPaintProperty('icb-fill','fill-color',icbFillExpr());ml.setPaintProperty('icb-fill','fill-opacity',mapState.basis==='distress'?0.55:0.28);}
+  if(ml.getLayer('lsoa-fill')){ml.setPaintProperty('lsoa-fill','fill-color',needExpr());ml.setLayoutProperty('lsoa-fill','visibility',mapState.metric==='off'||mapState.basis==='distress'?'none':'visible');}
   if(ml.getLayer('sites-c'))ml.setLayoutProperty('sites-c','visibility',mapState.sites?'visible':'none');
   if(ml.getLayer('poi-c'))ml.setLayoutProperty('poi-c','visibility',mapState.poi?'visible':'none');
   if(ml.getLayer('gp-c'))ml.setLayoutProperty('gp-c','visibility',mapState.practices?'visible':'none');
   renderLegend();}
 function renderChips(){
-  const nc=document.getElementById('needchips'),lc=document.getElementById('layerchips');if(!nc)return;
-  nc.innerHTML=NEED_METRICS.map(m=>`<button class="chip ${mapState.metric===m[0]?'on':''}" onclick="setMapMetric('${m[0]}')">${m[1]}</button>`).join('')+`<button class="chip ${mapState.metric==='off'?'on':''}" onclick="setMapMetric('off')">Off</button>`;
+  const bc=document.getElementById('basischips'),nc=document.getElementById('needchips'),lc=document.getElementById('layerchips');if(!nc)return;
+  if(bc)bc.innerHTML=`<button class="chip ${mapState.basis!=='distress'?'on':''}" onclick="setMapBasis('need')">Population need</button><button class="chip ${mapState.basis==='distress'?'on':''}" onclick="setMapBasis('distress')">Service distress</button>`;
+  nc.innerHTML=mapState.basis==='distress'?'':NEED_METRICS.map(m=>`<button class="chip ${mapState.metric===m[0]?'on':''}" onclick="setMapMetric('${m[0]}')">${m[1]}</button>`).join('')+`<button class="chip ${mapState.metric==='off'?'on':''}" onclick="setMapMetric('off')">Off</button>`;
   lc.innerHTML=`<button class="chip ${mapState.sites?'on':''}" onclick="toggleMapLayer('sites')">NHS sites</button><button class="chip ${mapState.poi?'on':''}" onclick="toggleMapLayer('poi')">CQC care</button><button class="chip ${mapState.practices?'on':''}" onclick="toggleMapLayer('practices')">GP practices</button>`;}
 function setMapMetric(m){mapState.metric=m;renderChips();applyMapState();}
+function setMapBasis(b){mapState.basis=b;renderChips();applyMapState();}
 function toggleMapLayer(k){mapState[k]=!mapState[k];renderChips();applyMapState();}
-window.setMapMetric=setMapMetric;window.toggleMapLayer=toggleMapLayer;
+window.setMapMetric=setMapMetric;window.setMapBasis=setMapBasis;window.toggleMapLayer=toggleMapLayer;
 function renderLegend(){const el=document.getElementById('mlegend');if(!el)return;
+  if(mapState.basis==='distress'){el.style.display='';
+    el.innerHTML=`<div class="ttl2">Service distress · mean trust index per ICB</div>`+[[15,'15'],[35,'35'],[55,'55 · amber'],[75,'75+ · red']].map(v=>`<div class="lgrow"><span class="sw" style="background:${distressRampColor(v[0])};${v[0]<=15?'border:1px solid #dcd9d0':''}"></span>${v[1]}</div>`).join('')+`<div class="lgrow" style="margin-top:6px;color:#9aa0af">Sites coloured by trust CQC rating</div>`;return;}
   if(mapState.metric==='off'){el.style.display='none';return;}el.style.display='';
   let rows2='';
   if(mapState.metric==='c20')rows2=`<div class="lgrow"><span class="sw" style="background:#1f3a78"></span>Core20 neighbourhood</div><div class="lgrow"><span class="sw" style="background:#efece1;border:1px solid #dcd9d0"></span>Other</div>`;
@@ -381,12 +414,12 @@ function renderLegend(){const el=document.getElementById('mlegend');if(!el)retur
   el.innerHTML=`<div class="ttl2">${NEED_LEGEND[mapState.metric]||''}</div>${rows2}<div class="lgrow" style="margin-top:6px;color:#9aa0af">Sites coloured by trust CQC rating</div>`;}
 
 function kpi(l,val,suf,sub,ser,col){if(typeof ser==='string'){col=col||ser;ser=null;}const sp=Array.isArray(ser)&&ser.length>1?`<div class="spark">${spark(ser.slice(-12),col)}</div>`:'';const num=(typeof val==='number')?`<span class="cu" data-target="${val}">0</span>`:esc(val);return `<div class="card kpi"><div class="l">${l}</div><div class="v" style="color:${col}">${num}${suf?`<small>${suf}</small>`:''}</div><div class="s">${esc(sub)}</div>${sp}</div>`;}
-function rrow(r){return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;}
+function rrow(r){const adj=adjustedOverride(r.metric_value_id);return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}${adj?' <span class="pill" style="background:#b45309;font-size:8.5px;padding:2px 6px;vertical-align:2px">adjusted</span>':''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;}
 function countUps(){document.querySelectorAll('.cu').forEach(el=>{const t=Number(el.dataset.target);if(isNaN(t))return;const st=performance.now();(function f(n){const p=Math.min(1,(n-st)/650);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f);})(st);});}
 function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(31,58,120,.16)',borderColor:'#1f3a78',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa0af'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#3c4354'}}},responsive:true,maintainAspectRatio:false}});}
 
 /* ===== PRIORITY DRIVERS (ASR) ===== */
-const DRIVER_METRICS={service_fragility:['bed_occupancy','beds_ga_available','dm01_6wk','shmi'],uec:['ae_4hr','amb_over30_pct','amb_handover_60','delayed_discharge_beddays'],elective_backlog:['rtt_total','rtt_18wk','rtt_52wk','cancelled_ops'],cancer:['cancer_62','cancer_fds_28','cancer_31']};
+const DRIVER_METRICS={service_fragility:['bed_occupancy','beds_ga_available','dm01_6wk','shmi','sickness_rate','deficit'],uec:['ae_4hr','amb_over30_pct','amb_handover_60','delayed_discharge_beddays','emerg_admissions'],elective_backlog:['rtt_total','rtt_18wk','rtt_52wk','cancelled_ops','adm_elective'],cancer:['cancer_62','cancer_fds_28','cancer_31']};
 const DRIVER_HEADLINE={service_fragility:'bed_occupancy',uec:'ae_4hr',elective_backlog:'rtt_18wk',cancer:'cancer_62'};
 const DRIVER_BLURB={service_fragility:'Occupancy, diagnostics and mortality signals that show where services are running closest to the edge.',uec:'The urgent and emergency pathway under strain: front door, ambulance handovers and delayed discharges.',elective_backlog:'The waiting list a decade in the making: size, waits over 18 and 52 weeks, and lost theatre activity.',cancer:'Cancer access against the 62-day, faster-diagnosis and 31-day standards.'};
 function benchSeries(mid,type){return bench.filter(b=>b.metric_id===mid&&b.type===type).sort((a,b)=>a.period<b.period?-1:1);}
@@ -397,7 +430,7 @@ function renderDrivers(v){
     const avg=Math.round(TRUSTS.reduce((s,tc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const rs=codes.map(c=>rows.find(x=>x.organisation_id===oid&&x.metric_code===c)).filter(Boolean);return s+(rs.length?rs.reduce((a,r)=>a+r.distress,0)/rs.length:0);},0)/TRUSTS.length);
     h+=`<div class="eyebrow">${esc(dv[1])} · pressure ${avg}/100</div><div class="two">`;
     h+=`<div class="card" style="overflow-x:auto"><div class="h3">${esc(dv[1])}</div><div class="cap">${esc(DRIVER_BLURB[dv[0]])}</div><table class="dt"><thead><tr><th>Measure</th>`+TRUSTS.map(tc=>`<th class="num">${PLACE_SITE[tc]}</th>`).join('')+`</tr></thead><tbody>`;
-    codes.forEach(c=>{const any=rows.find(x=>x.metric_code===c);if(!any)return;h+=`<tr><td>${esc(any.metric_name)}</td>`+TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===c);return r?`<td class="num" style="cursor:pointer;font-weight:600;color:${color(r.distress)}" onclick="openDrill('${oid}','${c}')">${fmt(r.value,r.unit)}</td>`:'<td class="num">—</td>';}).join('')+`</tr>`;});
+    codes.forEach(c=>{const any=rows.find(x=>x.metric_code===c);if(!any)return;h+=`<tr><td>${esc(any.metric_name)}${c==='dm01_6wk'?' <span class="muted" style="font-size:10px">· by test →</span>':c==='cancer_62'?' <span class="muted" style="font-size:10px">· by tumour →</span>':''}</td>`+TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===c);const click=c==='dm01_6wk'?`openTestDrill('${oid}')`:c==='cancer_62'?`openTumourDrill('${oid}')`:`openDrill('${oid}','${c}')`;return r?`<td class="num" style="cursor:pointer;font-weight:600;color:${color(r.distress)}" onclick="${click}">${fmt(r.value,r.unit)}</td>`:'<td class="num">—</td>';}).join('')+`</tr>`;});
     h+=`</tbody></table></div>`;
     h+=`<div class="card"><div class="h3">${esc((rows.find(x=>x.metric_code===hcode)||{}).metric_name||'')}</div><div class="cap">Three trusts vs national median (dashed) · published series</div><div class="chartbox"><canvas id="drv_${dv[0]}"></canvas></div></div></div>`;
   });
@@ -406,7 +439,7 @@ function renderDrivers(v){
   DRIVERS.forEach(dv=>{
     const hcode=DRIVER_HEADLINE[dv[0]];const anyR=rows.find(x=>x.metric_code===hcode);if(!anyR)return;
     const mid=anyR.metric_id;const nm=benchSeries(mid,'national_median').slice(-24);
-    const t0=(orgs.find(o=>o.code===TRUSTS[0])||{}).id;const labels=(seriesFor(t0,mid)||[]).slice(-24).map(x=>x.period.slice(2,7));
+    const t0=(orgs.find(o=>o.code===TRUSTS[0])||{}).id;const labels=(seriesFor(t0,mid)||[]).slice(-24).map(x=>fmtPeriod(x.period));
     const ds=TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s=seriesFor(oid,mid).slice(-24);return{label:PLACE_SITE[tc],data:s.map(x=>Number(x.value)),borderColor:TRUSTCOL[tc],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2};});
     if(nm.length)ds.push({label:'National median',data:labels.map((l,i)=>{const p=(seriesFor(t0,mid).slice(-24)[i]||{}).period;const b=nm.find(x=>x.period===p);return b?Number(b.value):null;}),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.5,backgroundColor:'transparent'});
     lineChart('drv_'+dv[0],labels,ds,{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
@@ -426,9 +459,9 @@ async function renderActivity(v){v.innerHTML='<div class="loading">Loading activ
   const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
   // table: specialties by total activity (all PODs) for selected org latest
   const tbl=rttSpecs.map(s=>{let tot=0;pods.forEach(p=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===s.code&&x.pod_code===p.code&&x.period===lp);if(r)tot+=Number(r.value);});return{s,tot};}).sort((a,b)=>b.tot-a.tot);
-  let h=sysNote()+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity by trust, specialty and point of delivery. Compare across the three trusts and drill by specialty.</div>`;
+  let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity by trust, specialty and point of delivery. Compare across the three trusts and drill by specialty.</div>`;
   h+=`<div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${lp.slice(0,7)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
+  h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${fmtPeriod(lp)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
    <div class="card"><div class="h3">Trend · ${esc(orgName())}</div><div class="cap">24-month activity</div><div class="chartbox"><canvas id="atrend"></canvas></div></div></div>`;
   h+=`<div class="eyebrow">Specialties by volume — ${esc(orgName())}</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Total / month</th><th class="num">Non-elective</th><th class="num">Elective + day case</th><th class="num">Outpatients</th></tr></thead><tbody>`;
   tbl.forEach(t=>{const g=(pod)=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===t.s.code&&x.pod_code===pod&&x.period===lp);return r?Number(r.value):0;};const elc=g('EL')+g('DC');const op=g('OPF')+g('OPFU');
@@ -436,13 +469,13 @@ async function renderActivity(v){v.innerHTML='<div class="loading">Loading activ
   h+=`</tbody></table></div>`;
   v.innerHTML=h;
   barChart('acomp',comp.map(x=>PLACE_SITE[x.c]),comp.map(x=>x.v),comp.map(x=>TRUSTCOL[x.c]));
-  lineChart('atrend',trend.map(x=>x.period.slice(2,7)),[{data:trend.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
+  lineChart('atrend',trend.map(x=>fmtPeriod(x.period)),[{data:trend.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
 }
 
 /* ===== FLOW ===== */
 function renderFlow(v){
-  const codes=['ae_4hr','amb_over30_pct','amb_handover_60','bed_occupancy','delayed_discharge_beddays','discharged_total','los_emergency','readmission_28d'];
-  const labels={ae_4hr:'A&E 4-hour',amb_over30_pct:'Handover >30 min',amb_handover_60:'Handover >60 min',bed_occupancy:'G&A bed occupancy',delayed_discharge_beddays:'Delayed discharge bed days',discharged_total:'Patients discharged / month',los_emergency:'Avg LoS (emergency)',readmission_28d:'28-day readmissions'};
+  const codes=['ae_attendances','ae_4hr','emerg_admissions','amb_over30_pct','amb_handover_60','bed_occupancy','vw_occupancy_pct','delayed_discharge_beddays','discharged_total','los_emergency','readmission_28d'];
+  const labels={ae_attendances:'A&E attendances / month',ae_4hr:'A&E 4-hour',emerg_admissions:'Emergency admissions / month',amb_over30_pct:'Handover >30 min',amb_handover_60:'Handover >60 min',bed_occupancy:'G&A bed occupancy',vw_occupancy_pct:'Virtual ward occupancy',delayed_discharge_beddays:'Delayed discharge bed days',discharged_total:'Patients discharged / month',los_emergency:'Avg LoS (emergency)',readmission_28d:'28-day readmissions'};
   let h=`<h1 class="serif">Flow & transit</h1><div class="lead">How patients move through the system: length of stay, A&E performance, ambulance handovers, bed occupancy and readmissions, compared across the three trusts.</div>`;
   h+=`<div class="grid kpis">`+codes.map(c=>{const r=orgRows().find(x=>x.metric_code===c);return r?kpi(labels[c],fmt(r.value,r.unit),'',slab(r.status),seriesFor(sel,r.metric_id),color(r.distress)):'';}).join('')+`</div>`;
   h+=`<div class="eyebrow">Trust comparison (latest)</div><div class="grid three">`;
@@ -460,9 +493,9 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
   const allvals=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)allvals.push(c);}));
   const mn=Math.min(...allvals),mx=Math.max(...allvals);
   const hcol=(val)=>{if(val==null)return '#e7ecf2';let t=(val-mn)/((mx-mn)||1);if(perfMetric==='rtt_18wk')t=1-t;return d3.interpolateRgb('#166f4d', '#b3261e')(t);};
-  let h=sysNote()+`<h1 class="serif">Performance</h1><div class="lead">RTT waiting times by specialty, compared across the three trusts. Red marks the pain points. Click any cell to drill into its 24-month trend.</div>`;
+  let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">RTT waiting times by specialty, compared across the three trusts. Red marks the pain points. Click any cell to drill into its 24-month trend.</div>`;
   h+=`<div class="filters">Metric ${metricSel}</div>`;
-  h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${lp.slice(0,7)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
+  h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${fmtPeriod(lp)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
   h+=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th>${tc}</th>`).join('')+`</tr></thead><tbody>`;
   rttSpecs.forEach(s=>{h+=`<tr><td class="rl">${esc(s.code+' '+s.name)}</td>`+TRUSTS.map(tc=>{const c=cell(tc,s.code);const oid=(orgs.find(o=>o.code===tc)||{}).id;return `<td><div class="cell" style="background:${hcol(c)}" onclick="openFactDrill('performance','${oid}','${s.code}','${perfMetric}')">${c==null?'':perfMetric==='rtt_18wk'?Math.round(c):Math.round(c).toLocaleString()}</div></td>`;}).join('')+`</tr>`;});
   h+=`</tbody></table></div>`;
@@ -477,8 +510,8 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
 async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capacity…</div>';const f=await ensure('capacity');const lp=latestPeriod(f.filter(x=>x.metric_code==='ga_beds'));
   const siteName=id=>(sites.find(s=>s.id===id)||{}).name||'';
   const bedSites=sites.filter(s=>f.some(x=>x.site_id===s.id&&x.metric_code==='ga_beds'));
-  let h=sysNote()+`<h1 class="serif">Capacity</h1><div class="lead">General & acute beds, occupancy, and theatre, outpatient and diagnostic assets by site across the BSW Hospitals Group.</div>`;
-  h+=`<div class="eyebrow">Beds & occupancy by site (latest ${lp.slice(0,7)})</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
+  let h=sysNote()+ensureNote('capacity')+`<h1 class="serif">Capacity</h1><div class="lead">General & acute beds, occupancy, and theatre, outpatient and diagnostic assets by site across the BSW Hospitals Group.</div>`;
+  h+=`<div class="eyebrow">Beds & occupancy by site (latest ${fmtPeriod(lp)})</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
   bedSites.forEach(s=>{const beds=f.find(x=>x.site_id===s.id&&x.metric_code==='ga_beds'&&x.period===lp);const occ=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===lp);const ov=occ?Number(occ.value):0;h+=`<tr><td>${esc(s.name)}</td><td class="num">${beds?Math.round(beds.value):'—'}</td><td class="num" style="color:${ov>=95?'#b3261e':ov>=92?'#b45309':'#166f4d'};font-weight:600">${occ?fmt(occ.value,'pct'):'—'}</td></tr>`;});
   h+=`</tbody></table></div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Bed occupancy trend</div><div class="cap">By main acute site</div><div class="chartbox"><canvas id="occ"></canvas></div></div>`;
@@ -488,14 +521,14 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
   v.innerHTML=h;
   const cols={};bedSites.forEach((s,i)=>cols[s.id]=['#1f3a78','#44639f','#7c93c4','#b45309'][i%4]);
   const months=[...new Set(f.filter(x=>x.metric_code==='occupancy_pct').map(x=>x.period))].sort();
-  lineChart('occ',months.map(m=>m.slice(2,7)),bedSites.map(s=>({label:s.name.split(',')[0],data:months.map(m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===m);return r?Number(r.value):null;}),borderColor:cols[s.id],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2})),{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
+  lineChart('occ',months.map(m=>fmtPeriod(m)),bedSites.map(s=>({label:s.name.split(',')[0],data:months.map(m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===m);return r?Number(r.value):null;}),borderColor:cols[s.id],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2})),{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
 }
 
 /* ===== ESTATE ===== */
 async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate…</div>';const f=await ensure('estate');
   const g=(sid,m)=>{const r=f.find(x=>x.site_id===sid&&x.metric_code===m);return r?Number(r.value):0;};
   const totBacklog=sites.reduce((s,si)=>s+g(si.id,'backlog_maint'),0);const totHigh=sites.reduce((s,si)=>s+g(si.id,'high_risk_backlog'),0);const totCrit=sites.reduce((s,si)=>s+g(si.id,'critical_infra_risk'),0);const totArea=sites.reduce((s,si)=>s+g(si.id,'floor_area'),0);
-  let h=sysNote()+`<h1 class="serif">Estate</h1><div class="lead">Estate condition across BSW sites from the ERIC field set: backlog maintenance, high-risk and critical-infrastructure risk, floor area, energy and PFI status.</div>`;
+  let h=sysNote()+ensureNote('estate')+`<h1 class="serif">Estate</h1><div class="lead">Estate condition across BSW sites from the ERIC field set: backlog maintenance, high-risk and critical-infrastructure risk, floor area, energy and PFI status.</div>`;
   h+=`<div class="grid kpis">`+kpi('Total backlog maintenance',fmt(totBacklog,'gbp_m'),'','across all BSW sites','#191f2b')+kpi('High-risk backlog',fmt(totHigh,'gbp_m'),'','urgent remediation','#b45309')+kpi('Critical infrastructure risk',fmt(totCrit,'gbp_m'),'','immediate risk','#b3261e')+kpi('Total floor area',fmt(totArea,'m2'),'','occupied estate','#191f2b')+`</div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Backlog maintenance by site</div><div class="cap">£m</div><div class="chartbox"><canvas id="estbar"></canvas></div></div>
    <div class="card"><div class="h3">Estate detail by site</div><div class="cap">ERIC field set</div><table class="dt"><thead><tr><th>Site</th><th class="num">Backlog</th><th class="num">High-risk</th><th class="num">Floor m²</th><th class="num">Energy</th><th>PFI</th></tr></thead><tbody>`;
@@ -509,11 +542,16 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
   const g=(line)=>{const r=f.find(x=>x.organisation_id===sel&&x.line_code===line&&x.period===lp);return r?Number(r.value):0;};
   const income=g('inc_clinical')+g('inc_other');const pay=g('pay_substantive')+g('pay_bank')+g('pay_agency');const nonpay=g('np_drugs')+g('np_clin_supplies')+g('np_nonclin')+g('np_premises')+g('np_deprec')+g('np_other');
   const agencyPct=pay?100*g('pay_agency')/pay:0;
-  let h=sysNote()+`<h1 class="serif">Finance</h1><div class="lead">The full financial position for ${esc(orgName())}: income and expenditure, pay versus non-pay, agency reliance, EBITDA, balance sheet and cash flow — not just the bottom line.</div>`;
-  h+=`<div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#191f2b')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#b3261e':'#166f4d')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#191f2b')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#b45309':'#166f4d')+`</div>`;
+  let h=sysNote()+ensureNote('finance')+`<h1 class="serif">Finance</h1><div class="lead">The full financial position for ${esc(orgName())}: income and expenditure, pay versus non-pay, agency reliance, EBITDA, balance sheet and cash flow — not just the bottom line.</div>`;
+  const varr=orgRows().find(r=>r.metric_code==='deficit'),seg=orgRows().find(r=>r.metric_code==='oversight_segment');
+  const vSer=varr?officialSeries(sel,varr.metric_id):[];const vLast=vSer.length?vSer[vSer.length-1]:null;const vVal=vLast?Number(vLast.value):(varr?varr.value:null);
+  if(varr||seg)h+=`<div class="eyebrow">Published position</div><div class="grid kpis">`+
+    (varr?kpi('Variance to financial plan (YTD)',fmt(vVal,varr.unit),'','published quarterly · '+fmtPeriod((vLast||varr).period),vSer,color(varr.distress)):'')+
+    (seg?kpi('Oversight segment',fmt(seg.value,'score'),'/4','NHS Oversight Framework · 4 = most support',null,Number(seg.value)>=4?'#b3261e':Number(seg.value)>=3?'#b45309':'#191f2b'):'')+`</div>`;
+  h+=`<div class="eyebrow">Modelled position (illustrative)</div><div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#191f2b')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#b3261e':'#166f4d')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#191f2b')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#b45309':'#166f4d')+`</div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Expenditure breakdown</div><div class="cap">Pay vs non-pay (£m)</div><div class="chartbox"><canvas id="finexp"></canvas></div></div>
    <div class="card"><div class="h3">Pay composition</div><div class="cap">Substantive · bank · agency</div><div class="chartbox"><canvas id="finpay"></canvas></div></div></div>`;
-  h+=`<div class="eyebrow">Income & expenditure</div><div class="card" style="padding:4px 0"><table class="dt"><tbody>`+
+  h+=`<div class="eyebrow">Income & expenditure</div><div class="card" style="padding:4px 0"><div class="cap" style="padding:10px 14px 0">Modelled illustration pending PFR ingestion — tagged modelled</div><table class="dt"><tbody>`+
    [['inc_clinical','NHS clinical income'],['inc_other','Other income'],['pay_substantive','Substantive pay'],['pay_bank','Bank staff'],['pay_agency','Agency staff'],['np_drugs','Drugs'],['np_clin_supplies','Clinical supplies'],['np_nonclin','Non-clinical supplies'],['np_premises','Premises'],['np_deprec','Depreciation'],['np_other','Other non-pay'],['res_ebitda','EBITDA'],['res_surplus','I&E surplus/(deficit)']].map(l=>`<tr><td>${l[1]}</td><td class="num" style="${l[0].startsWith('res')?'font-weight:700':''};color:${g(l[0])<0?'#b3261e':'#191f2b'}">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Balance sheet</div><table class="dt"><tbody>`+[['bs_ppe','Property, plant & equipment'],['bs_curr_assets','Current assets'],['bs_cash','Cash & equivalents'],['bs_curr_liab','Current liabilities'],['bs_net_assets','Net assets']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>
    <div class="card"><div class="h3">Cash flow</div><table class="dt"><tbody>`+[['cf_ops','Net cash from operations'],['cf_capex','Capital expenditure'],['cf_close','Closing cash']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div></div>`;
@@ -526,11 +564,13 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
 async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
   const g=(sgc,m)=>{const r=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);return r?Number(r.value):0;};
   const totW=sgs.reduce((s,sg)=>s+g(sg.code,'wte'),0);const totA=sgs.reduce((s,sg)=>s+g(sg.code,'agency_wte'),0);
-  let h=sysNote()+`<h1 class="serif">Workforce</h1><div class="lead">Workforce for ${esc(orgName())} by staff group: establishment, vacancy, sickness, turnover and agency reliance.</div>`;
-  h+=`<div class="grid kpis">`+kpi('Total workforce',fmt(totW,'wte'),'WTE','substantive establishment','#191f2b')+kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce',totA/totW>0.05?'#b45309':'#166f4d')+kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing',g('nursing','vacancy_pct')>10?'#b45309':'#166f4d')+kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental','#191f2b')+`</div>`;
+  let h=sysNote()+ensureNote('workforce')+`<h1 class="serif">Workforce</h1><div class="lead">Workforce for ${esc(orgName())} by staff group: establishment, vacancy, sickness, turnover and agency reliance.</div>`;
+  const sick=orgRows().find(r=>r.metric_code==='sickness_rate');
+  const sSer=sick?officialSeries(sel,sick.metric_id):[];const sLast=sSer.length?sSer[sSer.length-1]:null;const sVal=sLast?Number(sLast.value):(sick?sick.value:null);
+  h+=`<div class="grid kpis">`+(sick?kpi('Sickness absence',fmt(sVal,'pct'),'','official, quarterly · '+fmtPeriod((sLast||sick).period),sSer,color(sick.distress)):'')+kpi('Total workforce',fmt(totW,'wte'),'WTE','substantive establishment · modelled','#191f2b')+kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce · modelled',totA/totW>0.05?'#b45309':'#166f4d')+kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing · modelled',g('nursing','vacancy_pct')>10?'#b45309':'#166f4d')+kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental · modelled','#191f2b')+`</div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Establishment by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>
    <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">%</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`;
-  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE</th><th class="num">Vacancy</th><th class="num">Sickness</th><th class="num">Turnover</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
+  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE</th><th class="num">Vacancy (modelled)</th><th class="num">Sickness (modelled)</th><th class="num">Turnover (modelled)</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
   sgs.forEach(sg=>{h+=`<tr><td>${esc(sg.name)}</td><td class="num">${Math.round(g(sg.code,'wte')).toLocaleString()}</td><td class="num">${fmt(g(sg.code,'vacancy_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'sickness_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'turnover_pct'),'pct')}</td><td class="num">${Math.round(g(sg.code,'agency_wte')).toLocaleString()}</td></tr>`;});
   h+=`</tbody></table></div>`;v.innerHTML=h;countUps();
   barChart('wfbar',sgs.map(s=>s.name.split(' ')[0]),sgs.map(s=>g(s.code,'wte')),sgs.map(()=>'#1f3a78'));
@@ -538,43 +578,278 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
 }
 
 /* ===== POPULATION ===== */
-function renderPopulation(v){
+async function renderPopulation(v){
   const gm=c=>orgRows().find(r=>r.metric_code===c);const imd=gm('imd_score'),pg=gm('pop_growth_65');
-  let h=`<h1 class="serif">Population & demand</h1><div class="lead">The population BSW serves and the demand pressure ahead: deprivation, ageing and the demographic driver behind rising acute demand.</div>`;
-  h+=`<div class="grid kpis">`+kpi('Deprivation (IMD)',imd?fmt(imd.value,'score'):'—','','average score','#191f2b')+kpi('Over-65 growth',pg?fmt(pg.value,'pct'):'—','/yr','demographic pressure','#b45309')+kpi('Population','1.0m','','BSW ICS','#191f2b')+kpi('Over-60 growth (15yr)','+35%','','per ASR case for change','#b45309')+`</div>`;
-  h+=`<div class="eyebrow">Demand & capacity outlook</div>`+demandHtml();v.innerHTML=h;countUps();computeDemand();
+  if(popProjCache[sysSlug]===undefined){v.innerHTML='<div class="loading">Loading population projections…</div>';
+    try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}
+    catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
+  const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
+  const years=[...new Set(proj.map(p=>p.year))].sort((a,b)=>a-b);
+  const bandAt=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
+  const growth=b=>{if(!years.length)return null;const v0=bandAt(b,years[0]),v1=bandAt(b,2040);return v0?Math.round(100*(v1-v0)/v0):null;};
+  const g65=growth('65-84'),g85=growth('85+');
+  let h=`<h1 class="serif">Population & demand</h1><div class="lead">The population this system serves and the demand pressure ahead: deprivation, ageing and the demographic driver behind rising acute demand.</div>`;
+  h+=`<div class="grid kpis">`+kpi('Deprivation (IMD)',imd?fmt(imd.value,'score'):'—','','average score','#191f2b')+kpi('Over-65 growth',pg?fmt(pg.value,'pct'):'—','/yr','demographic pressure','#b45309')+
+   (g65!=null?kpi('65–84 growth to 2040',(g65>0?'+':'')+g65+'%','','ONS SNPP 2022-based','#b45309'):kpi('Population','1.0m','','BSW ICS','#191f2b'))+
+   (g85!=null?kpi('85+ growth to 2040',(g85>0?'+':'')+g85+'%','','ONS SNPP 2022-based','#b45309'):kpi('Over-60 growth (15yr)','+35%','','per ASR case for change','#b45309'))+`</div>`;
+  if(years.length){h+=`<div class="eyebrow">Ageing projection · ONS SNPP</div><div class="two"><div class="card"><div class="h3">Older population to 2040</div><div class="cap">${esc(system()?system().name:'')} · 65–84 and 85+ · stacked</div><div class="chartbox"><canvas id="popproj"></canvas></div></div>
+   <div class="card"><div class="h3">Population by age band</div><div class="cap">${years[0]} → 2040</div><table class="dt"><thead><tr><th>Age band</th><th class="num">${years[0]}</th><th class="num">2040</th><th class="num">Change</th></tr></thead><tbody>`+
+   ['0-15','16-64','65-84','85+'].map(b=>{const v0=bandAt(b,years[0]),v1=bandAt(b,2040);const ch=v0?Math.round(100*(v1-v0)/v0):null;return `<tr><td>${b}</td><td class="num">${Math.round(v0).toLocaleString()}</td><td class="num">${Math.round(v1).toLocaleString()}</td><td class="num" style="font-weight:600;color:${ch!=null&&ch>25?'#b45309':ch!=null&&ch<0?'#166f4d':'#191f2b'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</td></tr>`;}).join('')+
+   `</tbody></table><div class="note">${esc((proj[0]||{}).source||'')}</div></div></div>`;}
+  h+=`<div class="eyebrow">Demand & capacity outlook</div><div class="card" style="cursor:pointer" onclick="setStage('modelling')"><div class="h3">Open the modelling studio →</div><div class="cap">The demand &amp; capacity engine runs on the live activity baseline with this ONS demographic driver — demand and bed-need projections to 2040, with saved scenario runs.</div></div>`;v.innerHTML=h;countUps();
+  if(years.length)lineChart('popproj',years.map(String),[
+    {label:'65–84',data:years.map(y=>bandAt('65-84',y)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.30)',fill:'origin',tension:.25,pointRadius:0,borderWidth:2},
+    {label:'85+',data:years.map(y=>bandAt('85+',y)),borderColor:'#8a6a1e',backgroundColor:'rgba(138,106,30,.35)',fill:'-1',tension:.25,pointRadius:0,borderWidth:2}],
+    {plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{y:{stacked:true,ticks:{font:{size:9},color:'#9aa0af',callback:v=>Math.round(v/1000)+'k'},grid:{color:'#e8e5dc'}},x:{ticks:{maxTicksLimit:8,font:{size:9},color:'#9aa0af'},grid:{display:false}}}});
 }
-/* ===== MODELLING ===== */
-function renderModelling(v){
-  let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, editable demand &amp; capacity model. Adjust the assumptions and see future activity and the bed, theatre and diagnostic capacity the Group would need.</div>`;
-  h+=demandHtml();
+/* ===== MODELLING · A1 v1 demand & capacity engine (2026-07-02) =====
+   Replaces the illustrative hardcoded projection with a reproducible engine on live data.
+   METHOD (mirrored in the on-page 'Method & data' note):
+   1. BASELINE — latest-12-month sums (shorter series annualised and flagged) of monthly
+      adm_emergency, adm_elective, op_attendances (+ ae_attendances) across the system's
+      acute trusts, from the official series already loaded in `series`. Bed baseline =
+      latest average-daily beds_ga_available / beds_ga_occupied per trust (occupied falls
+      back to available × bed_occupancy% where a trust lacks an occupied series).
+   2. DEMOGRAPHIC DRIVER — ONS SNPP 2022-based projections by age band from
+      sr_population_projections [d8-v1]. Each band b carries an editable relative activity
+      weight w_b (defaults 0-15: 0.6, 16-64: 1.0, 65-84: 2.2, 85+: 3.6 — acute activity per
+      head rises steeply with age). Weighted population W(y) = Σ_b pop_b(y)·w_b.
+      Demographic demand index D(y) = W(y) / W(y0): normalising to the baseline-year mix
+      isolates the joint effect of population growth AND ageing on acute demand.
+   3. SCENARIO LAYERS — with t = y − y0, all compounding annually:
+        demand index    I(y) = D(y) · (1+gND)^t · (1−shift)^t
+          gND   = non-demographic growth %/yr (technology, thresholds, expectations)
+          shift = shift-of-care / prevention offset %/yr (demand removed from acute)
+        bed requirement B(y) = bedsOccupied₀ · I(y) · (1−prod)^t ÷ ceiling
+          prod  = LoS/productivity improvement %/yr (bed-need only); ceiling = planning
+          occupancy ceiling (default 92%) → staffed beds needed to run AT the ceiling.
+   4. OUTPUTS — projected NEL/elective/OP demand vs today, B(y) vs available beds, and
+      additional-bed requirements at 2031/2036/2040 plus theatre/diagnostic growth proxies.
+   Saved runs persist every slider + the baseline + per-year outputs to sr_scenarios,
+   sr_model_runs and sr_model_outputs, so every figure is versioned and reproducible. */
+const ENGINE_VERSION='v1-2026-07-02';
+const MOD_BANDS=['0-15','16-64','65-84','85+'];
+const ENGINE_INPUTS=['adm_emergency','adm_elective','op_attendances','ae_attendances','beds_ga_available','beds_ga_occupied','bed_occupancy'];
+let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},gnd:0.5,shift:0.5,prod:0.5,ceil:92,runsCache:null,last:null};
+function sysTrusts(){return orgs.filter(x=>TRUSTS.includes(x.code));}
+function mrow(orgId,code){return rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);}
+function last12(orgId,code){const r=mrow(orgId,code);if(!r)return null;const s=officialSeries(orgId,r.metric_id);if(!s.length)return null;const a=s.slice(-12);return{sum:a.reduce((t,x)=>t+Number(x.value),0),months:a.length,to:a[a.length-1].period};}
+function latestOf(orgId,code){const r=mrow(orgId,code);if(!r)return null;const s=officialSeries(orgId,r.metric_id);if(s.length)return{v:Number(s[s.length-1].value),period:s[s.length-1].period};return r.value!=null?{v:Number(r.value),period:r.period}:null;}
+function modelBaseline(){const ts=sysTrusts();
+  const agg=code=>{let ann=0,n=0,months=12,to='';ts.forEach(t=>{const x=last12(t.id,code);if(x&&x.months){ann+=x.sum/x.months*12;months=Math.min(months,x.months);if(x.to>to)to=x.to;n++;}});return n?{annual:Math.round(ann),orgs:n,months,to}:null;};
+  const nel=agg('adm_emergency'),el=agg('adm_elective'),op=agg('op_attendances'),ae=agg('ae_attendances');
+  let bedsAvail=0,bedsOcc=0,occs=[],bp='';ts.forEach(t=>{const a=latestOf(t.id,'beds_ga_available'),o=latestOf(t.id,'beds_ga_occupied'),pc=latestOf(t.id,'bed_occupancy');if(pc)occs.push(pc.v);if(a){bedsAvail+=a.v;if(a.period>bp)bp=a.period;bedsOcc+=o?o.v:(pc?a.v*pc.v/100:a.v*0.92);}});
+  return{nel,el,op,ae,bedsAvail:Math.round(bedsAvail),bedsOcc:Math.round(bedsOcc),occ:occs.length?occs.reduce((a,b)=>a+b,0)/occs.length:null,bedsPeriod:bp,trusts:ts.length};}
+async function renderModelling(v){
+  v.innerHTML='<div class="loading">Loading demand &amp; capacity engine…</div>';
+  if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
+  const BL=modelBaseline();const proj=popProjCache[sysSlug]||[];
+  let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, reproducible demand &amp; capacity engine: live activity baseline, ONS demographic projections weighted by age-band activity, and editable scenario layers — every run saveable and re-loadable.</div>`;
+  const missing=[!BL.nel&&'adm_emergency',!BL.el&&'adm_elective',!BL.op&&'op_attendances',!BL.bedsAvail&&'beds_ga_available',!proj.length&&'sr_population_projections'].filter(Boolean);
+  if(missing.length){h+=`<div class="banner">The engine needs its full baseline — missing for this system: ${missing.join(', ')}. Detailed activity series carry the full dataset for the BSW flagship system in this working prototype.</div>`;v.innerHTML=h;return;}
+  h+=`<div class="grid kpis">`+
+    kpi('Non-elective admissions',fmt(BL.nel.annual,'count'),'/yr',`12-mo sum to ${fmtPeriod(BL.nel.to)} · ${BL.nel.orgs} trusts`,'#191f2b')+
+    kpi('Elective admissions',fmt(BL.el.annual,'count'),'/yr',`incl. day case · to ${fmtPeriod(BL.el.to)}`,'#191f2b')+
+    kpi('Outpatient attendances',fmt(BL.op.annual,'count'),'/yr',`12-mo sum to ${fmtPeriod(BL.op.to)}`,'#191f2b')+
+    kpi('G&A beds available',fmt(BL.bedsAvail,'count'),'',`${fmt(BL.bedsOcc,'count')} occupied · ${BL.occ?fmt(BL.occ,'pct'):'—'} occupancy · ${fmtPeriod(BL.bedsPeriod)}`,'#b45309')+`</div>`;
+  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Assumptions</div><div class="cap">Age-band activity weights (relative acute activity per head) and scenario layers — all editable, all persisted with a saved run</div>`
+   +MOD_BANDS.map((b,i)=>`<div class="slabel"${i?' style="margin-top:8px"':''}><span>Activity weight · ${b}</span><b id="mwv${i}">${MOD.w[b].toFixed(1)}×</b></div><input id="mw${i}" type="range" min="0" max="5" step="0.1" value="${MOD.w[b]}" oninput="computeModel()">`).join('')
+   +`<div style="border-top:1px solid var(--line2);margin:12px 0 10px"></div>`
+   +`<div class="slabel"><span>Non-demographic growth</span><b id="mgndv">${MOD.gnd.toFixed(1)}%/yr</b></div><input id="mgnd" type="range" min="0" max="3" step="0.1" value="${MOD.gnd}" oninput="computeModel()">`
+   +`<div class="slabel" style="margin-top:8px"><span>Shift-of-care / prevention offset</span><b id="mshiftv">${MOD.shift.toFixed(1)}%/yr</b></div><input id="mshift" type="range" min="0" max="3" step="0.1" value="${MOD.shift}" oninput="computeModel()">`
+   +`<div class="slabel" style="margin-top:8px"><span>LoS / productivity improvement (beds only)</span><b id="mprodv">${MOD.prod.toFixed(1)}%/yr</b></div><input id="mprod" type="range" min="0" max="3" step="0.1" value="${MOD.prod}" oninput="computeModel()">`
+   +`<div class="slabel" style="margin-top:8px"><span>Occupancy ceiling</span><b id="mceilv">${MOD.ceil}%</b></div><input id="mceil" type="range" min="85" max="100" step="0.5" value="${MOD.ceil}" oninput="computeModel()">`
+   +`<div class="note" id="mnote"></div></div>`
+   +`<div class="card"><div class="h3">Projected demand to 2040</div><div class="cap" id="mdcap"></div><div class="chartbox"><canvas id="a1demand"></canvas></div></div></div>`;
+  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Bed requirement vs available beds</div><div class="cap">Future bed need = occupied beds × demand index × (1−productivity)^t ÷ occupancy ceiling</div><div class="chartbox"><canvas id="a1beds"></canvas></div></div>
+   <div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists every assumption, the baseline and per-year outputs to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div><div class="cap" style="margin-top:16px;margin-bottom:4px">Previous runs · this database</div><div id="mrunlist"><div class="note">Loading…</div></div></div></div>`;
   h+=`<div class="eyebrow">Future capacity requirements</div><div class="grid three" id="reqcards"></div>`;
-  v.innerHTML=h;computeDemand();
+  h+=`<div class="prov" id="mprov"></div>`;
+  h+=methodHtml();
+  v.innerHTML=h;computeModel();loadSavedRuns();
 }
-function demandHtml(){return `<div class="two">
-  <div class="card"><div class="h3">Assumptions</div><div class="cap">Editable and transparent</div>
-  <div class="slabel"><span>Annual demand growth</span><b id="dg">2.0%</b></div><input id="growth" type="range" min="0" max="5" step="0.1" value="2.0" oninput="computeDemand()">
-  <div class="slabel" style="margin-top:8px"><span>Efficiency / shift-of-care offset</span><b id="do">0.5%</b></div><input id="offset" type="range" min="0" max="3" step="0.1" value="0.5" oninput="computeDemand()">
-  <div class="slabel" style="margin-top:8px"><span>Horizon</span><b id="dy">10 yrs</b></div><input id="years" type="range" min="1" max="10" step="1" value="10" oninput="computeDemand()">
-  <div class="note" id="dnet"></div></div>
-  <div class="card"><div class="h3">Projected demand vs capacity</div><div class="cap" id="dcap"></div><div class="chartbox sm"><canvas id="demandchart"></canvas></div></div></div>`;}
-function computeDemand(){const g=parseFloat(val('growth')),o=parseFloat(val('offset')),y=parseInt(val('years'));if(isNaN(g))return;
-  document.getElementById('dg').textContent=g.toFixed(1)+'%';document.getElementById('do').textContent=o.toFixed(1)+'%';document.getElementById('dy').textContent=y+' yrs';
-  const net=(g-o)/100,badm=95000,cap=98000,beds0=1560,th0=42,ct0=11;const yrs=[],dem=[],capL=[];
-  for(let i=0;i<=y;i++){yrs.push('Y'+i);dem.push(Math.round(badm*Math.pow(1+net,i)));capL.push(cap);}
-  const factor=Math.pow(1+net,y);const gap=dem[dem.length-1]-cap,beds=Math.max(0,Math.round(gap*5/365/0.92)),per=y?Math.round(beds/y):0;
-  document.getElementById('dnet').textContent='Net growth '+(net*100).toFixed(1)+'%/yr → about a '+per+'-bed ward of extra capacity each year.';
-  document.getElementById('dcap').textContent='Emergency admissions vs current capacity ('+cap.toLocaleString()+')';
-  if(charts.demand)charts.demand.destroy();const cv=document.getElementById('demandchart');
-  if(cv)charts.demand=new Chart(cv.getContext('2d'),{type:'line',data:{labels:yrs,datasets:[{label:'Projected demand',data:dem,borderColor:'#b3261e',backgroundColor:'rgba(211,67,63,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},{label:'Capacity',data:capL,borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]},options:{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}},scales:{y:{ticks:{font:{size:9},color:'#9aa0af',callback:v=>(v/1000)+'k'},grid:{color:'#e8e5dc'}},x:{ticks:{font:{size:9},color:'#9aa0af'},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});
-  const rc=document.getElementById('reqcards');if(rc){rc.innerHTML=
-    reqCard('Additional G&A beds',Math.round(beds0*(factor-1)),'beds by year '+y)+
-    reqCard('Additional theatres',Math.max(0,Math.round(th0*(factor-1))),'to hold elective throughput')+
-    reqCard('Additional CT/MRI',Math.max(0,Math.round(ct0*(factor-1))),'diagnostic capacity');}
+function computeModel(){
+  const BL=modelBaseline();const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
+  if(!proj.length||!BL.nel||!BL.el||!BL.op)return;
+  MOD_BANDS.forEach((b,i)=>{const e=document.getElementById('mw'+i);if(e)MOD.w[b]=parseFloat(e.value);const l=document.getElementById('mwv'+i);if(l)l.textContent=MOD.w[b].toFixed(1)+'×';});
+  ['gnd','shift','prod','ceil'].forEach(k=>{const e=document.getElementById('m'+k);if(e)MOD[k]=parseFloat(e.value);const l=document.getElementById('m'+k+'v');if(l)l.textContent=k==='ceil'?MOD.ceil+'%':MOD[k].toFixed(1)+'%/yr';});
+  const years=[...new Set(proj.map(p=>p.year))].sort((a,b)=>a-b);const y0=years.includes(2026)?2026:years[0];
+  const yrs=years.filter(y=>y>=y0);if(!yrs.length)return;
+  const popB=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
+  const W=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*MOD.w[b],0);const W0=W(y0)||1;
+  /* I(y) = D(y)·(1+gND)^t·(1−shift)^t where D(y)=W(y)/W(y0) — see method block above */
+  const idx=yrs.map(y=>{const t=y-y0;return W(y)/W0*Math.pow(1+MOD.gnd/100,t)*Math.pow(1-MOD.shift/100,t);});
+  const nel=idx.map(i=>Math.round(BL.nel.annual*i)),el=idx.map(i=>Math.round(BL.el.annual*i)),op=idx.map(i=>Math.round(BL.op.annual*i));
+  /* B(y) = bedsOccupied₀·I(y)·(1−prod)^t ÷ ceiling */
+  const bedNeed=yrs.map((y,k)=>{const t=y-y0;return Math.round(BL.bedsOcc*idx[k]*Math.pow(1-MOD.prod/100,t)/(MOD.ceil/100));});
+  MOD.last={yrs,y0,idx,nel,el,op,bedNeed,BL};
+  const at=y=>{const k=yrs.indexOf(y);return k<0?null:k;};
+  const k31=at(2031),k36=at(2036);const k40=at(2040)!=null?at(2040):yrs.length-1;
+  ['a1demand','a1beds'].forEach(id=>{if(charts[id]){try{charts[id].destroy()}catch(e){}delete charts[id];}});
+  lineChart('a1demand',yrs.map(String),[
+    {label:'Non-elective admissions',data:nel,borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},
+    {label:'Elective admissions',data:el,borderColor:'#8a6a1e',backgroundColor:'transparent',tension:.25,pointRadius:0,borderWidth:2},
+    {label:'Today (NEL)',data:yrs.map(()=>BL.nel.annual),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2}]);
+  lineChart('a1beds',yrs.map(String),[
+    {label:'Beds required',data:bedNeed,borderColor:'#b45309',backgroundColor:'rgba(180,83,9,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},
+    {label:'Beds available today',data:yrs.map(()=>BL.bedsAvail),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]);
+  const dd=Math.round((W(yrs[k40])/W0-1)*100),dg=Math.round((idx[k40]-1)*100);
+  const mn=document.getElementById('mnote');if(mn)mn.textContent=`Demographic index ${dd>=0?'+':''}${dd}% by ${yrs[k40]}; with the growth and shift layers the demand index is ${idx[k40].toFixed(2)} (${dg>=0?'+':''}${dg}%).`;
+  const mc=document.getElementById('mdcap');if(mc)mc.textContent=`Annualised activity vs the ${y0} baseline · demographic driver + scenario layers`;
+  const addBeds=k=>k==null?null:bedNeed[k]-BL.bedsAvail;
+  const rc=document.getElementById('reqcards');if(rc)rc.innerHTML=
+    reqCard('Additional beds by 2031',addBeds(k31),'vs '+fmt(BL.bedsAvail,'count')+' available · at '+MOD.ceil+'% ceiling')+
+    reqCard('Additional beds by 2036',addBeds(k36),'occupied-bed baseline '+fmt(BL.bedsOcc,'count'))+
+    reqCard('Additional beds by 2040',addBeds(k40),'requirement '+fmt(bedNeed[k40],'count')+' beds')+
+    reqCard('Elective demand by 2040',el[k40]-BL.el.annual,'theatres proxy · +'+Math.round((el[k40]/BL.el.annual-1)*100)+'% — theatre count baseline pending estates link')+
+    reqCard('Outpatient demand by 2040',op[k40]-BL.op.annual,'diagnostics proxy · +'+Math.round((op[k40]/BL.op.annual-1)*100)+'% on '+fmt(BL.op.annual,'count')+'/yr')+
+    reqCard('A&E attendances by 2040',BL.ae?Math.round(BL.ae.annual*idx[k40])-BL.ae.annual:null,'front-door proxy on '+(BL.ae?fmt(BL.ae.annual,'count'):'—')+'/yr');
+  const rn=document.getElementById('mrunname');if(rn)rn.textContent='Run name: '+runName();
+  const pv=document.getElementById('mprov');if(pv)pv.textContent=`Inputs: adm_emergency, adm_elective, op_attendances${BL.ae?', ae_attendances':''} (latest-12-month sums${BL.nel.months<12?', '+BL.nel.months+'-month series annualised':''}, to ${fmtPeriod(BL.nel.to)}) · beds_ga_available, beds_ga_occupied, bed_occupancy (latest month, ${fmtPeriod(BL.bedsPeriod)}) · ONS SNPP 2022 via sr_population_projections [d8-v1] · engine ${ENGINE_VERSION}. Bed-need formula: occupied × demand index × (1−productivity)^t ÷ occupancy ceiling.`;
 }
-function reqCard(t,n,s){return `<div class="card"><div class="kpi"><div class="l">${t}</div><div class="v" style="color:#b45309">+${n}</div><div class="s">${s}</div></div></div>`;}
-function val(id){const e=document.getElementById(id);return e?e.value:NaN;}
-window.computeDemand=computeDemand;
+function reqCard(t,n,s){return `<div class="card"><div class="kpi"><div class="l">${t}</div><div class="v" style="color:#b45309">${n==null?'—':(n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()}</div><div class="s">${s}</div></div></div>`;}
+function runName(){const d=new Date().toISOString().slice(0,10);return `${sysSlug} — ${d} — nd${MOD.gnd}/shift${MOD.shift}/prod${MOD.prod}/occ${MOD.ceil}/w${MOD_BANDS.map(b=>MOD.w[b]).join('·')}`;}
+async function saveModelRun(){const L=MOD.last;if(!L)return;const btn=document.getElementById('msave'),note=document.getElementById('msavenote');if(btn)btn.disabled=true;if(note)note.textContent='Saving…';
+  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),non_demographic_growth_pct:MOD.gnd,shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,
+    baseline:{year:L.y0,nel_annual:L.BL.nel.annual,el_annual:L.BL.el.annual,op_annual:L.BL.op.annual,ae_annual:L.BL.ae?L.BL.ae.annual:null,beds_available:L.BL.bedsAvail,beds_occupied:L.BL.bedsOcc,occupancy_pct:L.BL.occ,activity_to:L.BL.nel.to,beds_period:L.BL.bedsPeriod,trusts:TRUSTS.slice()}};
+  try{
+    const{data:sc,error:e1}=await sb.from('sr_scenarios').insert({name:runName(),params,version:1,notes:'A1 v1 in-app engine — saved from the modelling studio'}).select('id').single();if(e1)throw e1;
+    const k40=L.yrs.indexOf(2040)>=0?L.yrs.indexOf(2040):L.yrs.length-1;
+    const summary={engine:ENGINE_VERSION,headline:{demand_index_2040:+L.idx[k40].toFixed(3),nel_2040:L.nel[k40],el_2040:L.el[k40],op_2040:L.op[k40],beds_required_2040:L.bedNeed[k40],beds_available:L.BL.bedsAvail,beds_gap_2040:L.bedNeed[k40]-L.BL.bedsAvail}};
+    const{data:run,error:e2}=await sb.from('sr_model_runs').insert({name:runName(),scenario_type:'demand_capacity',assumptions:params,status:'completed',notes:'A1 v1 engine run — per-year outputs in sr_model_outputs (variant central)',scenario_id:sc.id,baseline_year:L.y0,horizon_years:L.yrs[L.yrs.length-1]-L.y0,summary}).select('id').single();if(e2)throw e2;
+    const outs=[];L.yrs.forEach((y,k)=>{outs.push(
+      {model_run_id:run.id,year:y,metric:'projected_demand_nel',value:L.nel[k],unit:'admissions',variant:'central'},
+      {model_run_id:run.id,year:y,metric:'projected_demand_el',value:L.el[k],unit:'admissions',variant:'central'},
+      {model_run_id:run.id,year:y,metric:'projected_demand_op',value:L.op[k],unit:'attendances',variant:'central'},
+      {model_run_id:run.id,year:y,metric:'beds_required',value:L.bedNeed[k],unit:'beds',variant:'central'},
+      {model_run_id:run.id,year:y,metric:'beds_gap',value:L.bedNeed[k]-L.BL.bedsAvail,unit:'beds',variant:'central'});});
+    const{error:e3}=await sb.from('sr_model_outputs').insert(outs);if(e3)throw e3;
+    if(note)note.textContent='Saved — '+outs.length+' output rows · run '+run.id.slice(0,8)+'…';
+    MOD.runsCache=null;loadSavedRuns();
+  }catch(e){console.warn('save run failed',e);if(note)note.textContent='Save failed — '+(e.message||'insert blocked');}
+  if(btn)btn.disabled=false;}
+async function loadSavedRuns(){const el=document.getElementById('mrunlist');if(!el)return;
+  if(!MOD.runsCache){try{const{data,error}=await sb.from('sr_model_runs').select('id,name,created_at,scenario_type,status,assumptions,summary').order('created_at',{ascending:false}).limit(25);if(error)throw error;MOD.runsCache=data||[];}catch(e){el.innerHTML='<div class="note">Could not load saved runs (network).</div>';return;}}
+  const runs=MOD.runsCache.filter(r=>{const a=r.assumptions||{};return !a.system||a.system===sysSlug;});
+  if(!runs.length){el.innerHTML='<div class="note">No saved runs yet for this system.</div>';return;}
+  el.innerHTML=runs.map(r=>{const a=r.assumptions||{},s=(r.summary||{}).headline||{};const mine=a.engine===ENGINE_VERSION;
+    const key=mine?`beds req. 2040: ${fmt(s.beds_required_2040,'count')} (gap ${s.beds_gap_2040>=0?'+':''}${fmt(s.beds_gap_2040,'count')})`:'segmented planning-engine seed';
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.name)}">${esc(r.name)}</div><div class="muted" style="font-size:11px">${r.created_at?new Date(r.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):''} · ${esc(r.scenario_type||'')} · ${key}</div></div>${mine?`<button class="btn ghost" style="font-size:11px;padding:4px 10px;flex:none" onclick="loadModelRun('${r.id}')">Load</button>`:''}</div></div>`;}).join('');}
+function loadModelRun(id){const r=(MOD.runsCache||[]).find(x=>x.id===id);if(!r||!r.assumptions)return;const a=r.assumptions;
+  if(a.age_band_weights)MOD_BANDS.forEach(b=>{if(a.age_band_weights[b]!=null)MOD.w[b]=Number(a.age_band_weights[b]);});
+  if(a.non_demographic_growth_pct!=null)MOD.gnd=Number(a.non_demographic_growth_pct);
+  if(a.shift_of_care_offset_pct!=null)MOD.shift=Number(a.shift_of_care_offset_pct);
+  if(a.productivity_pct!=null)MOD.prod=Number(a.productivity_pct);
+  if(a.occupancy_ceiling_pct!=null)MOD.ceil=Number(a.occupancy_ceiling_pct);
+  render();}
+function methodHtml(){
+  const codes=[...new Set(ENGINE_INPUTS.concat(...Object.values(DRIVER_METRICS)))].sort();
+  const rd1=orgs.find(o=>o.code==='RD1');
+  const rowFor=code=>{let r=rd1?rows.find(x=>x.metric_code===code&&x.organisation_id===rd1.id):null;if(!r)r=rows.find(x=>x.metric_code===code&&TRUSTS.includes(x.org_code));return r||rows.find(x=>x.metric_code===code);};
+  const tr=codes.map(code=>{const r=rowFor(code);return `<tr><td class="mono" style="font-size:11px">${esc(code)}</td><td>${esc(r?r.metric_name:'—')}</td><td>${esc(r?r.unit:'—')}</td><td class="num">${r&&r.standard!=null?fmt(r.standard,r.unit):'—'}</td><td style="font-size:11px">${r?`${esc(r.source||'—')} · ${esc(r.confidence||'—')} · ${fmtPeriod(r.period)}`:'not loaded for this system'}</td></tr>`;}).join('');
+  return `<details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Method &amp; data</summary>
+  <div style="font-size:13px;color:var(--ink2);margin-top:10px;max-width:860px">The engine takes the latest twelve months of non-elective admissions, elective admissions and outpatient attendances for the system's acute trusts and treats their sum as the annual baseline (shorter series are annualised and flagged in the provenance line). It then builds a demographic demand index from ONS 2022-based sub-national population projections: each age band is multiplied by an editable activity weight reflecting how much acute care that band uses per head, and the weighted population of each future year is divided by the weighted population of the baseline year. Demand in year y is the baseline multiplied by this index, compounded by a non-demographic growth rate and reduced by a shift-of-care/prevention offset, both editable. The bed requirement additionally applies an annual length-of-stay/productivity improvement (beds only) and divides by the planning occupancy ceiling, so it answers: how many staffed G&amp;A beds would be needed to run at the ceiling? Theatre and diagnostic figures are growth proxies scaled from elective and outpatient demand — not counts of physical assets. Every saved run stores the full assumption set, the baseline numbers and the per-year outputs, so any figure on this page can be reproduced from its run record.</div>
+  <div class="cap" style="margin-top:14px;margin-bottom:4px">Data dictionary · every metric used by the driver tables and this engine · generated live from the metric register</div>
+  <div style="overflow-x:auto"><table class="dt"><thead><tr><th>Code</th><th>Name</th><th>Unit</th><th class="num">Standard</th><th>Source of latest row (RD1 or first trust)</th></tr></thead><tbody>${tr}</tbody></table></div></details>`;}
+window.computeModel=computeModel;window.saveModelRun=saveModelRun;window.loadModelRun=loadModelRun;
+
+/* ===== APPRAISE · U1/S4 — surfaces the dormant option-appraisal machinery =====
+   Data: sr_options (4 longlist options promoted from AI drafts) + sr_option_components /
+   _impacts (8 qualitative domains) / _risks / _scores (per-LENS AI appraisal scores — no
+   per-criterion scores exist yet) / _finance_profiles+_years / _workforce_profiles+
+   _requirements; sr_ai_option_drafts carries issue_ids — the REGISTERED issue→option link
+   (options.source_draft_id → draft.issue_ids → sr_issues.id); sr_statutory_tests hangs off
+   option_id; sr_packs/_sections/_exhibits/_exports form the pack register (currently empty
+   apart from three export smoke-tests with no pack_id).
+   Matrix cells: derived from qualitative impact ratings (positive 75 · mixed 50 · negative
+   25 · unknown —), impact domain → ITT criterion: quality→quality_safety,
+   inequalities→equity, workforce→workforce, capacity→estates_digital, finance→financial_roi,
+   access→travel_access (deliverability & patient_experience shown in the option detail
+   only). Cells are capped as indicative; the stored per-lens AI score is shown alongside. */
+let optCache=null;
+async function ensureOptions(){if(optCache)return optCache;
+  try{const [o,c,im,rk,sc,fp,fy,wp,wr,dr,st,pk,ps,pe,px]=await Promise.all([
+    sb.from('sr_options').select('*'),sb.from('sr_option_components').select('*'),sb.from('sr_option_impacts').select('*'),
+    sb.from('sr_option_risks').select('*'),sb.from('sr_option_scores').select('*'),
+    sb.from('sr_option_finance_profiles').select('*'),sb.from('sr_option_finance_years').select('*'),
+    sb.from('sr_option_workforce_profiles').select('*'),sb.from('sr_option_workforce_requirements').select('*'),
+    sb.from('sr_ai_option_drafts').select('id,title,issue_ids,promoted_option_id,status'),
+    sb.from('sr_statutory_tests').select('*'),
+    sb.from('sr_packs').select('*'),sb.from('sr_pack_sections').select('*'),
+    sb.from('sr_pack_exhibits').select('id,pack_id,exhibit_order,exhibit_type,section,title,slide_status,claim_status'),
+    sb.from('sr_pack_exports').select('*')]);
+    optCache={options:o.data||[],components:c.data||[],impacts:im.data||[],risks:rk.data||[],scores:sc.data||[],finProfiles:fp.data||[],finYears:fy.data||[],wfProfiles:wp.data||[],wfReqs:wr.data||[],drafts:dr.data||[],tests:st.data||[],packs:pk.data||[],packSections:ps.data||[],packExhibits:pe.data||[],packExports:px.data||[]};
+  }catch(e){console.warn('options fetch failed',e);optCache={options:[],components:[],impacts:[],risks:[],scores:[],finProfiles:[],finYears:[],wfProfiles:[],wfReqs:[],drafts:[],tests:[],packs:[],packSections:[],packExhibits:[],packExports:[],error:true};}
+  return optCache;}
+function scoreCol(v){return v==null?'#9aa0af':v>=70?'#166f4d':v>=45?'#b45309':'#b3261e';}
+const IMPACT_CRIT={quality:'quality_safety',inequalities:'equity',workforce:'workforce',capacity:'estates_digital',finance:'financial_roi',access:'travel_access'};
+const RATING_SCORE={positive:75,mixed:50,negative:25};
+const RISK_ORDER={significant:0,high:0,medium:1,low:2,unknown:3};
+function optCrit(o,critCode){if(!optCache)return null;const im=(optCache.impacts||[]).find(x=>x.option_id===o.id&&IMPACT_CRIT[x.domain]===critCode);if(!im)return null;const v=RATING_SCORE[im.rating];return v==null?null:v;}
+function optWsum(o){let s=0,tw=0;criteria.forEach(c=>{const v=optCrit(o,c.code);if(v==null)return;const w=weights[c.code]||0;s+=v*w;tw+=w;});return tw?s/tw:null;}
+function optDraft(o){return optCache?(optCache.drafts||[]).find(d=>d.id===o.source_draft_id||d.promoted_option_id===o.id):null;}
+function optIssues(o){const d=optDraft(o);return d&&d.issue_ids?d.issue_ids.map(id=>issues.find(i=>i.id===id)).filter(Boolean):[];}
+function optShort(t){return (t||'').replace(/^Draft option \d+ — /,'');}
+function aiScore(o,lens){const s=optCache?(optCache.scores||[]).find(x=>x.option_id===o.id&&x.lens===lens):null;return s?Math.round(Number(s.score)):null;}
+function testMeta(s){return {met:['met','#166f4d'],passed:['met','#166f4d'],partial:['partial','#b45309'],needs_evidence:['needs evidence','#b45309'],not_started:['not started','#9aa0af'],high_risk:['high risk','#b3261e'],unmet:['unmet','#b3261e']}[s]||[(s||'not assessed').replace(/_/g,' '),'#9aa0af'];}
+async function renderOptions(v){v.innerHTML='<div class="loading">Loading options…</div>';const OC=await ensureOptions();
+  const opts=(OC.options||[]).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+  let h=`<h1 class="serif">Options &amp; appraisal</h1><div class="lead">The long list: configuration options developed from the issue register, appraised against the six ITT criteria.</div>`;
+  if(sysSlug!==BSW_SLUG)h+=`<div class="banner">The option set belongs to the BSW flagship system in this working prototype — shown here unchanged.</div>`;
+  if(OC.error)h+=`<div class="banner">Option data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
+  if(!opts.length){if(!OC.error)h+=`<div class="card"><div class="h3">No options yet</div><div class="cap">Options are promoted from AI drafts generated off the issue register.</div></div>`;v.innerHTML=h;return;}
+  h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+opts.map(o=>{const iss=optIssues(o);const stCol={proposed:'#1f3a78',appraised:'#7a6200',shortlisted:'#166f4d',rejected:'#6a7183'}[o.status]||'#1f3a78';
+    return `<div class="card" style="cursor:pointer;display:flex;flex-direction:column" onclick="openOption('${o.id}')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div class="h3" style="font-size:14px">${esc(optShort(o.title))}</div><span class="pill" style="background:${stCol};flex:none">${esc(o.status||'draft')}</span></div><div class="cap" style="margin-bottom:8px">${esc((o.option_type||'').replace(/_/g,' '))} · ${esc(o.stage||'longlist')} · ${esc(o.owner||'')}</div><div style="font-size:12.5px;color:var(--ink2);flex:1">${esc((o.summary||'').slice(0,190))}${(o.summary||'').length>190?'…':''}</div><div style="margin-top:10px">${iss.map(i=>`<span class="pill" style="background:#e8e5dc;color:#3c4354;cursor:pointer;margin-right:5px" onclick="event.stopPropagation();openIssue('${esc(i.code)}')">${esc(i.code.length>28?i.code.slice(0,26)+'…':i.code)}</span>`).join('')||'<span class="note">no registered issue link</span>'}</div></div>`;}).join('')+`</div>`;
+  h+=`<div class="eyebrow">Appraisal matrix · six ITT criteria</div>`+lensBar();
+  h+=`<div class="card" style="overflow-x:auto;padding:12px 14px"><table class="dt"><thead><tr><th style="min-width:200px">Option</th>${criteria.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num" style="border-left:1px solid var(--line)">Weighted · ${esc(lensName)}</th><th class="num">AI appraisal</th></tr></thead><tbody>`+
+    opts.map(o=>{const tot=optWsum(o);const ai=aiScore(o,'balanced')!=null?aiScore(o,'balanced'):aiScore(o,'quality_safety_first');
+      return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,84))}</td>${criteria.map(c=>{const s=optCrit(o,c.code);return `<td class="num" style="font-weight:600;color:${scoreCol(s)}">${s==null?'—':s}</td>`;}).join('')}<td class="num" style="border-left:1px solid var(--line);font-weight:700;color:${scoreCol(tot)}">${tot==null?'—':Math.round(tot)}</td><td class="num" style="color:${scoreCol(ai)}">${ai==null?'—':ai}</td></tr>`;}).join('')+
+    `</tbody></table><div class="note">Criterion cells are derived from qualitative impact ratings (positive 75 · mixed 50 · negative 25; impact domains mapped quality→quality &amp; safety, inequalities→equity, workforce→workforce, capacity→estates &amp; digital, finance→financial &amp; ROI, access→travel &amp; access) — no per-criterion option scores exist yet, so treat cells as indicative. Weighted = live ${esc(lensName)} lens weights over these cells. AI appraisal = stored balanced-lens option score (directional, asr-option-appraisal-v1).</div></div>`;
+  h+=`<div class="note" style="margin-top:10px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration.</div>`;
+  v.innerHTML=h;}
+function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(x=>x.id===id);if(!o)return;hideTip();
+  const comps=(optCache.components||[]).filter(x=>x.option_id===id);
+  const imps=(optCache.impacts||[]).filter(x=>x.option_id===id);
+  const risks=(optCache.risks||[]).filter(x=>x.option_id===id).sort((a,b)=>((RISK_ORDER[a.rating]!=null?RISK_ORDER[a.rating]:9)-(RISK_ORDER[b.rating]!=null?RISK_ORDER[b.rating]:9)));
+  const fp=(optCache.finProfiles||[]).find(x=>x.option_id===id);const fys=fp?(optCache.finYears||[]).filter(x=>x.profile_id===fp.id).sort((a,b)=>a.year_index-b.year_index):[];
+  const wp=(optCache.wfProfiles||[]).find(x=>x.option_id===id);const wrs=wp?(optCache.wfReqs||[]).filter(x=>x.profile_id===wp.id):[];
+  const tests=(optCache.tests||[]).filter(x=>x.option_id===id);
+  const iss=optIssues(o);
+  const cs=criteria.map(c=>({c,v:optCrit(o,c.code)})).filter(x=>x.v!=null);
+  const hi=cs.length?cs.reduce((a,b)=>b.v>a.v?b:a):null,lo=cs.length?cs.reduce((a,b)=>b.v<a.v?b:a):null;
+  const tMet=tests.filter(t=>['met','passed'].includes(t.status)).length,tRed=tests.filter(t=>['high_risk','unmet'].includes(t.status)).length;
+  const ratingCol=r=>({positive:'#166f4d',mixed:'#b45309',negative:'#b3261e'}[r]||'#9aa0af');
+  const riskCol=r=>({significant:'#b3261e',high:'#b3261e',medium:'#b45309',low:'#166f4d'}[r]||'#9aa0af');
+  let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" style="max-width:740px" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(optShort(o.title))}</h2><div class="ms">${esc((o.option_type||'').replace(/_/g,' '))} · ${esc(o.stage||'')} · ${esc(o.status||'')} · ${esc(o.owner||'')}</div>
+   <div style="font-size:13px;color:var(--ink2);margin-bottom:12px">${esc(o.summary||'')}</div>
+   <div class="prov" style="margin:0 0 12px">Traceability — issue → option → criteria → statutory tests (registered link: this option's promoted AI draft carries the issue register entries):<br>${iss.length?iss.map(i=>`<a href="#" onclick="openIssue('${esc(i.code)}');return false">${esc(i.title)}</a>`).join(' · '):'no registered issue link'} → <b>this option</b> → strongest ${hi?`<b style="color:${scoreCol(hi.v)}">${esc(hi.c.name)} (${hi.v})</b>`:'—'} · weakest ${lo?`<b style="color:${scoreCol(lo.v)}">${esc(lo.c.name)} (${lo.v})</b>`:'—'} → tests: <b>${tMet}/${tests.length} met</b>${tRed?`, <b style="color:#b3261e">${tRed} high-risk/unmet</b>`:''} — detail in Tests &amp; packs</div>`;
+  if(comps.length)h+=`<div class="cap" style="margin-bottom:4px">Components (${comps.length})</div>`+comps.map(c=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--line2)"><span class="pill" style="background:${c.component_type==='site'?'#1f3a78':'#8a6a1e'};margin-right:6px">${esc(c.component_type)}</span>${esc(c.description||'')}${c.phasing?` <span class="muted" style="font-size:10.5px">· ${esc((c.phasing||'').replace(/_/g,' '))}</span>`:''}</div>`).join('');
+  if(imps.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Impact appraisal by domain</div>`+imps.map(im=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--line2)"><span class="pill" style="background:${ratingCol(im.rating)};margin-right:6px">${esc((im.domain||'').replace(/_/g,' '))} · ${esc(im.rating||'')}</span>${esc((im.impact_summary||'').slice(0,180))}${(im.impact_summary||'').length>180?'…':''}<span class="muted" style="font-size:10.5px"> · confidence ${esc(im.confidence||'—')}</span></div>`).join('');
+  if(risks.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Top risks (${risks.length} on register · severity-sorted)</div>`+risks.slice(0,6).map(r=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--line2)"><span class="pill" style="background:${riskCol(r.rating)};margin-right:6px">${esc(r.rating||'unknown')} · ${esc((r.risk_type||'').replace(/_/g,' '))}</span>${esc((r.description||'').slice(0,170))}${r.mitigation?`<div class="muted" style="font-size:11px;margin-top:2px">mitigation: ${esc((r.mitigation||'').slice(0,140))}</div>`:''}</div>`).join('');
+  if(fys.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Finance profile · ${esc((fp.finance_status||'').replace(/_/g,' '))} · confidence ${esc(fp.confidence||'—')}</div><div class="chartbox" style="height:160px"><canvas id="optfin"></canvas></div><div class="note">${esc(fp.caveat||'')}</div>`;
+  if(wrs.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Workforce requirements${wp&&wp.workforce_status?` · ${esc(wp.workforce_status.replace(/_/g,' '))}`:''}</div><table class="dt"><thead><tr><th>Staff group</th><th class="num">FTE change</th><th>Risk</th><th>Rota dependency</th></tr></thead><tbody>`+wrs.map(w=>`<tr><td>${esc((w.staff_group||'').replace(/_/g,' '))}</td><td class="num">${Number(w.fte_change)>=0?'+':''}${Number(w.fte_change).toFixed(2)}</td><td><span class="pill" style="background:${riskCol(w.risk_rating)}">${esc(w.risk_rating||'—')}</span></td><td style="font-size:11.5px">${esc(w.rota_dependency||'')}</td></tr>`).join('')+`</tbody></table>`;
+  h+=`<div class="note" style="margin-top:12px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration.</div></div></div>`;
+  document.getElementById('modalroot').innerHTML=h;
+  if(fys.length){const labels=fys.map(f=>'Yr '+f.year_index);const net=fys.map(f=>+(Number(f.gross_savings_m||0)-Number(f.recurrent_cost_m||0)-Number(f.non_recurrent_cost_m||0)-Number(f.capital_cost_m||0)).toFixed(2));
+    lineChart('optfin',labels,[{label:'Net position £m (gross savings − recurrent − non-recurrent − capital)',data:net,borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.08)',fill:true,tension:.25,pointRadius:2,borderWidth:2},{label:'Break-even',data:fys.map(()=>0),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1}]);}}
+async function renderAssurance(v){v.innerHTML='<div class="loading">Loading tests &amp; packs…</div>';const OC=await ensureOptions();
+  const tests=OC.tests||[],opts=(OC.options||[]).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+  let h=`<h1 class="serif">Tests &amp; packs</h1><div class="lead">Statutory and assurance tests per option — the evidence trail an NHSE gateway review will walk — and the evidence-pack register. Readiness is tracked here; PCBC assembly itself is out of scope for this prototype.</div>`;
+  if(OC.error)h+=`<div class="banner">Assurance data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
+  const counts={};tests.forEach(t=>{counts[t.status]=(counts[t.status]||0)+1;});
+  if(tests.length)h+=`<div class="grid kpis">`+Object.keys(counts).sort().map(s=>{const m=testMeta(s);return kpi(m[0],String(counts[s]),'','of '+tests.length+' statutory tests',m[1]);}).join('')+`</div>`;
+  opts.forEach(o=>{const ts=tests.filter(t=>t.option_id===o.id);if(!ts.length)return;
+    h+=`<div class="eyebrow">${esc(optShort(o.title))}</div><div class="list">`+ts.map(t=>{const m=testMeta(t.status);
+      return `<div class="row" style="cursor:default"><span class="tag" style="background:${m[1]}"></span><div class="m"><div class="t1">${esc(t.test_name)}</div><div class="t2">${esc((t.evidence_summary||'').slice(0,230))}${t.gaps?`<div class="muted" style="font-size:11px;margin-top:2px">gaps: ${esc(t.gaps.split(' | ').slice(0,3).join(' · '))}</div>`:''}</div></div><span class="pill" style="background:${m[1]};flex:none">${m[0]}</span></div>`;}).join('')+`</div>`;});
+  h+=`<div class="eyebrow">Evidence-pack register</div>`;
+  const packs=OC.packs||[];
+  if(packs.length)h+=`<div class="list">`+packs.map(p=>{const secs=(OC.packSections||[]).filter(s=>s.pack_id===p.id),exs=(OC.packExhibits||[]).filter(x=>x.pack_id===p.id),xps=(OC.packExports||[]).filter(x=>x.pack_id===p.id);
+    return `<div class="row" style="cursor:default"><span class="tag" style="background:#1f3a78"></span><div class="m"><div class="t1">${esc(p.title)}</div><div class="t2">${esc(p.status||'')} · v${p.current_version||1} · ${secs.length} sections · ${exs.length} exhibits · ${xps.length} exports${p.qa_status?` · QA ${esc(p.qa_status)}`:''}${p.signoff_status?` · sign-off ${esc(p.signoff_status)}`:''}</div></div><span class="pill" style="background:#6a7183">${esc(p.audience||'pack')}</span></div>`;}).join('')+`</div>`;
+  else h+=`<div class="card"><div class="h3">No packs assembled yet</div><div class="cap">The pack register (sr_packs → sections → exhibits → exports) is live and its export plumbing has been smoke-tested; assembly starts once the option appraisal firms up. PCBC assembly is out of scope here — readiness is what this page tracks.</div></div>`;
+  const xp=OC.packExports||[];
+  if(xp.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Export log</div><div class="card" style="padding:12px 14px"><table class="dt"><thead><tr><th>File</th><th>Type</th><th>Status</th><th class="num">Version</th><th>Created</th></tr></thead><tbody>`+xp.map(x=>`<tr><td class="mono" style="font-size:11px">${esc(x.file_name||'—')}</td><td>${esc(x.export_type||'')}</td><td>${esc(x.status||'')}</td><td class="num">${x.version||1}</td><td>${x.created_at?new Date(x.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'}</td></tr>`).join('')+`</tbody></table><div class="note">Smoke-test exports (not yet linked to a pack) — they demonstrate the PPTX/DOCX export path ahead of real pack assembly.</div></div>`;
+  v.innerHTML=h;}
+window.openOption=openOption;
 
 /* ===== DECISION MODULE ===== */
 let dstage='orient';
@@ -593,7 +868,8 @@ function dOrient(b){
   b.innerHTML=h;
 }
 function dSurface(b){let h='';DRIVERS.concat([['finance','Finance & productivity']]).forEach(dv=>{const dis=issues.filter(i=>dv[0]==='finance'?!i.driver:i.driver===dv[0]);if(!dis.length)return;h+=`<div class="eyebrow">${dv[1]}</div><div class="list">`+dis.map(i=>{const org=i.organisation_id?orgById[i.organisation_id]:null;return `<div class="row" onclick="openIssue('${i.code}')"><span class="tag" style="background:#1f3a78"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">${esc(i.description||'')}</div></div><span class="pill" style="background:#e8e5dc;color:#3c4354">${org?esc(org.code||'System'):'System'}</span></div>`;}).join('')+`</div>`;});b.innerHTML=h;}
-function dFrame(b){const L=lenses.find(x=>x.name===lensName)||lenses[0];let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Criteria weights</div><div class="cap">Drag to rebalance (switches to Custom)</div>`+sliderBlock()+`</div><div class="card"><div class="h3">Criteria</div>`+criteria.map(c=>`<div style="margin-bottom:9px"><b style="font-size:12.5px">${esc(c.name)}</b><div class="muted" style="font-size:12px">${esc(c.descr)}</div></div>`).join('')+`</div></div>`;b.innerHTML=h;}
+function dFrame(b){const L=lenses.find(x=>x.name===lensName)||lenses[0];let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Criteria weights</div><div class="cap">Drag to rebalance (switches to Custom)</div>`+sliderBlock()+`</div><div class="card"><div class="h3">Criteria</div>`+criteria.map(c=>`<div style="margin-bottom:9px"><b style="font-size:12.5px">${esc(c.name)}</b><div class="muted" style="font-size:12px">${esc(c.descr)}</div></div>`).join('')+`</div></div>`+
+  `<div class="note" style="margin-top:10px">Scores carry provenance tags; facilitator-seeded scores are replaced by workshop-agreed scores during Surface/Frame sessions.</div>`;b.innerHTML=h;}
 function lensBar(){return `<div class="lenses">`+lenses.map(x=>`<button class="lensbtn ${x.name===lensName?'on':''}" onclick="setLens('${esc(x.name)}')">${esc(x.name)}</button>`).join('')+(lensName==='Custom'?`<button class="lensbtn on">Custom</button>`:'')+`</div>`;}
 function sliderBlock(){return criteria.map(c=>{const w=Math.round((weights[c.code]||0)*100);return `<div style="margin-bottom:12px"><div class="slabel"><span>${esc(c.name)}</span><b>${w}%</b></div><input type="range" min="0" max="50" value="${w}" oninput="setWeight('${c.code}',this.value)"></div>`;}).join('');}
 function wsum(iss){const tot=criteria.reduce((s,c)=>s+(weights[c.code]||0),0)||1;let s=0;criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===iss.id&&x.criterion_code===c.code);s+=(sc?Number(sc.score):0)*(weights[c.code]||0);});return s/tot;}
@@ -614,25 +890,90 @@ function dCommit(b){const top=ranking().slice(0,5);const terms={Short:[],Medium:
 function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;const org=i.organisation_id?orgById[i.organisation_id]:null;hideTip();
   let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(i.title)}</h2><div class="ms">${org?esc(org.name):'System-wide'} · ${esc((i.driver||'finance').replace(/_/g,' '))}${i.severity?` · severity ${i.severity}/5`:''}</div><div style="font-size:13px;color:var(--ink2);margin-bottom:13px">${esc(i.problem_statement||i.description||'')}</div><div class="cap">Appraisal scores (0–100)</div>`;
   criteria.forEach(c=>{const s=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);const val=s?Math.round(s.score):0;h+=`<div style="margin-bottom:8px"><div class="slabel"><span>${esc(c.name)}</span><b>${val}</b></div><div class="bar"><div style="width:${val}%;background:#1f3a78"></div></div></div>`;});
-  h+=`</div></div>`;document.getElementById('modalroot').innerHTML=h;}
+  const seeded=SEEDED_ISSUES.includes(code);
+  h+=`<div class="note" style="margin-top:4px">Score provenance: <b style="color:${seeded?'#7a6200':'#6a7183'}">${seeded?'Facilitator-seeded (2 Jul 2026) — pending workshop evidence':'Illustrative seed'}</b></div>`;
+  const evs=(issueEvidence||[]).filter(x=>x.issue_id===i.id).map(x=>(evidenceItems||[]).find(e=>e.id===x.evidence_item_id)).filter(Boolean);
+  if(evs.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Linked evidence</div>`+evs.map(e=>`<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line2)">${e.source_url?`<a href="${e.source_url}" target="_blank" rel="noopener">${esc(e.title)}</a>`:esc(e.title)}<span class="muted" style="font-size:11px"> · ${esc((e.evidence_type||'evidence').replace(/_/g,' '))}${e.confidence?' · '+esc(e.confidence):''}</span></div>`).join('');
+  h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Traceability · issue → option → tests</div><div id="tracechain" class="note" style="margin:0">Checking linked options…</div>`;
+  h+=`</div></div>`;document.getElementById('modalroot').innerHTML=h;
+  /* S4 · walk the registered chain: issue → promoted-draft issue_ids → option → derived criteria strengths → statutory test status */
+  ensureOptions().then(OC=>{const el=document.getElementById('tracechain');if(!el)return;
+    const linked=(OC.options||[]).filter(o=>{const d=(OC.drafts||[]).find(x=>x.id===o.source_draft_id||x.promoted_option_id===o.id);return d&&(d.issue_ids||[]).includes(i.id);});
+    if(!linked.length){el.textContent='No options trace to this issue yet — the current longlist was generated from the two register issues carrying the elective-recovery and financial-sustainability cases.';return;}
+    el.innerHTML=linked.map(o=>{const cs2=criteria.map(c=>({c,v:optCrit(o,c.code)})).filter(x=>x.v!=null);const hi=cs2.length?cs2.reduce((a,b)=>b.v>a.v?b:a):null,lo=cs2.length?cs2.reduce((a,b)=>b.v<a.v?b:a):null;const ts=(OC.tests||[]).filter(t=>t.option_id===o.id);const met=ts.filter(t=>['met','passed'].includes(t.status)).length,red=ts.filter(t=>['high_risk','unmet'].includes(t.status)).length;
+      return `<div style="padding:5px 0;border-bottom:1px solid var(--line2)"><a href="#" style="font-weight:600" onclick="openOption('${o.id}');return false">${esc(optShort(o.title))}</a><div class="muted" style="font-size:11px">registered link (promoted AI draft carries this issue) → strongest ${hi?esc(hi.c.name)+' ('+hi.v+')':'—'} · weakest ${lo?esc(lo.c.name)+' ('+lo.v+')':'—'} → statutory tests ${met}/${ts.length} met${red?' · '+red+' high-risk':''}</div></div>`;}).join('');});}
 window.openIssue=openIssue;
 async function openFactDrill(domain,orgId,specCode,metric){const f=await ensure(domain);const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';
   document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${metric==='rtt_18wk'?'RTT 18-week %':metric==='rtt_incomplete'?'Waiting list':'52-week breaches'}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Source: ${esc(ser.length&&ser[ser.length-1].source?ser[ser.length-1].source:'modelled pending ingestion')} · confidence: <b style="color:${ser.length&&ser[ser.length-1].confidence==='actual'?'#166f4d':'#7a6200'}">${esc(ser.length?(ser[ser.length-1].confidence||'modelled'):'modelled')}</b> · ${ser.length} months</div></div></div>`;
-  lineChart('fd',ser.map(x=>x.period.slice(2,7)),[{data:ser.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
+  lineChart('fd',ser.map(x=>fmtPeriod(x.period)),[{data:ser.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
 }
 window.openFactDrill=openFactDrill;
-async function openDrill(orgId,code){drill={orgId,code};renderMetricModal();const r=rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);if(!r)return;const ser=seriesFor(orgId,r.metric_id);lineChart('trendchart',ser.map(d=>d.period.slice(2,7)),[{data:ser.map(d=>Number(d.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2},r.standard!=null?{data:ser.map(()=>r.standard),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2}:null].filter(Boolean));}
-window.openDrill=openDrill;
-function closeDrill(){drill=null;if(charts.trendchart){charts.trendchart.destroy();delete charts.trendchart;}if(charts.fd){charts.fd.destroy();delete charts.fd;}document.getElementById('modalroot').innerHTML='';}
+/* D3 · DM01 diagnostic waits by test type */
+async function openTestDrill(orgId){hideTip();const o=orgById[orgId]||{};
+  const shell=inner=>`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>Diagnostic waits by test</h2><div class="ms">${esc(o.name||'')} · DM01 · % of waiting list at 6+ weeks</div>${inner}</div></div>`;
+  document.getElementById('modalroot').innerHTML=shell('<div class="loading">Loading test-level series…</div>');
+  const f=await ensure('performance');
+  const fr=f.filter(x=>x.organisation_id===orgId&&x.metric_code==='dm01_6wk_test_pct');
+  if(!fr.length){document.getElementById('modalroot').innerHTML=shell('<div class="note">Test-level series loads with full ingestion for this trust.</div>');return;}
+  const lp=latestPeriod(fr);
+  const latest=fr.filter(x=>x.period===lp).map(x=>({name:x.line_code,v:Number(x.value)})).sort((a,b)=>b.v-a.v);
+  const tcol=v=>v>15?'#b3261e':v>5?'#b45309':'#166f4d';
+  const bars=latest.map(t=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:168px;flex:none;font-size:11px;color:var(--ink2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(t.name)}">${esc(t.name)}</span><div class="bar" style="flex:1"><div style="width:${Math.min(100,t.v*2.5)}%;background:${tcol(t.v)}"></div></div><b class="mono" style="font-size:11px;width:46px;flex:none;text-align:right;color:${tcol(t.v)}">${fmt(t.v,'pct')}</b></div>`).join('');
+  const worst=latest.slice(0,3);const periods=[...new Set(fr.map(x=>x.period))].sort().slice(-24);
+  const l0=fr.find(x=>x.period===lp)||{};
+  document.getElementById('modalroot').innerHTML=shell(`<div class="cap">Latest ${fmtPeriod(lp)} · standard: under 5% waiting 6+ weeks</div>${bars}<div class="cap" style="margin-top:13px;margin-bottom:4px">Worst three tests · 24-month trend</div><div class="chartbox" style="height:170px"><canvas id="testtrend"></canvas></div><div class="prov">Source: ${esc(l0.source||'NHS England DM01')} · confidence: <b style="color:${l0.confidence==='actual'||l0.confidence==='official'?'#166f4d':'#7a6200'}">${esc(l0.confidence||'actual')}</b> · <a href="#" onclick="openDrill('${orgId}','dm01_6wk');return false">open headline metric →</a></div>`);
+  lineChart('testtrend',periods.map(p=>fmtPeriod(p)),worst.map((t,i)=>({label:t.name,data:periods.map(p=>{const r2=fr.find(x=>x.period===p&&x.line_code===t.name);return r2?Number(r2.value):null;}),borderColor:['#b3261e','#b45309','#1f3a78'][i],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2})),{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
+}
+window.openTestDrill=openTestDrill;
+/* D4 · Cancer 62-day performance by tumour group */
+async function openTumourDrill(orgId){hideTip();const o=orgById[orgId]||{};
+  const shell=inner=>`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>Cancer 62-day by tumour group</h2><div class="ms">${esc(o.name||'')} · % treated within 62 days of urgent referral</div>${inner}</div></div>`;
+  document.getElementById('modalroot').innerHTML=shell('<div class="loading">Loading tumour-level series…</div>');
+  const f=await ensure('performance');
+  const fr=f.filter(x=>x.organisation_id===orgId&&x.metric_code==='cancer_62_tumour_pct');
+  if(!fr.length){document.getElementById('modalroot').innerHTML=shell('<div class="note">Tumour-level series loads with full ingestion for this system.</div>');return;}
+  const lp=latestPeriod(fr);
+  const latest=fr.filter(x=>x.period===lp).map(x=>({name:x.line_code,v:Number(x.value)})).sort((a,b)=>a.v-b.v);
+  const ccol=v=>v>=85?'#166f4d':v>=70?'#b45309':'#b3261e';
+  const bars=latest.map(t=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:168px;flex:none;font-size:11px;color:var(--ink2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(t.name)}">${esc(t.name)}</span><div class="bar" style="flex:1"><div style="width:${Math.min(100,Math.max(0,t.v))}%;background:${ccol(t.v)}"></div></div><b class="mono" style="font-size:11px;width:46px;flex:none;text-align:right;color:${ccol(t.v)}">${fmt(t.v,'pct')}</b></div>`).join('');
+  const worst=latest.slice(0,3);const periods=[...new Set(fr.map(x=>x.period))].sort().slice(-24);
+  const l0=fr.find(x=>x.period===lp)||{};
+  document.getElementById('modalroot').innerHTML=shell(`<div class="cap">Latest ${fmtPeriod(lp)} · standard 85% · lowest first</div>${bars}<div class="cap" style="margin-top:13px;margin-bottom:4px">Weakest three tumour groups · 24-month trend</div><div class="chartbox" style="height:170px"><canvas id="tumtrend"></canvas></div><div class="prov">Source: ${esc(l0.source||'NHS England cancer waiting times')} · confidence: <b style="color:${l0.confidence==='actual'||l0.confidence==='official'?'#166f4d':'#7a6200'}">${esc(l0.confidence||'actual')}</b> · <a href="#" onclick="openDrill('${orgId}','cancer_62');return false">open headline metric →</a></div>`);
+  lineChart('tumtrend',periods.map(p=>fmtPeriod(p)),worst.map((t,i)=>({label:t.name,data:periods.map(p=>{const r2=fr.find(x=>x.period===p&&x.line_code===t.name);return r2?Number(r2.value):null;}),borderColor:['#b3261e','#b45309','#1f3a78'][i],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2})),{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}}});
+}
+window.openTumourDrill=openTumourDrill;
+async function openDrill(orgId,code){drill={orgId,code};showSourceValue=false;redrawDrill();}
+function redrawDrill(){if(!drill)return;renderMetricModal();const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r)return;const ser=seriesFor(drill.orgId,r.metric_id);if(charts.trendchart){try{charts.trendchart.destroy()}catch(e){}delete charts.trendchart;}lineChart('trendchart',ser.map(d=>fmtPeriod(d.period)),[{data:ser.map(d=>Number(d.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2},r.standard!=null?{data:ser.map(()=>r.standard),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2}:null].filter(Boolean));}
+function toggleSourceValue(){showSourceValue=!showSourceValue;redrawDrill();}
+window.openDrill=openDrill;window.toggleSourceValue=toggleSourceValue;
+function closeDrill(){drill=null;['trendchart','fd','testtrend','tumtrend','optfin'].forEach(k=>{if(charts[k]){try{charts[k].destroy()}catch(e){}delete charts[k];}});document.getElementById('modalroot').innerHTML='';}
 window.closeDrill=closeDrill;
 function renderMetricModal(){if(!drill)return;const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);if(!r){document.getElementById('modalroot').innerHTML='';return;}const o=orgById[drill.orgId],selOrg=orgById[sel];const canCh=selOrg.type==='acute_trust'&&selOrg.id===drill.orgId;const trend=r.prev_value==null?'no prior period':r.worsening===true?'deteriorating':r.worsening===false?'improving':'stable';const ovs=overrides.filter(x=>x.metric_value_id===r.metric_value_id);
-  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(r.metric_name)}</h2><div class="ms">${esc(o.name)} · ${esc(r.domain)}</div><div style="margin:4px 0 10px"><span class="pill" style="background:${color(r.distress)}">${slab(r.status)} · ${r.distress}/100</span></div><div class="chartbox" style="height:155px"><canvas id="trendchart"></canvas></div>
-    <div class="kv"><span class="k">Latest value</span><b>${fmt(r.value,r.unit)}</b></div><div class="kv"><span class="k">Standard</span><b>${r.standard!=null?fmt(r.standard,r.unit):'—'}</b></div><div class="kv"><span class="k">National median</span><b>${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</b></div><div class="kv"><span class="k">Trend</span><b>${trend}</b></div>
+  /* U2/A3 · peer-family + national quartile benchmarks, latest period at or before the metric period */
+  const fam=(TRUSTMETA[o.code]||{}).peer||null;
+  const bLatest=(type,famv)=>{const c=bench.filter(b=>b.metric_id===r.metric_id&&b.type===type&&(famv?b.peer_family===famv:b.peer_family==null)&&(!r.period||(b.period&&b.period<=r.period)));return c.length?c.reduce((m,x)=>x.period>m.period?x:m):null;};
+  const pmed=fam?bLatest('peer_median',fam):null,q25=bLatest('peer_p25',null),q75=bLatest('peer_p75',null);
+  /* U4 · adjusted challenge display */
+  const adj=adjustedOverride(r.metric_value_id);const showAdj=adj&&!showSourceValue;
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(r.metric_name)}</h2><div class="ms">${esc(o.name)} · ${esc(r.domain)}</div><div style="margin:4px 0 10px"><span class="pill" style="background:${color(r.distress)}">${slab(r.status)} · ${r.distress}/100</span>${adj?`<span class="pill" style="background:#b45309;margin-left:6px">adjusted</span>`:''}</div><div class="chartbox" style="height:155px"><canvas id="trendchart"></canvas></div>
+    <div class="kv"><span class="k">${adj?(showAdj?'Adjusted value':'Source value'):'Latest value'}</span><b${showAdj?' style="color:#b45309"':''}>${fmt(showAdj?adj.proposed_value:r.value,r.unit)}</b></div>
+    ${adj?`<div class="note" style="margin:3px 0 0">${showAdj?`Adjusted following an accepted challenge · <a href="#" onclick="toggleSourceValue();return false">adjusted — view source value</a>`:`Published source value shown · <a href="#" onclick="toggleSourceValue();return false">view adjusted value</a>`}</div>`:''}
+    <div class="kv"><span class="k">Standard</span><b>${r.standard!=null?fmt(r.standard,r.unit):'—'}</b></div><div class="kv"><span class="k">National median</span><b>${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</b></div>
+    ${pmed?`<div class="kv"><span class="k">Peer median (${esc(fam.replace('|',' · '))})</span><b>${fmt(pmed.value,r.unit)}</b></div>`:''}
+    ${(q25&&q75)?`<div class="kv"><span class="k">National quartiles (p25–p75)</span><b>${fmt(q25.value,r.unit)} – ${fmt(q75.value,r.unit)}</b></div>`:''}
+    <div class="kv"><span class="k">Trend</span><b>${trend}</b></div>
     <div class="prov">Source: ${r.source_url?`<a href="${r.source_url}" target="_blank" rel="noopener">${esc(r.source||'source')}</a>`:esc(r.source||'illustrative (modelled)')} · confidence: <b style="color:${r.confidence==='official'?'#166f4d':'#7a6200'}">${esc(r.confidence||'modelled')}</b> · ${r.period}</div>
-    ${ovs.map(x=>`<div class="ovr">Challenge: ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)}</div>`).join('')}
+    ${ovs.map(x=>{const st=x.state||'challenged';const stCol=st==='adjusted'?'#b45309':st==='dismissed'?'#6a7183':'#1f3a78';return `<div class="ovr">Challenge: ${x.proposed_value!=null?x.proposed_value:'(no value)'} — ${esc(x.rationale)} <span class="pill" style="background:${stCol};margin-left:5px">${esc(st)}</span>${isFacilitator&&st==='challenged'?`<div style="margin-top:7px"><button class="btn" style="font-size:11px;padding:5px 11px" onclick="setOverrideState('${x.id}','adjusted')">Accept as adjusted</button> <button class="btn ghost" style="font-size:11px;padding:5px 11px" onclick="setOverrideState('${x.id}','dismissed')">Dismiss</button></div>`:''}</div>`;}).join('')}
     <div style="margin-top:13px;border-top:1px solid var(--line2);padding-top:12px"><div class="h3" style="font-size:13px">Challenge this figure</div>${canCh?`<input class="field" id="cval" type="number" placeholder="Proposed value (optional)"/><textarea class="field" id="cwhy" rows="2" placeholder="Rationale (required)"></textarea><div style="margin-top:8px"><button class="btn" id="cbtn" onclick="submitChallenge()">Submit challenge</button></div>`:`<div class="note">Only ${esc(o.name)} can challenge its own data — switch “Viewing as”.</div>`}</div></div></div>`;}
-async function submitChallenge(){const why=document.getElementById('cwhy').value.trim();if(!why)return;const cv=document.getElementById('cval').value;document.getElementById('cbtn').disabled=true;const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);await sb.from('sr_overrides').insert({metric_value_id:r.metric_value_id,author_org_id:sel,proposed_value:cv===''?null:Number(cv),rationale:why,state:'challenged'});const{data}=await sb.from('sr_overrides').select('*');overrides=data||[];renderMetricModal();}
+async function submitChallenge(){const why=document.getElementById('cwhy').value.trim();if(!why)return;const cv=document.getElementById('cval').value;document.getElementById('cbtn').disabled=true;const r=rows.find(x=>x.organisation_id===drill.orgId&&x.metric_code===drill.code);await sb.from('sr_overrides').insert({metric_value_id:r.metric_value_id,author_org_id:sel,proposed_value:cv===''?null:Number(cv),rationale:why,state:'challenged'});const{data}=await sb.from('sr_overrides').select('*');overrides=data||[];redrawDrill();}
 window.submitChallenge=submitChallenge;
+/* U4 · facilitator adjudication of challenges. Guarded by the interim ?facilitator URL flag
+   (isFacilitator) until authentication (U3) ships with proper role enforcement. */
+async function setOverrideState(id,state){if(!isFacilitator)return;
+  const{error}=await sb.from('sr_overrides').update({state}).eq('id',id);
+  if(error){console.warn('override update failed',error);return;}
+  const{data}=await sb.from('sr_overrides').select('*');overrides=data||[];redrawDrill();}
+window.setOverrideState=setOverrideState;
 loadAll();
 </script>
 </body>
