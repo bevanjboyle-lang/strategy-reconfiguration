@@ -92,7 +92,7 @@ input[type=range]{width:100%;accent-color:var(--nhs);cursor:pointer}
   <aside class="side">
     <div class="logo">BSW System Intelligence<small>Acute Services Review platform</small></div>
     <div id="nav"></div>
-    <div class="foot">Prototype · A&amp;E real NHS data, other metrics modelled pending ingestion</div>
+    <div class="foot">Live published NHS data: RTT, A&amp;E, cancer, diagnostics, beds, ambulance handovers, discharge · Model Health System authorised extract · finance &amp; site detail modelled, tagged</div>
   </aside>
   <div class="main">
     <div class="topbar"><div class="ttl" id="topttl">Loading…<small id="topsub"></small></div>
@@ -110,16 +110,21 @@ const SB_URL="https://ehkxzxjnhqcuarbcfchw.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoa3h6eGpuaHFjdWFyYmNmY2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTE2MzcsImV4cCI6MjA5ODA2NzYzN30.oLc_J8Y5pV4xzBkOQruRU5WqbwyA_Lsb6M4etRYNFWY";
 const sb=window.supabase.createClient(SB_URL,SB_KEY);
 const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.topo.json";
-const NAV=[["SYSTEM",[["overview","Overview"]]],
+const NAV=[["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
 ["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
 ["DECIDE",[["decide","Decision module"]]]];
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
 const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
 const PLACE_MAP={RD1:"Bath and North East Somerset",RN3:"Swindon",RNZ:"Wiltshire"},PLACE_SITE={RD1:"RUH Bath",RN3:"Great Western",RNZ:"Salisbury"};
-const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour waits","Medium"],amb_handover:["Faster handovers free ambulance hours and ED capacity","Short"],cancer_62:["Pathway redesign to recover the 62-day standard","Short"],rtt_backlog:["Pooled lists and surgical hubs to clear long waits","Medium"],fragility:["Consolidating sub-scale services improves resilience","Long"],workforce:["Cut agency reliance and vacancy; stabilise rotas","Medium"],finance:["Productivity and configuration to address the deficit","Long"],diagnostics:["CDC and surgical hub to cut diagnostic waits","Short"],consolidation:["Site reconfiguration for clinical and financial sustainability","Long"],out_of_hospital:["Shift care to community; reduce length of stay","Medium"]};
+const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour waits","Medium"],amb_handover:["Faster handovers free ambulance hours and ED capacity","Short"],cancer_62:["Pathway redesign to recover the 62-day standard","Short"],rtt_backlog:["Pooled lists and surgical hubs to clear long waits","Medium"],fragility:["Consolidating sub-scale services improves resilience","Long"],workforce:["Cut agency reliance and vacancy; stabilise rotas","Medium"],finance:["Productivity and configuration to address the deficit","Long"],diagnostics:["CDC and surgical hub to cut diagnostic waits","Short"],consolidation:["Site reconfiguration for clinical and financial sustainability","Long"],out_of_hospital:["Shift care to community; reduce length of stay","Medium"],
+'uec-flow-capacity-pressure':["Recover flow: handover, discharge and occupancy bundle across the three sites","Short"],
+'elective-backlog-structural-recovery':["Pooled waiting lists, surgical hubs and theatre productivity programme","Medium"],
+'cancer-pathway-standard-risk':["FDS front-door redesign and 62-day backlog recovery taskforce","Short"],
+'gwh-quality-fragility-watch':["Targeted quality support and fragile-service consolidation review at GWH","Medium"],
+'financial-sustainability-reconfiguration-case':["Clinical services strategy and site reconfiguration to close the structural deficit","Long"]};
 const TRUSTS=['RN3','RD1','RNZ'],TRUSTCOL={RN3:'#005eb8',RD1:'#0a9aa0',RNZ:'#5b53b5',GROUP:'#33475b',QOX:'#33475b'};
-let orgs=[],orgdist=[],rows=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[],series={};
+let orgs=[],orgdist=[],rows=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[],series={},bench=[];
 let specs=[],pods=[],sgs=[],flines=[],sites=[];
 let orgById={},distByOrg={},distByCode={},topo=null,fcache={};
 let stage='overview',sel=null,driver=null,drill=null,lensName='Balanced',weights={},charts={};
@@ -141,6 +146,7 @@ async function loadAll(){
     sb.from('sr_metric_values').select('organisation_id,metric_id,period,value').limit(20000),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
     sb.from('sr_dim_staff_group').select('*').order('sort'),sb.from('sr_dim_finance_line').select('*').order('sort'),sb.from('sr_dim_site').select('*').order('sort')]);
+  const bm=await sb.from('sr_benchmarks').select('*').limit(5000);bench=bm.data||[];
   orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];
   specs=sp.data||[];pods=pd.data||[];sgs=sg.data||[];flines=fl.data||[];sites=si.data||[];
   orgById={};orgs.forEach(x=>orgById[x.id]=x);distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
@@ -162,12 +168,12 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={overview:'System overview',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision module'};
+const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',modelling:'Modelling studio',decide:'Decision module'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={overview:renderOverview,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,modelling:renderModelling,decide:renderDecide}[stage];
+  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,modelling:renderModelling,decide:renderDecide}[stage];
   fn(v);
 }
 const tip=document.getElementById('tip');
@@ -187,7 +193,7 @@ function renderOverview(v){
   const deficit=gm('deficit'),ae=gm('ae_4hr');
   const wd=DRIVERS.map(dv=>{const rs=orgRows().filter(r=>r.driver===dv[0]);return{n:dv[1],a:rs.length?rs.reduce((s,r)=>s+r.distress,0)/rs.length:0};}).sort((a,b)=>b.a-a.a);
   const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,7);
-  let h=`<div class="exec"><div class="e1">Executive summary · ${esc(o.name)}</div><p>System distress index <span class="hl">${od?od.distress_index:'—'}/100</span> with <span class="${od&&od.near_failure_count?'crit':'hl'}">${od?od.near_failure_count:0} near-failure flags</span>. Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>; financial position <span class="${deficit&&deficit.value<0?'crit':'hl'}">${deficit?fmt(deficit.value,'gbp_m'):'—'}</span> vs plan.</p></div>`;
+  let h=`<div class="exec"><div class="e1">Acute Services Review · agreed baseline · ${esc(o.name)}</div><p>One picture of the acute system across Great Western, RUH Bath and Salisbury, built from live published NHS data. Distress index <span class="hl">${od?od.distress_index:'—'}/100</span> with <span class="${od&&od.near_failure_count?'crit':'hl'}">${od?od.near_failure_count:0} near-failure flags</span>. Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>${deficit?`; financial position <span class="${deficit.value<0?'crit':'hl'}">${fmt(deficit.value,'gbp_m')}</span> vs plan`:''}. Start with the <a href="#" style="color:#9fc7f2;text-decoration:underline" onclick="setStage('drivers');return false">four priority drivers</a>, or take the evidence into the <a href="#" style="color:#9fc7f2;text-decoration:underline" onclick="setStage('decide');return false">decision journey</a>.</p></div>`;
   h+=`<div class="grid kpis">`+
    kpi('System distress',od?od.distress_index:'—','/100',o.name,null,color(od&&od.distress_index))+
    kpi('Near-failure flags',od?od.near_failure_count:'—','','breaching · deteriorating',null,od&&od.near_failure_count?'#d3433f':'#0b2239')+
@@ -213,6 +219,34 @@ function drawMap(){const el=document.getElementById('map');if(!el||!topo)return;
   g.selectAll('text.l2').data(feats).join('text').attr('class','maplabel sub').attr('text-anchor','middle').attr('x',f=>path.centroid(f)[0]).attr('y',f=>path.centroid(f)[1]+13).text(f=>{const d=distByCode[cbn[f.properties.name]];return d?d.distress_index+'/100':'';});
 }
 function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(0,94,184,.16)',borderColor:'#005eb8',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa7b4'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#33475b'}}},responsive:true,maintainAspectRatio:false}});}
+
+/* ===== PRIORITY DRIVERS (ASR) ===== */
+const DRIVER_METRICS={service_fragility:['bed_occupancy','beds_ga_available','dm01_6wk','shmi'],uec:['ae_4hr','amb_over30_pct','amb_handover_60','delayed_discharge_beddays'],elective_backlog:['rtt_total','rtt_18wk','rtt_52wk','cancelled_ops'],cancer:['cancer_62','cancer_fds_28','cancer_31']};
+const DRIVER_HEADLINE={service_fragility:'bed_occupancy',uec:'ae_4hr',elective_backlog:'rtt_18wk',cancer:'cancer_62'};
+const DRIVER_BLURB={service_fragility:'Occupancy, diagnostics and mortality signals that show where services are running closest to the edge.',uec:'The urgent and emergency pathway under strain: front door, ambulance handovers and delayed discharges.',elective_backlog:'The waiting list a decade in the making: size, waits over 18 and 52 weeks, and lost theatre activity.',cancer:'Cancer access against the 62-day, faster-diagnosis and 31-day standards.'};
+function benchSeries(mid,type){return bench.filter(b=>b.metric_id===mid&&b.type===type).sort((a,b)=>a.period<b.period?-1:1);}
+function renderDrivers(v){
+  let h=`<h1 class="serif">The four priority drivers</h1><div class="lead">The pressures driving the Acute Services Review, shown with live published NHS data for Great Western, RUH Bath and Salisbury, benchmarked against every English acute trust. Click any figure to interrogate it — trend, standard, national position, provenance.</div>`;
+  DRIVERS.forEach(dv=>{
+    const codes=DRIVER_METRICS[dv[0]]||[];const hcode=DRIVER_HEADLINE[dv[0]];
+    const avg=Math.round(TRUSTS.reduce((s,tc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const rs=codes.map(c=>rows.find(x=>x.organisation_id===oid&&x.metric_code===c)).filter(Boolean);return s+(rs.length?rs.reduce((a,r)=>a+r.distress,0)/rs.length:0);},0)/TRUSTS.length);
+    h+=`<div class="eyebrow">${esc(dv[1])} · pressure ${avg}/100</div><div class="two">`;
+    h+=`<div class="card" style="overflow-x:auto"><div class="h3">${esc(dv[1])}</div><div class="cap">${esc(DRIVER_BLURB[dv[0]])}</div><table class="dt"><thead><tr><th>Measure</th>`+TRUSTS.map(tc=>`<th class="num">${PLACE_SITE[tc]}</th>`).join('')+`</tr></thead><tbody>`;
+    codes.forEach(c=>{const any=rows.find(x=>x.metric_code===c);if(!any)return;h+=`<tr><td>${esc(any.metric_name)}</td>`+TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===c);return r?`<td class="num" style="cursor:pointer;font-weight:600;color:${color(r.distress)}" onclick="openDrill('${oid}','${c}')">${fmt(r.value,r.unit)}</td>`:'<td class="num">—</td>';}).join('')+`</tr>`;});
+    h+=`</tbody></table></div>`;
+    h+=`<div class="card"><div class="h3">${esc((rows.find(x=>x.metric_code===hcode)||{}).metric_name||'')}</div><div class="cap">Three trusts vs national median (dashed) · published series</div><div class="chartbox"><canvas id="drv_${dv[0]}"></canvas></div></div></div>`;
+  });
+  h+=`<div class="note" style="margin-top:14px">Every figure is drawn live from the serving database with source and confidence attached. Figures in red sit furthest from standard; click through for the full benchmark set.</div>`;
+  v.innerHTML=h;
+  DRIVERS.forEach(dv=>{
+    const hcode=DRIVER_HEADLINE[dv[0]];const anyR=rows.find(x=>x.metric_code===hcode);if(!anyR)return;
+    const mid=anyR.metric_id;const nm=benchSeries(mid,'national_median').slice(-24);
+    const rd1=(orgs.find(o=>o.code==='RD1')||{}).id;const labels=(seriesFor(rd1,mid)||[]).slice(-24).map(x=>x.period.slice(2,7));
+    const ds=TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s=seriesFor(oid,mid).slice(-24);return{label:PLACE_SITE[tc],data:s.map(x=>Number(x.value)),borderColor:TRUSTCOL[tc],backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2};});
+    if(nm.length)ds.push({label:'National median',data:labels.map((l,i)=>{const p=(seriesFor(rd1,mid).slice(-24)[i]||{}).period;const b=nm.find(x=>x.period===p);return b?Number(b.value):null;}),borderColor:'#9aa7b4',borderDash:[5,4],pointRadius:0,borderWidth:1.5,backgroundColor:'transparent'});
+    lineChart('drv_'+dv[0],labels,ds,{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6b7c8f'}}}});
+  });
+}
 
 /* ===== ACTIVITY ===== */
 async function renderActivity(v){v.innerHTML='<div class="loading">Loading activity…</div>';const f=await ensure('activity');
@@ -242,8 +276,8 @@ async function renderActivity(v){v.innerHTML='<div class="loading">Loading activ
 
 /* ===== FLOW ===== */
 function renderFlow(v){
-  const codes=['los_emergency','ae_4hr','ae_12hr_dta','amb_handover_60','bed_occupancy','readmission_28d'];
-  const labels={los_emergency:'Avg LoS (emergency)',ae_4hr:'A&E 4-hour',ae_12hr_dta:'12-hour DTA waits',amb_handover_60:'Ambulance handover >60m',bed_occupancy:'G&A bed occupancy',readmission_28d:'28-day readmissions'};
+  const codes=['ae_4hr','amb_over30_pct','amb_handover_60','bed_occupancy','delayed_discharge_beddays','discharged_total','los_emergency','readmission_28d'];
+  const labels={ae_4hr:'A&E 4-hour',amb_over30_pct:'Handover >30 min',amb_handover_60:'Handover >60 min',bed_occupancy:'G&A bed occupancy',delayed_discharge_beddays:'Delayed discharge bed days',discharged_total:'Patients discharged / month',los_emergency:'Avg LoS (emergency)',readmission_28d:'28-day readmissions'};
   let h=`<h1 class="serif">Flow & transit</h1><div class="lead">How patients move through the system: length of stay, A&E performance, ambulance handovers, bed occupancy and readmissions, compared across the three trusts.</div>`;
   h+=`<div class="grid kpis">`+codes.map(c=>{const r=orgRows().find(x=>x.metric_code===c);return r?kpi(labels[c],fmt(r.value,r.unit),'',slab(r.status),seriesFor(sel,r.metric_id),color(r.distress)):'';}).join('')+`</div>`;
   h+=`<div class="eyebrow">Trust comparison (latest)</div><div class="grid three">`;
@@ -378,13 +412,20 @@ function val(id){const e=document.getElementById(id);return e?e.value:NaN;}
 window.computeDemand=computeDemand;
 
 /* ===== DECISION MODULE ===== */
-let dstage='surface';
+let dstage='orient';
 function setDS(s){dstage=s;render();}window.setDS=setDS;
 function renderDecide(v){
-  let h=`<h1 class="serif">Decision module</h1><div class="lead">From the system evidence to an agreed set of priorities. Surface the problems, frame the lens, prioritise, and commit.</div>`;
-  h+=`<div class="lenses">`+[['surface','Surface'],['frame','Frame'],['prioritise','Prioritise'],['commit','Commit']].map(s=>`<button class="lensbtn ${dstage===s[0]?'on':''}" onclick="setDS('${s[0]}')">${s[1]}</button>`).join('')+`</div><div id="dbody"></div>`;
+  let h=`<h1 class="serif">Decision journey</h1><div class="lead">From one agreed picture of the system to a committed set of priorities: orient on the evidence, surface the problems, frame the lens, prioritise together, and commit.</div>`;
+  h+=`<div class="lenses">`+[['orient','1 · Orient'],['surface','2 · Surface'],['frame','3 · Frame'],['prioritise','4 · Prioritise'],['commit','5 · Commit']].map(s=>`<button class="lensbtn ${dstage===s[0]?'on':''}" onclick="setDS('${s[0]}')">${s[1]}</button>`).join('')+`</div><div id="dbody"></div>`;
   v.innerHTML=h;const b=document.getElementById('dbody');
-  if(dstage==='surface')dSurface(b);else if(dstage==='frame')dFrame(b);else if(dstage==='prioritise')dPrioritise(b);else dCommit(b);
+  if(dstage==='orient')dOrient(b);else if(dstage==='surface')dSurface(b);else if(dstage==='frame')dFrame(b);else if(dstage==='prioritise')dPrioritise(b);else dCommit(b);
+}
+function dOrient(b){
+  const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,8);
+  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">The agreed starting point</div><div class="cap">Before anyone argues about solutions, the system agrees what is true. These are the measures furthest from standard across the three trusts, from live published NHS data. Each can be challenged by the owning organisation — challenges are visible to everyone.</div></div>`;
+  h+=`<div class="list">`+closest.map(rrow).join('')+`</div>`;
+  h+=`<div style="margin-top:13px" class="grid three"><div class="card" style="cursor:pointer" onclick="setStage('drivers')"><div class="h3">Four priority drivers →</div><div class="cap">The review's framing of the evidence</div></div><div class="card" style="cursor:pointer" onclick="setStage('overview')"><div class="h3">System overview →</div><div class="cap">Map, domains and distress</div></div><div class="card" style="cursor:pointer" onclick="setDS('surface')"><div class="h3">Continue: Surface →</div><div class="cap">Name the problems worth solving</div></div></div>`;
+  b.innerHTML=h;
 }
 function dSurface(b){let h='';DRIVERS.concat([['finance','Finance & productivity']]).forEach(dv=>{const dis=issues.filter(i=>dv[0]==='finance'?!i.driver:i.driver===dv[0]);if(!dis.length)return;h+=`<div class="eyebrow">${dv[1]}</div><div class="list">`+dis.map(i=>{const org=i.organisation_id?orgById[i.organisation_id]:null;return `<div class="row" onclick="openIssue('${i.code}')"><span class="tag" style="background:#005eb8"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">${esc(i.description||'')}</div></div><span class="pill" style="background:#eef2f7;color:#33475b">${org?esc(org.code||'System'):'System'}</span></div>`;}).join('')+`</div>`;});b.innerHTML=h;}
 function dFrame(b){const L=lenses.find(x=>x.name===lensName)||lenses[0];let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Criteria weights</div><div class="cap">Drag to rebalance (switches to Custom)</div>`+sliderBlock()+`</div><div class="card"><div class="h3">Criteria</div>`+criteria.map(c=>`<div style="margin-bottom:9px"><b style="font-size:12.5px">${esc(c.name)}</b><div class="muted" style="font-size:12px">${esc(c.descr)}</div></div>`).join('')+`</div></div>`;b.innerHTML=h;}
@@ -406,12 +447,12 @@ function dCommit(b){const top=ranking().slice(0,5);const terms={Short:[],Medium:
 
 /* ===== modals ===== */
 function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;const org=i.organisation_id?orgById[i.organisation_id]:null;hideTip();
-  let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(i.title)}</h2><div class="ms">${org?esc(org.name):'System-wide'} · ${esc((i.driver||'finance').replace(/_/g,' '))}</div><div style="font-size:13px;color:var(--ink2);margin-bottom:13px">${esc(i.description||'')}</div><div class="cap">Appraisal scores (0–100)</div>`;
+  let h=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(i.title)}</h2><div class="ms">${org?esc(org.name):'System-wide'} · ${esc((i.driver||'finance').replace(/_/g,' '))}${i.severity?` · severity ${i.severity}/5`:''}</div><div style="font-size:13px;color:var(--ink2);margin-bottom:13px">${esc(i.problem_statement||i.description||'')}</div><div class="cap">Appraisal scores (0–100)</div>`;
   criteria.forEach(c=>{const s=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);const val=s?Math.round(s.score):0;h+=`<div style="margin-bottom:8px"><div class="slabel"><span>${esc(c.name)}</span><b>${val}</b></div><div class="bar"><div style="width:${val}%;background:#005eb8"></div></div></div>`;});
   h+=`</div></div>`;document.getElementById('modalroot').innerHTML=h;}
 window.openIssue=openIssue;
 async function openFactDrill(domain,orgId,specCode,metric){const f=await ensure(domain);const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';
-  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${metric==='rtt_18wk'?'RTT 18-week %':metric==='rtt_incomplete'?'Waiting list':'52-week breaches'}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Modelled (synthetic) — pending ingestion · ${ser.length} months</div></div></div>`;
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${metric==='rtt_18wk'?'RTT 18-week %':metric==='rtt_incomplete'?'Waiting list':'52-week breaches'}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Source: ${esc(ser.length&&ser[ser.length-1].source?ser[ser.length-1].source:'modelled pending ingestion')} · confidence: <b style="color:${ser.length&&ser[ser.length-1].confidence==='actual'?'#1a9c6b':'#8a6d00'}">${esc(ser.length?(ser[ser.length-1].confidence||'modelled'):'modelled')}</b> · ${ser.length} months</div></div></div>`;
   lineChart('fd',ser.map(x=>x.period.slice(2,7)),[{data:ser.map(x=>Number(x.value)),borderColor:'#005eb8',backgroundColor:'rgba(0,94,184,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
 }
 window.openFactDrill=openFactDrill;
