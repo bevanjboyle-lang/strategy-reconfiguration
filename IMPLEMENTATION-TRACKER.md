@@ -347,3 +347,35 @@ provider landscape (acute + ambulance + MH + community).
   statistics SKIPPED: no provider-grain series published (regional/staff-group only).
 - Serving after this run: 252 metric defs (241 populated, was 192) · 203,934 curated obs
   (was 151,529) · 412,527 split rows · 210 orgs.
+
+## Run record — 9 Jul 2026 (evening): curation gap fixed — Finance and Workforce screens rebuilt (22fcdef)
+Bevan's challenge: the loaded depth was not pulled through to the curated screens (Torbay
+finance showed a high-level view only; workforce lacked sickness/agency/specialty detail).
+Root cause: data waves landed in serving but the domain pages still rendered the old
+flagship-only layouts. Fix shipped:
+- [x] Finance rebuilt for ANY provider from the boot series store (no new fetches):
+  audited I&E account (patient care/other/private income, expenses, operating and net
+  surplus, finance expense, PDC dividend, net margin), operating expenditure detail
+  (staff costs incl substantive/bank/agency + agency share, drugs, supplies, purchase of
+  healthcare, premises, CNST, consultancy, depreciation), balance sheet (PPE, cash,
+  current assets/liabilities, working capital, borrowings, PDC, I&E reserve), cash flow,
+  all six FY columns 2019/20-2024/25; income vs expenditure trend chart; audited pay
+  doughnut; NCC cost-index table by care setting with national position; financial
+  ratios vs England (median + % of trusts better); whole-system aggregation when the
+  system org is selected. Flagship modelled block retained below, clearly labelled.
+- [x] Workforce rebuilt: staff-group table gains 12-month change + trend sparklines
+  (official monthly FTE series); modelled-only columns (vacancy/sickness/turnover) now
+  render only where the flagship model holds them; medical staffing by specialty
+  (top 18 + chart, share of medical) from the Mar-26 census; temporary staffing table
+  from audited accounts (staff costs, substantive, bank, agency + agency share by year);
+  staff survey block (engagement, morale, PP1-PP7) vs national median with position;
+  honest note that trust-level vacancy/turnover are not published nationally.
+- [x] load_db_ncc_services.py (#db-ncc-svc-v1) — NCC 2024/25 by Department and Service
+  (MFF adjusted) -> sr_fact: ncc_service_spend (GBPm) + ncc_service_index per provider x
+  service line. 25,041 rows · 204 orgs · 340 services. Finance page gains "Spend and
+  cost by service line" (top 20 + share + index); XSPLIT_MAP wires ncc_index_total and
+  tac_opex_total drills to the service splits. Freshness 39 families; QA 81 checks 0 fail.
+- [x] styles.css: .chartbox.tall (360px) for horizontal bar panels.
+- Verification: RA9 statement identities exact (income 729.3 − opex 771.9 = −42.6
+  operating deficit; net −48.7, margin −6.7%; NCCI 112.4); suite 32/32 in 1.9m;
+  deployed and screenshotted live (shots/shot_fin_ra9.png, shot_wf_ra9.png).
