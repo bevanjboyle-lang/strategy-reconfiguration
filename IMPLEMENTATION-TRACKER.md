@@ -304,3 +304,46 @@ provider landscape (acute + ambulance + MH + community).
   D-A remainder — WLMDS demographics, cancelled ops, UEC sitrep aggregates, beds completion,
   A&E supplementary/discharge, ERIC multi-year; NCC cost index; Explorer subdomain grouping
   for the 59-metric finance catalogue.
+
+## Run record — 9 Jul 2026 (later): "get all the possible metrics in" (D-X mart harvest + D-B parsers + TAC back-years + scale pass)
+- [x] D-X mart harvest (load_dx_mart_harvest.py, 7 idempotent tags) — 14,269 values, 17 new
+  metrics from the gold mart's unserved families: winter ambulance handovers monthly
+  (volume, >30/>60 min shares, hours lost; Nov 25-Mar 26, 144 orgs), discharges monthly
+  (136 orgs), bed stocks by sector (MI/maternity/LD available+occupied, quarterly, 169 orgs,
+  both "Learning Disabilities" and "Learning Disability" spellings in source), waiting list
+  demographic shares (65+/under-18/female, WLMDS snapshot), cancelled electives + 28-day
+  breach % (quarterly back to 2014), virtual ward capacity per provider, GP referrals for
+  the non-acute landscape. GOTCHA: PostgREST bulk insert needs identical keys on every
+  object (PGRST102) — defm() must emit "standard": None, not omit the key.
+- [x] D-B HCAI (load_db_hcai.py) — 20,904 values, 12 metrics: UKHSA monthly counts for CDI,
+  MRSA, MSSA, E. coli, Klebsiella, P. aeruginosa (total + hospital-onset healthcare-assoc),
+  134 acute trusts, Apr 25-Apr 26, from cached ODS (odfpy installed via ensurepip; the venv
+  ships without pip).
+- [x] D-B staff survey (load_db_staff_survey.py) — 1,632 values, 8 metrics: NSS 2025 People
+  Promise elements PP1-PP7 + morale, 204 orgs (engagement stays with exp-survey-v1).
+- [x] D-B NCC (load_db_ncc.py) — 1,145 values, 9 metrics: National Cost Collection index
+  2024/25 by mapping pot, MFF adjusted (total, elective, non-elective, critical care,
+  outpatients, A&E, MH, community, ambulance), 204 providers.
+- [x] D-B CQC domains (load_db_cqc_domains.py) — 820 values, 5 metrics: safe/effective/
+  caring/responsive/well-led, 164 providers, period = rating publication date. GOTCHA:
+  CQC's file leaves Provider ODS Code blank for most trusts (31 non-null of 7,855 rows) and
+  the lake silver entity_code is CQC-internal — matched on normalised official provider
+  name instead. ODS parse cached to CSV beside the source (26MB odfpy parse ~12 min).
+- [x] TAC back-years — 2020/21 workbook pair added to load_dc_tac.py FILES (CY 2021-03-31,
+  PY 2020-03-31); forced reload now 40,761 values over 6 FY ends (2020→2025), 219 providers
+  parsed, dupe-check 0. RD1 income trajectory sane: 374.3 (19/20) → 416.0 (20/21) →
+  618.9 (24/25) GBPm.
+- [x] Hygiene — deleted 96 legacy synthetic 'modelled' SHMI rows (×100 scale) for 4 orgs
+  now covered by official SHMI; metric single-scale again. Fixed dc-tac freshness/QA
+  patterns to *dc-tac* (missing trailing wildcard undercounted).
+- [x] Catalogue subdomain (migration de_catalog_subdomain) — sr_v/mv_metric_catalog now
+  expose sr_metrics.subdomain.
+- [x] Scale pass (e58071c) — boot cap 45k→60k status rows (29,173 live, 2× headroom);
+  metric explorer list sorts domain→subdomain→name with group headers and subdomain in
+  the meta line; trust explorer tables sort and divide by subdomain within each domain;
+  metric header shows domain/subdomain. Gate 31 passed + 1 timing flaky (passes solo in
+  3.5s); deploy verified live (259,791 bytes, limit(60000) marker).
+- Freshness 38 families; QA 80 checks, 0 fail, 3 tolerance warns (real outliers). Vacancy
+  statistics SKIPPED: no provider-grain series published (regional/staff-group only).
+- Serving after this run: 252 metric defs (241 populated, was 192) · 203,934 curated obs
+  (was 151,529) · 412,527 split rows · 210 orgs.
