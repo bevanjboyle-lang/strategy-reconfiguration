@@ -267,3 +267,40 @@ provider landscape (acute + ambulance + MH + community).
   new org types are data-complete but invisible in the app (explorer/pickers/strips filter
   org_type==='acute_trust'); needs provider-type grouping in pickers, England surfaces and
   catalogue coverage labels.
+
+
+## Full-fat autonomous run 2 (9 Jul 2026 pm) — TAC finance, landscape UI, materialised serving
+
+- [x] D-C1 TAC rich finance (#dc-tac-v1 / #dc-tac-drv-v1, load_dc_tac.py) — TAC data
+  publications parsed from the 'All data' long sheets (6 workbooks, trusts + FTs,
+  2022/23-2024/25 + PY column of 2022/23 = FY2021/22): 33 finance metrics per provider-year
+  (income incl private patients; expenditure incl drugs, clinical supplies, consultancy,
+  premises, CNST premium; staff costs incl substantive/bank/agency + sickness days lost per
+  WTE; position; balance sheet; cash flow; 5 derived ratios) = 27,030 values · 205 providers ·
+  4 FYs. SoCI identities verified (income − expenses = surplus, exact); RD1 FY24/25: income
+  GBP618.9m, net margin −0.53%, agency 1.29% of pay. Unmapped legacy codes noted (R1C, RA4,
+  RRP, RVY, RY9, RYK, TAF — dissolved/merged). Finance domain: 25 → 59 populated metrics.
+  GOTCHAS: TAC MainCodes span multiple CY0x tables per sheet (filter CY0\d, not CY01);
+  PostgREST like patterns need trailing * (a missed wildcard briefly duplicated the load —
+  detected by dupe-check SQL, cleanly force-reloaded, 0 dupes verified).
+- [x] Landscape UI (cf859c4) — trust explorer picker gains Mental health / Community /
+  Ambulance provider groups (with real ERIC/workforce/TAC data behind them), England
+  overview states the 210-provider landscape, Start copy landscape-wide, explorer
+  deep-link routing fixed (?system=&view=xentity previously fell back to drivers).
+- [x] D-D materialised serving layer (d324495, migration dd_materialised_serving) —
+  sr_v_metric_status hit 3.6s at 22k rows (per-row correlated subplans) and began breaching
+  the anon statement timeout at boot after TAC. New sr_mv_metric_status / sr_mv_metric_catalog /
+  sr_mv_fact_catalog materialised views + sr_refresh_serving() RPC (service-role only),
+  refreshed automatically at the end of update_freshness.py. App reads the matviews.
+  RESULT: suite went 32/32 with zero flaky in 1.7m (from 3-4m with recurring retries);
+  boot markedly faster. Finance page wired to TAC headline codes with an explorer cross-link.
+- Ops learnings: never run two Playwright gates concurrently (the second reuses the first's
+  static server and dies when it exits); avoid gates during heavy local parsing (CPU
+  starvation produced false failures).
+- Serving after this run: 202 metric defs (192 populated) · 151,529 curated obs ·
+  412,527 split rows · 210 orgs · QA 58 checks 0 fail · freshness 27 families.
+- QUEUED NEXT (in order): D-B parsers — staff survey themes + CQC domain ratings + vacancy
+  statistics (all direct fetches; lake has landing pages only), UKHSA HCAI (ODS parsing);
+  D-A remainder — WLMDS demographics, cancelled ops, UEC sitrep aggregates, beds completion,
+  A&E supplementary/discharge, ERIC multi-year; NCC cost index; Explorer subdomain grouping
+  for the 59-metric finance catalogue.
