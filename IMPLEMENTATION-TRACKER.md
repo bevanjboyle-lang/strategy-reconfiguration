@@ -193,3 +193,38 @@ idempotent `source`/`source_url` tags, `--live`):
 - (c) Elective activity by TFC → `sr_fact` `rtt_completed_pathways` specialty rows, 24mo. Tag `[wp2-rttact-v1]`.
 - (d) RTT incomplete by TFC, all English trusts, 24mo, exclude `C_999` (~120k rows, batch ≤5k). Tag `[wp2-rttnat-v1]`.
 Acceptance: each tag idempotent (re-run adds 0 rows); national org counts; no modelled rows duplicated.
+
+
+## Entry-journey programme E1-E3 (9 Jul 2026, commits a625221 + db06360)
+
+Trigger: Bevan's review ask — the app opened inside a system; step one must be a choice
+(explore the data / work a system). Full review: 'Strategy and Reconfiguration - Product
+and Journey Review - 9 Jul 2026.docx' (findings F1-F12).
+
+- [x] E1 front door — Start screen with three doors (explore / work-a-system landing on
+  Priority drivers / resume + BSW flagship chip); hard-coded BSW default and silent
+  localStorage restore removed (stored system is now only a resume chip); deep links
+  ?system=&view=&org= parsed on boot and written on navigation (URL = shareable state);
+  copy repairs: stale flagship banner (F5), ASR framing parameterised (F6), header scope
+  label 'Whole system / trust' with proper casing (F3); topbar controls hidden on Start.
+- [x] E2 England — 'England overview' page: national median KPI band, England distribution
+  strips, under-most-pressure table (fragility top-12, click-through to trust explorer),
+  and the national ICB map acting as door B (click a system = open its drivers); nav
+  regrouped START / SYSTEM / DOMAINS / DATA EXPLORER (F4); boot is lazy — the Start screen
+  paints after one small fetch, the full model loads only after a door is chosen (F10).
+- [x] E3 journey credibility — REAL BUG fixed: the decision-journey Orient list was
+  unscoped against the now-national sr_v_metric_status rows, so any system showed
+  England's worst rows (Devon listed Nottingham/Frimley/York); now scoped to the system's
+  trusts and ranked by national percentile ('worse than N% of England' replaces the wall
+  of saturated 100s, F8). Completion chips are earned, not derived (F7): orient/prioritise
+  tick on being worked in this browser (per-system localStorage), surface on a saved
+  register for the system's trusts, frame on a submitted/adopted lens vote, commit on a
+  recorded sr_commitments row. Issues-to-options path (F9): non-flagship Options page
+  offers 'draft options from your prioritised issues' (facilitator-gated; migration
+  e3_options_drafts_insert_auth adds authenticated INSERT on sr_options +
+  sr_ai_option_drafts; new options are linked to their source issues, so they surface for
+  their own system). Two-part tour (F11): 3-step door tour on Start (sr_tour_home) +
+  the existing 6-step in-system tour on first commitment.
+- [x] Suite 22 → 30 (entry screen, door B landing, deep links, no-silent-restore, door A
+  neutrality, England overview + prompt, scoped/earned journey, options seed panel).
+  30/30 green first run (~2m).
