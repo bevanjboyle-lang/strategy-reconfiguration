@@ -3,12 +3,18 @@ const SB_URL="https://ehkxzxjnhqcuarbcfchw.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoa3h6eGpuaHFjdWFyYmNmY2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTE2MzcsImV4cCI6MjA5ODA2NzYzN30.oLc_J8Y5pV4xzBkOQruRU5WqbwyA_Lsb6M4etRYNFWY";
 const sb=window.supabase.createClient(SB_URL,SB_KEY);
 const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.topo.json";
-const NAV=[["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
-["EXPLORE",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
-["EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
+const NAV=[["START",[["home","Start"],["england","England overview"]]],
+["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
+["DOMAINS",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
+["DATA EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
 ["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
 ["DECIDE",[["decide","Decision journey"]]]];
+/* E1 · entry-flow state: nothing is system-committed until the user chooses (door B, resume chip,
+   in-app picker or a ?system= deep link). Neutral surfaces (England overview + data explorer) never commit. */
+const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','workforce','population','access','modelling','options','assurance','decide'];
+const NEUTRAL_STAGES=['england','xentity','xmetric','xgrid'];
+let appReady=false,sysCommitted=false,mapEngland=false,pendingOrg=null;
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
 const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
 let PLACE_SITE={}; /* dynamic per system */
@@ -60,12 +66,14 @@ function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:c;}
 
 const BSW_SLUG='nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
 let SYSTEMS=[],TRUSTMETA={},SITES=[],CQC={};
-let sysSlug=(function(){try{return localStorage.getItem('sr_system')||BSW_SLUG}catch(e){return BSW_SLUG}})();
+let sysSlug=BSW_SLUG; /* internal placeholder only — the entry screen or a deep link decides; no silent restore (E1/F1) */
+function storedSystem(){try{const s=localStorage.getItem('sr_system');return (s&&SYSTEMS.find(x=>x.slug===s))?s:null;}catch(e){return null;}}
+function storedStage(){try{const s=localStorage.getItem('sr_stage');return (s&&SYS_STAGES.includes(s))?s:'drivers';}catch(e){return 'drivers';}}
 function system(){return SYSTEMS.find(s=>s.slug===sysSlug)||SYSTEMS[0];}
 const PALETTE=['#1f3a78','#8a6a1e','#166f4d','#44639f','#b3261e','#7c93c4','#7c93c4'];
 function trustShort(c){const t=TRUSTMETA[c];if(!t)return c;return t.name.replace(/Nhs Foundation Trust|Nhs Trust|Foundation Trust|Hospitals Nhs/gi,'').replace(/\bNhs\b/gi,'').replace(/\s+/g,' ').trim();}
 function applySystem(){const s=system();TRUSTS=s?s.trusts.slice():[];PLACE_SITE={};TRUSTCOL={};TRUSTS.forEach((c,i)=>{PLACE_SITE[c]=trustShort(c);TRUSTCOL[c]=PALETTE[i%PALETTE.length];});}
-function sysNote(){if(sysSlug===BSW_SLUG)return '';return `<div class="banner">Viewing ${esc(system()?system().name:'')}. Headline performance, benchmarking and the strategic map run on live national data; detailed activity, finance, workforce, estate and the issue register carry the full dataset for the flagship system in this working prototype.</div>`;}
+function sysNote(){if(sysSlug===BSW_SLUG)return '';return `<div class="banner">Viewing ${esc(system()?system().name:'')}. Headline performance, benchmarking, estate, workforce and the strategic map run on live national published data; the flagship system additionally carries local finance detail, MHS-sourced metrics and a curated issue register in this working prototype.</div>`;}
 function sysOrgs(){return orgs.filter(x=>TRUSTS.includes(x.code)||(sysSlug===BSW_SLUG&&['icb','provider_group'].includes(x.type)));}
 function pickDefaultOrg(force){const so=sysOrgs();if(force||!sel||!so.find(x=>x.id===sel)){const g=so.find(x=>x.type==='provider_group');sel=g?g.id:(so[0]||{}).id;}}
 async function loadSeries(){const ids=sysOrgs().map(x=>x.id);series={};if(!ids.length)return;
@@ -74,9 +82,10 @@ async function loadSeries(){const ids=sysOrgs().map(x=>x.id);series={};if(!ids.l
   Object.values(series).forEach(a=>a.sort((p,q)=>p.period<q.period?-1:1));}
 function renderSystems(){const s=document.getElementById('syssel');if(!s)return;const groups={};SYSTEMS.forEach(x=>{(groups[x.region]=groups[x.region]||[]).push(x);});
   s.innerHTML=Object.keys(groups).sort().map(rg=>`<optgroup label="${esc(rg.replace(/-/g,' '))}">`+groups[rg].map(x=>`<option value="${x.slug}" ${x.slug===sysSlug?'selected':''}>${esc(x.name.replace('NHS ','').replace(' Integrated Care Board','').replace(' ICB',''))}</option>`).join('')+`</optgroup>`).join('');}
-async function setSystem(slug){sysSlug=slug;try{localStorage.setItem('sr_system',slug)}catch(e){}
+async function setSystem(slug){if(!appReady){enterSystem(slug,'drivers');return;}
+  sysSlug=slug;sysCommitted=true;try{localStorage.setItem('sr_system',slug)}catch(e){}
   applySystem();pickDefaultOrg(true);renderSystems();renderSelect();driver=null;
-  await loadSeries();render();}
+  await loadSeries();render();syncUrl();}
 window.setSystem=setSystem;
 
 async function loadAll(){
@@ -97,6 +106,7 @@ async function loadAll(){
   orgById={};orgs.forEach(x=>orgById[x.id]=x);distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
   distByCode={};orgdist.forEach(x=>{if(x.org_code)distByCode[x.org_code]=x;});
   applySystem();pickDefaultOrg(false);
+  if(pendingOrg){const t=orgs.find(x=>x.code===pendingOrg&&TRUSTS.includes(x.code));if(t)sel=t.id;pendingOrg=null;}
   const L=lenses.find(x=>x.name===lensName)||lenses[0];if(L){lensName=L.name;weights=Object.assign({},L.weights);}
   await loadSeries();
   }catch(e){
@@ -104,6 +114,7 @@ async function loadAll(){
     document.getElementById('view').innerHTML=`<div class="banner">Could not load the system model (network). <button class="btn ghost" style="margin-left:8px;font-size:11.5px;padding:5px 12px" onclick="location.reload()">Retry</button></div>`;
     return;
   }
+  appReady=true;
   renderSystems();renderNav();renderSelect();render();
   /* E4 · non-critical loads (evidence, freshness, QA) deferred past first paint */
   deferredLoads=Promise.resolve().then(async()=>{try{
@@ -124,10 +135,34 @@ async function ensure(domain){const key=domain+'|'+sysSlug;if(fcache[key])return
   catch(e){console.warn('sr_fact fetch failed for '+domain,e);lastEnsureError=domain;return [];}}
 function ensureNote(domain){return lastEnsureError===domain?`<div class="banner">Detail data for this page could not be loaded (network) — showing what is available. <a href="#" onclick="location.reload();return false">Retry</a></div>`:'';}
 function renderNav(){document.getElementById('nav').innerHTML=NAV.map(g=>`<div class="navgrp"><div class="lab">${g[0]}</div><div class="nav" role="navigation" aria-label="${esc(g[0].toLowerCase())} pages">`+g[1].map(s=>`<button class="${stage===s[0]?'on':''}" data-stage="${s[0]}" aria-label="${esc(s[1])}"${stage===s[0]?' aria-current="page"':''} onclick="setStage('${s[0]}')"><span class="ic"></span><span>${s[1]}</span></button>`).join('')+`</div></div>`).join('');}
-function renderSelect(){const s=sysOrgs();document.getElementById('orgsel').innerHTML=s.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('');}
-document.getElementById('orgsel').addEventListener('change',e=>{sel=e.target.value;driver=null;render();});
+function renderSelect(){const s=sysOrgs();document.getElementById('orgsel').innerHTML=s.map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.type==='acute_trust'?trustShort(x.code):('Whole system — '+x.name))}</option>`).join('');}
+document.getElementById('orgsel').addEventListener('change',e=>{sel=e.target.value;driver=null;render();syncUrl();});
 document.getElementById('syssel').addEventListener('change',e=>{setSystem(e.target.value);});
-function setStage(s){stage=s;driver=null;renderNav();render();toggleSide(false);window.scrollTo({top:0,behavior:reducedMotion()?'auto':'smooth'});}
+function setStage(s){
+  if(s!=='home'&&SYS_STAGES.includes(s)&&!sysCommitted){openSystemPrompt(s);return;}
+  if(s!=='home'&&!appReady){bootInto(s);return;}
+  stage=s;driver=null;if(SYS_STAGES.includes(s)){try{localStorage.setItem('sr_stage',s)}catch(e){}}
+  renderNav();render();toggleSide(false);syncUrl();window.scrollTo({top:0,behavior:reducedMotion()?'auto':'smooth'});}
+/* E1 · URL is the shareable state: ?system=&view=(&org=). Entry screen keeps a clean URL. */
+function syncUrl(){try{let u=location.pathname;
+  if(stage!=='home'){if(sysCommitted){u+='?system='+encodeURIComponent(sysSlug)+'&view='+stage;const o=orgById[sel];if(o&&o.type==='acute_trust')u+='&org='+encodeURIComponent(o.code);}else u+='?view='+stage;}
+  history.replaceState(null,'',u);}catch(e){}}
+async function bootInto(s){stage=s;const v=document.getElementById('view');if(v)v.innerHTML='<div class="loading">Loading live national data…</div>';renderNav();await loadAll();syncUrl();}
+async function enterSystem(slug,view){if(!SYSTEMS.find(x=>x.slug===slug))return;
+  sysCommitted=true;stage=(view&&SYS_STAGES.includes(view))?view:'drivers';try{localStorage.setItem('sr_stage',stage)}catch(e){}
+  if(!appReady){sysSlug=slug;try{localStorage.setItem('sr_system',slug)}catch(e){}
+    const v=document.getElementById('view');if(v)v.innerHTML='<div class="loading">Loading the system picture…</div>';renderNav();await loadAll();}
+  else{const ss=document.getElementById('syssel');if(ss)ss.value=slug;await setSystem(slug);renderNav();maybeStartTour();}
+  syncUrl();}
+async function enterExplore(view){const s=NEUTRAL_STAGES.includes(view)?view:'xmetric';if(appReady){setStage(s);return;}await bootInto(s);}
+function homeGo(){const el=document.getElementById('homesys');if(!el||!el.value)return;enterSystem(el.value,'drivers');}
+function openSystemPrompt(target){hideTip();const groups={};SYSTEMS.forEach(x=>{(groups[x.region]=groups[x.region]||[]).push(x);});
+  const opts=Object.keys(groups).sort().map(rg=>`<optgroup label="${esc(rg.replace(/-/g,' '))}">`+groups[rg].map(x=>`<option value="${x.slug}">${esc(x.name.replace('NHS ','').replace(' Integrated Care Board','').replace(' ICB',''))}</option>`).join('')+`</optgroup>`).join('');
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" role="dialog" aria-modal="true" style="max-width:430px" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()" aria-label="Close dialog">×</button>
+   <h2>Choose a system</h2><div class="ms">That page reads a single system's picture — pick one to continue (you can switch any time).</div>
+   <select id="promptsys" aria-label="Choose a system" style="width:100%;margin:12px 0"><option value="">Choose a system…</option>${opts}</select>
+   <button class="btn" onclick="const v=document.getElementById('promptsys').value;if(v){closeDrill();enterSystem(v,'${esc(target)}');}">Continue</button></div></div>`;}
+window.enterSystem=enterSystem;window.enterExplore=enterExplore;window.homeGo=homeGo;window.openSystemPrompt=openSystemPrompt;
 /* U10/E5 · shared helpers: reduced-motion query + off-canvas drawer toggle */
 function reducedMotion(){try{return window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){return false}}
 function toggleSide(force){const s=document.querySelector('.side'),sc=document.getElementById('sidescrim'),b=document.getElementById('menubtn');if(!s)return;
@@ -139,13 +174,16 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
+const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
 function render(){killCharts();const o=orgById[sel]||{};
-  document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(o.name||'')}</small>`;
+  document.body.classList.toggle('home',stage==='home');
+  const scope=stage==='home'?'Choose how to begin':(!sysCommitted?'England · every acute trust':`${sysLabel()} · ${o.type==='acute_trust'?trustShort(o.code):'Whole system'}`);
+  document.getElementById('topttl').innerHTML=`${esc(TITLES[stage]||'')}<small>${esc(scope)}</small>`;
   const ph=document.getElementById('printhead');if(ph)ph.innerHTML=`System Intelligence — ${esc(system()?system().name:'')}<small>${esc(TITLES[stage]||'')} · ${esc(o.name||'')} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · source-tagged data — modelled and estimated figures are labelled</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
+  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
+  mapEngland=(stage==='england');
   fn(v);
 }
 const tip=document.getElementById('tip');
@@ -219,6 +257,55 @@ function csvTable(tid,fname){const csv=tableToCsv(document.getElementById(tid));
 window.csvTable=csvTable;
 
 /* ===== OVERVIEW ===== */
+/* ===== E1 · START (entry choice screen — renders instantly, before the full model loads) ===== */
+function renderHome(v){
+  const groups={};SYSTEMS.forEach(x=>{(groups[x.region]=groups[x.region]||[]).push(x);});
+  const opts=Object.keys(groups).sort().map(rg=>`<optgroup label="${esc(rg.replace(/-/g,' '))}">`+groups[rg].map(x=>`<option value="${x.slug}">${esc(x.name.replace('NHS ','').replace(' Integrated Care Board','').replace(' ICB',''))}</option>`).join('')+`</optgroup>`).join('');
+  const last=storedSystem();const lastSys=last?SYSTEMS.find(s=>s.slug===last):null;
+  const resume=lastSys?`<div class="hres" role="button" tabindex="0" onclick="enterSystem('${esc(lastSys.slug)}',storedStage())" onkeydown="if(event.key==='Enter')enterSystem('${esc(lastSys.slug)}',storedStage())"><span><span class="k">${esc(lastSys.name)}</span><br><span class="s">your last session · one click back</span></span><span class="go">→</span></div>`:'';
+  v.innerHTML=`<div class="homewrap">
+    <h1 class="serif">Where do you want to start?</h1>
+    <div class="lead" style="max-width:760px">One agreed picture of any acute system in England, built from live published NHS data and benchmarked against every English trust. Every figure carries its source and confidence tag.</div>
+    <div class="doors">
+      <section class="door" id="doorA"><div class="eyebrow">Explore</div><h2 class="serif">Explore the data</h2>
+        <p>England-wide and uncurated. No system selected, no story imposed.</p>
+        <ul><li>150+ metric catalogue, ranked across every English acute trust</li><li>Trust-by-trust drill: trend, standard, SPC, provenance</li><li>Raw extract grid with source and confidence on every value</li></ul>
+        <button class="btn ghost" onclick="enterExplore('xmetric')">Open the data explorer</button>
+        <button class="btn ghost" style="margin-top:7px" onclick="enterExplore('england')">England overview</button></section>
+      <section class="door" id="doorB"><div class="eyebrow">Diagnose</div><h2 class="serif">Work a system</h2>
+        <p>Pick an ICB and surface its opportunities.</p>
+        <select id="homesys" aria-label="Choose a system"><option value="">Choose a system… (all ${SYSTEMS.length||42} ICBs)</option>${opts}</select>
+        <ul><li>Four priority drivers, benchmarked nationally</li><li>Near-failure flags and distress, challengeable by trusts</li><li>Auto-drafted issue register feeding the decision journey</li></ul>
+        <button class="btn" onclick="homeGo()">Open the system view</button></section>
+      <section class="door" id="doorC"><div class="eyebrow">Resume</div><h2 class="serif">Pick up where you left off</h2>
+        <p>Nothing is chosen for you; your shortcuts live here.</p>
+        <div class="hchips">${resume}
+          <div class="hres flag" role="button" tabindex="0" onclick="enterSystem(BSW_SLUG,'overview')" onkeydown="if(event.key==='Enter')enterSystem(BSW_SLUG,'overview')"><span><span class="k">BSW flagship demo</span><br><span class="s">richest dataset · local finance, MHS, curated issues</span></span><span class="go">→</span></div>
+        </div></section>
+    </div>
+    <div class="note" style="margin-top:22px;max-width:900px">Working prototype. Headline performance, benchmarking, estate, workforce and the strategic map run on live national published data for every system; the flagship system carries additional local depth. Provenance on everything: official · actual · derived · modelled.</div>
+  </div>`;
+  maybeStartHomeTour();
+}
+
+/* ===== E2 · ENGLAND OVERVIEW (national, no system commitment; map click = door B) ===== */
+function renderEngland(v){
+  const CODES=[['ae_4hr','A&E 4-hour performance'],['rtt_18wk','RTT within 18 weeks'],['cancer_62','Cancer 62-day'],['bed_occupancy','G&A bed occupancy'],['dm01_6wk','Diagnostics within 6 weeks']];
+  const natRows=c=>rows.filter(r=>r.metric_code===c&&r.org_type==='acute_trust'&&!r.service_id&&r.value!=null);
+  let h=`<h1 class="serif">England overview</h1><div class="lead">Every English acute trust on live published data. Click a system on the map to open its opportunity view, or stay national and explore trust by trust.</div>`;
+  h+=`<div class="mapwrap"><div id="mlmap"></div><div class="maplegend" id="mlegend"></div></div>`;
+  h+=`<div class="eyebrow">National position · median across all acute trusts · latest published</div><div class="grid kpis">`+CODES.map(cd=>{const all=natRows(cd[0]);if(all.length<10)return '';const vals=all.map(r=>Number(r.value)).sort((a,b)=>a-b);const md=vals[Math.floor(vals.length/2)];const u=all[0].unit;const std=all[0].standard;
+    return kpi(cd[1],fmt(md,u),'',(std!=null&&std!==''?'standard '+fmt(std,u)+' · ':'')+all.length+' trusts','#191f2b');}).join('')+`</div>`;
+  const fr=rows.filter(r=>r.metric_code==='fragility_index'&&r.org_type==='acute_trust'&&r.value!=null).sort((a,b)=>Number(b.value)-Number(a.value)).slice(0,12);
+  h+=`<div class="two"><div class="card"><div class="h3">National distributions</div><div class="cap">every acute trust · dot = one trust · dashed = median</div>`+
+    ['ae_4hr','rtt_18wk','bed_occupancy','cancer_62','fragility_index'].map(c=>{const any=rows.find(r=>r.metric_code===c);return `<div class="cap" style="margin-top:9px">${esc(any?any.metric_name:c)}</div>`+(distStrip(c,[],null)||'<div class="note">insufficient coverage</div>');}).join('')+`</div>
+   <div class="card" style="padding:4px 0"><div class="h3" style="padding:11px 14px 0">Under most pressure</div><div class="cap" style="padding:0 14px 4px">service-fragility composite · click a trust to explore it</div><table class="dt"><thead><tr><th>Trust</th><th>System</th><th class="num">Fragility</th></tr></thead><tbody>`+
+    fr.map(r=>{const sys=SYSTEMS.find(s=>(s.trusts||[]).includes(r.org_code));return `<tr style="cursor:pointer" onclick="xGoOrg('${r.organisation_id}')"><td>${esc(trustShort(r.org_code))}</td><td>${esc(sys?sys.name.replace('NHS ','').replace(' Integrated Care Board','').replace(' ICB',''):'')}</td><td class="num" style="color:${color(Number(r.value))};font-weight:600">${Math.round(Number(r.value))}</td></tr>`;}).join('')+
+    `</tbody></table></div></div>`;
+  h+=`<div class="grid three" style="margin-top:13px"><div class="card" style="cursor:pointer" onclick="setStage('xmetric')"><div class="h3">Metric explorer →</div><div class="cap">any metric, ranked across England</div></div><div class="card" style="cursor:pointer" onclick="setStage('xentity')"><div class="h3">Trust explorer →</div><div class="cap">everything on any English acute trust</div></div><div class="card" style="cursor:pointer" onclick="openSystemPrompt('drivers')"><div class="h3">Work a system →</div><div class="cap">pick an ICB and surface its opportunities</div></div></div>`;
+  v.innerHTML=h;initMap();
+}
+
 function renderOverview(v){
   const o=orgById[sel]||{},od=distByOrg[sel];const gm=c=>orgRows().find(r=>r.metric_code===c);
   const deficit=gm('deficit'),ae=gm('ae_4hr'),rtt=gm('rtt_18wk'),occ=gm('bed_occupancy'),ca=gm('cancer_62');
@@ -286,12 +373,15 @@ async function initMap(){
     bootDone=true;
     if(!m.getLayer('icb-fill'))m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':icbFillExpr(),'fill-opacity':mapState.basis==='distress'?0.55:0.28}});
     if(!m.getLayer('icb-line'))m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
-    if(!m.getLayer('icb-sel'))m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
-    m.on('click','icb-fill',e=>{const p=e.features[0].properties;if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
+    if(!m.getLayer('icb-sel'))m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],mapEngland?'__none__':sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
+    m.on('click','icb-fill',e=>{const p=e.features[0].properties;
+      if(mapEngland){enterSystem(p.slug,'drivers');return;}
+      if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
     m.on('mousemove','icb-fill',e=>{ml.getCanvas().style.cursor='pointer';});
     m.on('mouseleave','icb-fill',()=>{ml.getCanvas().style.cursor='';});
-    await refreshSystemLayers();
-    renderChips();
+    if(mapEngland){/* E2 · national view: no per-system layers, no zoom — the map IS the system picker */
+      const lg=document.getElementById('mlegend');if(lg)lg.innerHTML=`<div class="ttl2">Composite need score · every ICB</div>`+[0,20,40,60,80,100].map((v,i)=>`<div class="lgrow"><span class="sw" style="background:${RAMP[i]};${i===0?'border:1px solid #dcd9d0':''}"></span>${v}${i===5?' · highest':''}</div>`).join('')+`<div class="lgrow" style="margin-top:6px;color:#5a6172">Click a system to open its opportunity view</div>`;}
+    else{await refreshSystemLayers();renderChips();}
   }catch(e){console.error('map init failed',e);}};
   m.on('style.load',boot);setTimeout(boot,120);
 }
@@ -388,7 +478,7 @@ const DRIVER_HEADLINE={service_fragility:'bed_occupancy',uec:'ae_4hr',elective_b
 const DRIVER_BLURB={service_fragility:'Occupancy, diagnostics and mortality signals that show where services are running closest to the edge.',uec:'The urgent and emergency pathway under strain: front door, ambulance handovers and delayed discharges.',elective_backlog:'The waiting list a decade in the making: size, waits over 18 and 52 weeks, and lost theatre activity.',cancer:'Cancer access against the 62-day, faster-diagnosis and 31-day standards.'};
 function benchSeries(mid,type){return bench.filter(b=>b.metric_id===mid&&b.type===type).sort((a,b)=>a.period<b.period?-1:1);}
 function renderDrivers(v){
-  let h=`<h1 class="serif">The four priority drivers</h1><div class="lead">The pressures driving the Acute Services Review, shown with live published NHS data for ${esc(TRUSTS.map(c=>trustShort(c)).join(', '))}, benchmarked against every English acute trust. Click any figure to interrogate it — trend, standard, national position, provenance.</div>`;
+  let h=`<h1 class="serif">The four priority drivers</h1><div class="lead">The pressures driving ${sysSlug===BSW_SLUG?'the Acute Services Review':'acute strategy and reconfiguration'}, shown with live published NHS data for ${esc(TRUSTS.map(c=>trustShort(c)).join(', '))}, benchmarked against every English acute trust. Click any figure to interrogate it — trend, standard, national position, provenance.</div>`;
   DRIVERS.forEach(dv=>{
     const codes=DRIVER_METRICS[dv[0]]||[];const hcode=DRIVER_HEADLINE[dv[0]];
     const avg=Math.round(TRUSTS.reduce((s,tc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const rs=codes.map(c=>rows.find(x=>x.organisation_id===oid&&x.metric_code===c)).filter(Boolean);return s+(rs.length?rs.reduce((a,r)=>a+r.distress,0)/rs.length:0);},0)/TRUSTS.length);
@@ -1296,13 +1386,18 @@ const TOUR_STEPS=[
  {sel:'#nav button[data-stage="decide"]',side:true,t:'Decision journey',b:'Orient → Diagnose → Prioritise → Options → Commit: a governed journey from evidence to a defensible weighted decision, with workshop voting, saved lenses and board packs.'},
  {sel:'#authui',t:'Challenge anything',b:'Every figure carries its source and confidence tag — nothing is a black box. Trusts can challenge their own data and facilitators adjudicate: sign in to challenge or vote; reading stays open to all.'},
  {sel:'#nav button[data-stage="xentity"]',side:true,t:'Or skip the story',b:'Or ignore our story entirely — the Explorer is uncurated: any metric, any English acute trust. Trust-by-trust, metric-by-metric across England, plus a raw extract grid with source and confidence on every value.'}];
-let tourIdx=-1;
-function maybeStartTour(){try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_done'))return;}catch(e){return;}startTour();}
-function startTour(){if(stage!=='overview')setStage('overview');tourIdx=0;drawTour();}
-function endTour(){tourIdx=-1;try{localStorage.setItem('sr_tour_done','1')}catch(e){}const r=document.getElementById('tourroot');if(r)r.innerHTML='';if(innerWidth<=920)toggleSide(false);}
-function tourNext(){if(tourIdx>=TOUR_STEPS.length-1){endTour();return;}tourIdx++;drawTour();}
+let tourIdx=-1,tourSteps=TOUR_STEPS,tourKey='sr_tour_done';
+const HOME_TOUR=[
+ {sel:'#doorA',t:'Two ways in',b:'Start with the data itself: England-wide, uncurated, every English acute trust, provenance on every value.'},
+ {sel:'#doorB',t:'Or work a system',b:'Pick any of the 42 ICBs and land on its opportunity view: the four priority drivers, near-failure flags and an auto-drafted issue register.'},
+ {sel:'#doorC',t:'Nothing is chosen for you',b:'Your last session and the flagship demo live here as shortcuts. Start is always one click away in the sidebar.'}];
+function maybeStartTour(){if(!sysCommitted||stage==='home')return;try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_done'))return;}catch(e){return;}startTour();}
+function startTour(){if(stage==='home'){tourSteps=HOME_TOUR;tourKey='sr_tour_home';}else{if(stage!=='overview')setStage('overview');tourSteps=TOUR_STEPS;tourKey='sr_tour_done';}tourIdx=0;drawTour();}
+function maybeStartHomeTour(){try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_home'))return;}catch(e){return;}tourSteps=HOME_TOUR;tourKey='sr_tour_home';tourIdx=0;drawTour();}
+function endTour(){tourIdx=-1;try{localStorage.setItem(tourKey,'1')}catch(e){}const r=document.getElementById('tourroot');if(r)r.innerHTML='';if(innerWidth<=920)toggleSide(false);}
+function tourNext(){if(tourIdx>=tourSteps.length-1){endTour();return;}tourIdx++;drawTour();}
 function tourBack(){if(tourIdx>0){tourIdx--;drawTour();}}
-function drawTour(){const r=document.getElementById('tourroot');if(!r||tourIdx<0)return;const s=TOUR_STEPS[tourIdx];
+function drawTour(){const r=document.getElementById('tourroot');if(!r||tourIdx<0)return;const s=tourSteps[tourIdx];
   if(s.side&&innerWidth<=920&&!document.querySelector('.side.open')){toggleSide(true);setTimeout(drawTour,260);return;}
   let t=null;try{t=s.sel?document.querySelector(s.sel):null;}catch(e){}
   if(t)try{t.scrollIntoView({block:'center',behavior:'auto'})}catch(e){}
@@ -1312,7 +1407,7 @@ function drawTour(){const r=document.getElementById('tourroot');if(!r||tourIdx<0
       const W=Math.min(350,innerWidth-28);const x=Math.min(Math.max(12,b.left),Math.max(12,innerWidth-W-12));let y=b.bottom+14;
       if(y+250>innerHeight)y=Math.max(12,b.top-260);
       pos=`top:${y}px;left:${x}px`;}}
-  r.innerHTML=`<div class="tour-scrim" onclick="endTour()"></div>${hl}<div class="card tour-pop" role="dialog" aria-modal="true" aria-label="Guided tour — step ${tourIdx+1} of ${TOUR_STEPS.length}" tabindex="-1" style="${pos}"><div class="stepno">Step ${tourIdx+1} of ${TOUR_STEPS.length}</div><div class="h3">${esc(s.t)}</div><p>${esc(s.b)}</p><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="tourNext()" aria-label="${tourIdx>=TOUR_STEPS.length-1?'Finish the tour':'Next step'}">${tourIdx>=TOUR_STEPS.length-1?'Finish':'Next'}</button>${tourIdx>0?`<button class="btn ghost" onclick="tourBack()" aria-label="Previous step">Back</button>`:''}<a href="#" style="margin-left:auto;font-size:12px" onclick="endTour();return false" aria-label="Skip the tour">Skip tour</a></div></div>`;
+  r.innerHTML=`<div class="tour-scrim" onclick="endTour()"></div>${hl}<div class="card tour-pop" role="dialog" aria-modal="true" aria-label="Guided tour — step ${tourIdx+1} of ${tourSteps.length}" tabindex="-1" style="${pos}"><div class="stepno">Step ${tourIdx+1} of ${tourSteps.length}</div><div class="h3">${esc(s.t)}</div><p>${esc(s.b)}</p><div style="display:flex;gap:8px;align-items:center"><button class="btn" onclick="tourNext()" aria-label="${tourIdx>=tourSteps.length-1?'Finish the tour':'Next step'}">${tourIdx>=tourSteps.length-1?'Finish':'Next'}</button>${tourIdx>0?`<button class="btn ghost" onclick="tourBack()" aria-label="Previous step">Back</button>`:''}<a href="#" style="margin-left:auto;font-size:12px" onclick="endTour();return false" aria-label="Skip the tour">Skip tour</a></div></div>`;
   const p=r.querySelector('.tour-pop');if(p)try{p.focus({preventScroll:true})}catch(e){}}
 window.startTour=startTour;window.endTour=endTour;window.tourNext=tourNext;window.tourBack=tourBack;window.maybeStartTour=maybeStartTour;
 /* ===== U9 · glossary & standards ===== */
@@ -1612,4 +1707,15 @@ async function renderXGrid(v){
 }
 
 initAuth();
-loadAll();
+/* E1 · boot: deep links land directly; everyone else gets the Start screen (no silent restore). */
+async function startApp(){
+  const q=new URLSearchParams(location.search);
+  const linkSys=q.get('system'),linkView=q.get('view');pendingOrg=q.get('org');
+  try{if(!SYSTEMS.length){const gs=await fetch('geo/systems.json');SYSTEMS=await gs.json();}}catch(e){}
+  const valid=linkSys&&SYSTEMS.find(x=>x.slug===linkSys);
+  if(valid){sysSlug=linkSys;sysCommitted=true;stage=(linkView&&SYS_STAGES.includes(linkView))?linkView:'drivers';renderNav();await loadAll();}
+  else if(linkView&&NEUTRAL_STAGES.includes(linkView)){stage=linkView;renderNav();await loadAll();}
+  else{stage='home';renderNav();render();}
+  syncUrl();
+}
+startApp();
