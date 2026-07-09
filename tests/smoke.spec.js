@@ -401,7 +401,7 @@ test.describe('System Intelligence — smoke (E1)', () => {
     test.slow();
     await page.goto('/index.html?system=nhs-devon-icb&view=decide');
     await expect(page.locator('.view')).toContainText('The agreed starting point', { timeout: 30000 });
-    await expect(page.locator('.view .row .sc').first(), 'national percentile shown').toContainText('worse than');
+    await expect(page.locator('.view .row .sc').first(), 'national percentile shown').toContainText('do better');
     const heads = await page.locator('.view .row .t1').allInnerTexts();
     for (const t of heads.slice(0, 4)) {
       expect(/RA9|RH8|RK9/.test(t), 'orient row belongs to a Devon trust: ' + t).toBeTruthy();
