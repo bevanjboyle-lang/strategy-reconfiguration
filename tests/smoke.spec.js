@@ -420,4 +420,23 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
+
+  test('31 landscape · explorer offers MH/community/ambulance providers with real data', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=nhs-devon-icb&view=xentity');
+    await expect(page.locator('#xorgsel optgroup[label="Mental health trusts"]')).toBeAttached({ timeout: 35000 });
+    const val = await page.locator('#xorgsel optgroup[label="Mental health trusts"] option', { hasText: 'Maudsley' }).first().getAttribute('value');
+    await page.selectOption('#xorgsel', val);
+    await expect(page.locator('.view'), 'MH provider metrics render').toContainText(/Backlog maintenance|Occupied share|estate/i, { timeout: 30000 });
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('32 landscape · England overview states the provider landscape', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?view=england');
+    await expect(page.locator('.view')).toContainText(/135 acute/, { timeout: 30000 });
+    await expect(page.locator('.view')).toContainText(/mental health/);
+  });
+
 });

@@ -94,7 +94,7 @@ async function loadAll(){
   SYSTEMS=await gs.json();TRUSTMETA=await gt.json();SITES=await gsite.json();CQC=await gcqc.json();
   if(!SYSTEMS.find(s=>s.slug===sysSlug))sysSlug=BSW_SLUG;
   const [o,d,r,ov,cr,ln,iss,isc,sp,pd,sg,fl,si,bm]=await Promise.all([
-    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_v_metric_status').select('*').limit(20000),
+    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_v_metric_status').select('*').limit(45000),
     sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
     sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
@@ -269,7 +269,7 @@ function renderHome(v){
     <div class="doors">
       <section class="door" id="doorA"><div class="eyebrow">Explore</div><h2 class="serif">Explore the data</h2>
         <p>England-wide and uncurated. No system selected, no story imposed.</p>
-        <ul><li>150+ metric catalogue, ranked across every English acute trust</li><li>Trust-by-trust drill: trend, standard, SPC, provenance</li><li>Raw extract grid with source and confidence on every value</li></ul>
+        <ul><li>160+ metric catalogue across every English NHS provider</li><li>Trust-by-trust drill: trend, standard, SPC, provenance</li><li>Raw extract grid with source and confidence on every value</li></ul>
         <button class="btn ghost" onclick="enterExplore('xmetric')">Open the data explorer</button>
         <button class="btn ghost" style="margin-top:7px" onclick="enterExplore('england')">England overview</button></section>
       <section class="door" id="doorB"><div class="eyebrow">Diagnose</div><h2 class="serif">Work a system</h2>
@@ -292,17 +292,19 @@ function renderHome(v){
 function renderEngland(v){
   const CODES=[['ae_4hr','A&E 4-hour performance'],['rtt_18wk','RTT within 18 weeks'],['cancer_62','Cancer 62-day'],['bed_occupancy','G&A bed occupancy'],['dm01_6wk','Diagnostic waits over 6 weeks']];
   const natRows=c=>rows.filter(r=>r.metric_code===c&&r.org_type==='acute_trust'&&!r.service_id&&r.value!=null);
-  let h=`<h1 class="serif">England overview</h1><div class="lead">Every English acute trust on live published data. Click a system on the map to open its opportunity view, or stay national and explore trust by trust.</div>`;
+  let h=`<h1 class="serif">England overview</h1><div class="lead">Every English NHS provider on live published data — 135 acute, 47 mental health, 14 community and 10 ambulance trusts. Click a system on the map to open its opportunity view, or stay national and explore provider by provider.</div>`;
   h+=`<div class="mapwrap"><div id="mlmap"></div><div class="maplegend" id="mlegend"></div></div>`;
   h+=`<div class="eyebrow">National position · median across all acute trusts · latest published</div><div class="grid kpis">`+CODES.map(cd=>{const all=natRows(cd[0]);if(all.length<10)return '';const vals=all.map(r=>Number(r.value)).sort((a,b)=>a-b);const md=vals[Math.floor(vals.length/2)];const u=all[0].unit;const std=all[0].standard;
     return kpi(cd[1],fmt(md,u),'',(std!=null&&std!==''?'standard '+fmt(std,u)+' · ':'')+all.length+' trusts','#191f2b');}).join('')+`</div>`;
+  const tcounts=['acute_trust','mh_trust','community_trust','ambulance_trust'].map(t=>orgs.filter(o=>o.type===t).length);
+  h+=`<div class="note" style="margin:4px 2px 10px">Provider landscape on the platform: <b>${tcounts[0]} acute</b> · ${tcounts[1]} mental health · ${tcounts[2]} community · ${tcounts[3]} ambulance. Acute trusts carry the full benchmark set; the wider landscape carries estate, workforce and quality coverage and lives in the Data explorer.</div>`;
   const fr=rows.filter(r=>r.metric_code==='fragility_index'&&r.org_type==='acute_trust'&&r.value!=null).sort((a,b)=>Number(b.value)-Number(a.value)).slice(0,12);
   h+=`<div class="two"><div class="card"><div class="h3">National distributions</div><div class="cap">every acute trust · dot = one trust · dashed = median</div>`+
     ['ae_4hr','rtt_18wk','bed_occupancy','cancer_62','fragility_index'].map(c=>{const any=rows.find(r=>r.metric_code===c);return `<div class="cap" style="margin-top:9px">${esc(any?any.metric_name:c)}</div>`+(distStrip(c,[],null)||'<div class="note">insufficient coverage</div>');}).join('')+`</div>
    <div class="card" style="padding:4px 0"><div class="h3" style="padding:11px 14px 0">Under most pressure</div><div class="cap" style="padding:0 14px 4px">service-fragility composite · click a trust to explore it</div><table class="dt"><thead><tr><th>Trust</th><th>System</th><th class="num">Fragility</th></tr></thead><tbody>`+
     fr.map(r=>{const sys=SYSTEMS.find(s=>(s.trusts||[]).includes(r.org_code));return `<tr style="cursor:pointer" onclick="xGoOrg('${r.organisation_id}')"><td>${esc(trustShort(r.org_code))}</td><td>${esc(sys?sys.name.replace('NHS ','').replace(' Integrated Care Board','').replace(' ICB',''):'')}</td><td class="num" style="color:${color(Number(r.value))};font-weight:600">${Math.round(Number(r.value))}</td></tr>`;}).join('')+
     `</tbody></table></div></div>`;
-  h+=`<div class="grid three" style="margin-top:13px"><div class="card" style="cursor:pointer" onclick="setStage('xmetric')"><div class="h3">Metric explorer →</div><div class="cap">any metric, ranked across England</div></div><div class="card" style="cursor:pointer" onclick="setStage('xentity')"><div class="h3">Trust explorer →</div><div class="cap">everything on any English acute trust</div></div><div class="card" style="cursor:pointer" onclick="openSystemPrompt('drivers')"><div class="h3">Work a system →</div><div class="cap">pick an ICB and surface its opportunities</div></div></div>`;
+  h+=`<div class="grid three" style="margin-top:13px"><div class="card" style="cursor:pointer" onclick="setStage('xmetric')"><div class="h3">Metric explorer →</div><div class="cap">any metric, ranked across England</div></div><div class="card" style="cursor:pointer" onclick="setStage('xentity')"><div class="h3">Trust explorer →</div><div class="cap">everything on any English NHS provider</div></div><div class="card" style="cursor:pointer" onclick="openSystemPrompt('drivers')"><div class="h3">Work a system →</div><div class="cap">pick an ICB and surface its opportunities</div></div></div>`;
   v.innerHTML=h;initMap();
 }
 
@@ -1417,7 +1419,7 @@ const TOUR_STEPS=[
  {sel:'#nav button[data-stage="xentity"]',side:true,t:'Or skip the story',b:'Or ignore our story entirely — the Explorer is uncurated: any metric, any English acute trust. Trust-by-trust, metric-by-metric across England, plus a raw extract grid with source and confidence on every value.'}];
 let tourIdx=-1,tourSteps=TOUR_STEPS,tourKey='sr_tour_done';
 const HOME_TOUR=[
- {sel:'#doorA',t:'Two ways in',b:'Start with the data itself: England-wide, uncurated, every English acute trust, provenance on every value.'},
+ {sel:'#doorA',t:'Two ways in',b:'Start with the data itself: England-wide, uncurated, every English NHS provider, provenance on every value.'},
  {sel:'#doorB',t:'Or work a system',b:'Pick any of the 42 ICBs and land on its opportunity view: the four priority drivers, near-failure flags and an auto-drafted issue register.'},
  {sel:'#doorC',t:'Nothing is chosen for you',b:'Your last session and the flagship demo live here as shortcuts. Start is always one click away in the sidebar.'}];
 function maybeStartTour(){if(!sysCommitted||stage==='home')return;try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_done'))return;}catch(e){return;}startTour();}
@@ -1531,9 +1533,11 @@ async function renderXEntity(v){
   const orows=rows.filter(r=>r.organisation_id===xSelOrg&&!r.service_id&&r.value!=null);
   const frag=orows.find(r=>r.metric_code==='fragility_index');
   const bySys={};acute.forEach(t=>{const s=SYSTEMS.find(x=>x.slug===(TRUSTMETA[t.code]||{}).icb);const rg=s?s.region:'other';(bySys[rg]=bySys[rg]||[]).push(t);});
+  const LTYPE=[['mh_trust','Mental health trusts'],['community_trust','Community trusts'],['ambulance_trust','Ambulance trusts']];
+  const landGroups=LTYPE.map(([ty,lab])=>{const os2=orgs.filter(o=>o.type===ty).sort((x,y)=>(x.name||'').localeCompare(y.name||''));return os2.length?{lab,os2}:null;}).filter(Boolean);
   const cur=TRUSTS.map(c=>acute.find(t=>t.code===c)).filter(Boolean);
   const opt=t=>`<option value="${t.id}" ${t.id===xSelOrg?'selected':''}>${esc(t.name)}</option>`;
-  const selHtml=`<select class="sel" id="xorgsel" aria-label="Select any English acute trust" onchange="xSetOrg(this.value)"><optgroup label="Current system · ${escAttr((system()||{}).name||'')}">`+cur.map(opt).join('')+`</optgroup>`+Object.keys(bySys).sort().map(rg=>`<optgroup label="${escAttr(rg.replace(/-/g,' '))}">`+bySys[rg].slice().sort((a,b)=>a.name<b.name?-1:1).map(opt).join('')+`</optgroup>`).join('')+`</select>`;
+  const selHtml=`<select class="sel" id="xorgsel" aria-label="Select any English NHS provider" onchange="xSetOrg(this.value)"><optgroup label="Current system · ${escAttr((system()||{}).name||'')}">`+cur.map(opt).join('')+`</optgroup>`+Object.keys(bySys).sort().map(rg=>`<optgroup label="${escAttr(rg.replace(/-/g,' '))}">`+bySys[rg].slice().sort((a,b)=>a.name<b.name?-1:1).map(opt).join('')+`</optgroup>`).join('')+``+landGroups.map(g=>`<optgroup label="${escAttr(g.lab)}">`+g.os2.map(opt).join('')+`</optgroup>`).join('')+`</select>`;
   let h=`<h1 class="serif">Trust explorer</h1><div class="lead">Every published metric we hold, for any English acute trust — uncurated, benchmarked, source-tagged. Expand a row for the full series, line-level splits and the drill.</div>`;
   h+=`<div class="filters">Trust ${selHtml}</div>`;
   h+=`<div class="card" style="margin-bottom:4px"><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;justify-content:space-between"><div><div class="h3" style="font-size:18px">${esc(o.name||'')}</div><div class="cap" style="margin-bottom:0">${esc(o.code||'')}${meta.type?' · '+esc(meta.type):''}${sysm?' · '+esc(sysm.name)+' · '+esc((sysm.region||'').replace(/-/g,' ')):''}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cq&&cq[0]?`<span class="pill" style="background:${/inadequate/i.test(cq[0])?'#b3261e':/requires/i.test(cq[0])?'#b45309':/outstanding/i.test(cq[0])?'#166f4d':'#44639f'}">CQC · ${esc(cq[0])}</span>`:''}${frag?`<span class="pill" style="background:${color(frag.distress)}">fragility ${fmt(frag.value,'score')}/100</span>`:''}${dd?`<span class="pill" style="background:${color(dd.distress_index)}">distress ${dd.distress_index}/100 · ${dd.near_failure_count||0} near-failure</span>`:''}<span class="pill" style="background:#6a7183">${orows.length} metrics</span></div></div></div>`;
@@ -1742,7 +1746,7 @@ async function startApp(){
   const linkSys=q.get('system'),linkView=q.get('view');pendingOrg=q.get('org');
   try{if(!SYSTEMS.length){const gs=await fetch('geo/systems.json');SYSTEMS=await gs.json();}}catch(e){}
   const valid=linkSys&&SYSTEMS.find(x=>x.slug===linkSys);
-  if(valid){sysSlug=linkSys;sysCommitted=true;stage=(linkView&&SYS_STAGES.includes(linkView))?linkView:'drivers';renderNav();await loadAll();}
+  if(valid){sysSlug=linkSys;sysCommitted=true;stage=(linkView&&(SYS_STAGES.includes(linkView)||NEUTRAL_STAGES.includes(linkView)))?linkView:'drivers';renderNav();await loadAll();}
   else if(linkView&&NEUTRAL_STAGES.includes(linkView)){stage=linkView;renderNav();await loadAll();}
   else{stage='home';renderNav();render();}
   syncUrl();
