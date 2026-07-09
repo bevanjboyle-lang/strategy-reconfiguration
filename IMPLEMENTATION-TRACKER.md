@@ -147,7 +147,44 @@ every domain page shows the "Published national position" primary panel with ≥
 guidance + five completion chips + intact stage chips; commit gating. `node --check` clean on app.js
 and the spec. **Not yet run** (no browser/Supabase reachability in the authoring sandbox).
 
-### WP2 — national split loaders  [deferred to Mac — needs the DuckDB lake + ERIC CSVs, absent here]
+### WP2 — national split loaders  [DONE 9 Jul 2026 — run on the Mac, all four tags live]
+Delivered (loaders in `<real folder>/scripts/serving/`, idempotent, `--live --force` reloads):
+- (a) `#wp2-eric-v1` — ERIC 2024/25 site-level (silver lake table) → `sr_dim_site` +1,101 sites
+  (1,104 ERIC sites, 135 acute trusts, ods_code = ERIC site code, sort = GIA rank+100) +
+  `sr_fact` 6,624 site facts: backlog_maint (all four risk tiers), high_risk_backlog,
+  critical_infra_risk (high+significant), floor_area (GIA m²), energy_cost (electricity
+  variants+gas+oil+other), pfi (tenure contains PFI); £m, period 2025-03-31, official.
+  Modelled 'pending ingestion' estate placeholders deleted. Trust-level curated set added:
+  `sr_metrics` estate_backlog_total / estate_backlog_high / estate_cir / estate_energy_cost /
+  estate_gia + 675 `sr_metric_values` (`#wp2-eric-v1`). App: Estate now opens with a national
+  primary panel over those codes and scopes the per-site table to sites with facts
+  (backlog-sorted, chart top-12) — populated for every English acute system.
+- (b) `#wp2-wf-v1` — NHS Workforce Statistics (HCHS) 'Trusts and core organisations' CSV zip,
+  member 'Core 1. Staff group – England, NHSE region, ICS and org' (zip cached under
+  `data_lake/manual_inputs/wp2/`) → `sr_fact` wte × staff_group_code: 13,002 rows ·
+  135 trusts · 8 groups · 14 months (2025-02→2026-03), official. Mapping uses the parent
+  'All staff groups' rows for support/infra (avoids child double-count); medical = 'HCHS
+  doctors - All grades'; +dims ambulance/stt/other_staff. The 672 modelled synthetic
+  wte-by-staff-group rows deleted. App: workforce staff-group panel is presence-aware
+  ('—' for absent modelled columns, official eyebrow, group/ICB selection sums system trusts).
+- (c) `#wp2-rttact-v1` — completed RTT pathways (admitted + non-admitted) by TFC from
+  `silver.nhse_rtt_monthly_full_csv_structured` → `sr_fact` rtt_completed_pathways:
+  56,354 rows · 135 trusts · 23 TFCs · 24 months, domain=activity (auto-surfaces in the
+  Explorer split catalogue).
+- (d) `#wp2-rttnat-v1` — RTT incomplete by TFC from the gold FW mart → `sr_fact`
+  rtt_incomplete / rtt_18wk / rtt_52wk: 154,905 rows · 132 trusts · 23 TFCs · 24 months
+  (RD1/RN3/RNZ keep their deeper 36-month series from the earlier BSW load). Performance
+  RTT-by-specialty heatmap retitled 'provider-published detail (all English trusts)'.
+Freshness/QA: +4 families in `update_freshness.py` and `qa_checks.py` (recount filters +
+cadences; ERIC static-annual). QA after load: 50 checks — 47 ok / 2 warn (known genuine
+extremes) / 1 fail (pre-existing d3_dm01_tests staleness; root cause found: the weekly
+launchd refresh job has never run — 'Operation not permitted' on Documents access (macOS
+TCC). Needs Full Disk Access for the launchd bash context, or move refresh_all into a
+user-session mechanism.)
+Suite: test 19 now asserts populated national estate for BSW AND Devon; 'Estate' added to
+DOMAINS_MAIN so tests 16–18 assert its national primary panel on all three systems.
+
+### WP2 — original brief  [superseded by the DONE record above]
 WP3 does not depend on WP2 (national curated layer already loaded). Run on the Mac from the repo,
 pattern = `scripts/serving/load_national_serving.py` (env from `webapp/.env.local`, PostgREST,
 idempotent `source`/`source_url` tags, `--live`):

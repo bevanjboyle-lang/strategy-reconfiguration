@@ -532,9 +532,9 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
   const allvals=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)allvals.push(c);}));
   const mn=Math.min(...allvals),mx=Math.max(...allvals);
   const hcol=(val)=>{if(val==null)return '#e7ecf2';let t=(val-mn)/((mx-mn)||1);if(perfMetric==='rtt_18wk')t=1-t;return d3.interpolateRgb('#166f4d', '#b3261e')(t);};
-  let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">The published constitutional standards across the system's acute trusts — RTT, cancer, diagnostics and A&amp;E — then the flagship RTT-by-specialty detail.</div>`;
+  let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">The published constitutional standards across the system's acute trusts — RTT, cancer, diagnostics and A&amp;E — then provider-published RTT-by-specialty detail.</div>`;
   h+=nationalBlock(['rtt_18wk','cancer_62','dm01_6wk','ae_4hr'],['rtt_18wk','rtt_52wk','cancer_62','dm01_6wk','cancer_fds_28','ae_4hr'],'Drill a red cell or list row below — DM01 splits by diagnostic test nationally; cancer 62-day splits by tumour for the flagship.');
-  h+=`<div class="eyebrow" style="margin-top:14px">RTT by specialty · flagship-grade detail</div><div class="filters">Metric ${metricSel}</div>`;
+  h+=`<div class="eyebrow" style="margin-top:14px">RTT by specialty · provider-published detail (all English trusts)</div><div class="filters">Metric ${metricSel}</div>`;
   h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${fmtPeriod(lp)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
   h+=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th>${tc}</th>`).join('')+`</tr></thead><tbody>`;
   rttSpecs.forEach(s=>{h+=`<tr><td class="rl">${esc(s.code+' '+s.name)}</td>`+TRUSTS.map(tc=>{const c=cell(tc,s.code);const oid=(orgs.find(o=>o.code===tc)||{}).id;return `<td><div class="cell" style="background:${hcol(c)}" onclick="openFactDrill('performance','${oid}','${s.code}','${perfMetric}')">${c==null?'':perfMetric==='rtt_18wk'?Math.round(c):Math.round(c).toLocaleString()}</div></td>`;}).join('')+`</tr>`;});
@@ -570,16 +570,18 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
 /* ===== ESTATE ===== */
 async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate…</div>';const f=await ensure('estate');
   const g=(sid,m)=>{const r=f.find(x=>x.site_id===sid&&x.metric_code===m);return r?Number(r.value):0;};
-  const totBacklog=sites.reduce((s,si)=>s+g(si.id,'backlog_maint'),0);const totHigh=sites.reduce((s,si)=>s+g(si.id,'high_risk_backlog'),0);const totCrit=sites.reduce((s,si)=>s+g(si.id,'critical_infra_risk'),0);const totArea=sites.reduce((s,si)=>s+g(si.id,'floor_area'),0);
-  let h=sysNote()+ensureNote('estate')+`<h1 class="serif">Estate</h1><div class="lead">Estate condition across the flagship system's sites from the ERIC field set: backlog maintenance, high-risk and critical-infrastructure risk, floor area, energy and PFI status.</div>`;
-  const hasEst=sites.some(s=>f.some(x=>x.site_id===s.id));
+  const ssites=sites.filter(s=>f.some(x=>x.site_id===s.id)).sort((a,b)=>g(b.id,'backlog_maint')-g(a.id,'backlog_maint'));
+  const totBacklog=ssites.reduce((s,si)=>s+g(si.id,'backlog_maint'),0);const totHigh=ssites.reduce((s,si)=>s+g(si.id,'high_risk_backlog'),0);const totCrit=ssites.reduce((s,si)=>s+g(si.id,'critical_infra_risk'),0);const totArea=ssites.reduce((s,si)=>s+g(si.id,'floor_area'),0);
+  let h=sysNote()+ensureNote('estate')+`<h1 class="serif">Estate</h1><div class="lead">Estate condition across the system's sites from the NHS ERIC collection: backlog maintenance, high-risk and critical-infrastructure risk, floor area, energy and PFI status.</div>`;
+  h+=nationalBlock(['estate_backlog_total','estate_backlog_high','estate_cir','estate_energy_cost'],['estate_backlog_total','estate_backlog_high','estate_cir','estate_gia','estate_energy_cost'],'');
+  const hasEst=ssites.length>0;const bsites=ssites.slice(0,12);
   if(hasEst){
-  h+=`<div class="grid kpis">`+kpi('Total backlog maintenance',fmt(totBacklog,'gbp_m'),'','across all flagship sites','#191f2b')+kpi('High-risk backlog',fmt(totHigh,'gbp_m'),'','urgent remediation','#b45309')+kpi('Critical infrastructure risk',fmt(totCrit,'gbp_m'),'','immediate risk','#b3261e')+kpi('Total floor area',fmt(totArea,'m2'),'','occupied estate','#191f2b')+`</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">Backlog maintenance by site</div><div class="cap">£m</div><div class="chartbox"><canvas id="estbar"></canvas></div></div>
+  h+=`<div class="eyebrow" style="margin-top:14px">Site detail · ERIC 2024/25</div><div class="grid kpis">`+kpi('Total backlog maintenance',fmt(totBacklog,'gbp_m'),'','across all reported sites','#191f2b')+kpi('High-risk backlog',fmt(totHigh,'gbp_m'),'','urgent remediation','#b45309')+kpi('Critical infrastructure risk',fmt(totCrit,'gbp_m'),'','high + significant risk','#b3261e')+kpi('Total floor area',fmt(totArea,'m2'),'','gross internal area','#191f2b')+`</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Backlog maintenance by site${ssites.length>12?' · top 12':''}</div><div class="cap">£m</div><div class="chartbox"><canvas id="estbar"></canvas></div></div>
    <div class="card"><div class="h3">Estate detail by site</div><div class="cap">ERIC field set</div><table class="dt"><thead><tr><th>Site</th><th class="num">Backlog</th><th class="num">High-risk</th><th class="num">Floor m²</th><th class="num">Energy</th><th>PFI</th></tr></thead><tbody>`;
-  sites.forEach(s=>{h+=`<tr><td>${esc(s.name)}</td><td class="num">${fmt(g(s.id,'backlog_maint'),'gbp_m')}</td><td class="num">${fmt(g(s.id,'high_risk_backlog'),'gbp_m')}</td><td class="num">${Math.round(g(s.id,'floor_area')).toLocaleString()}</td><td class="num">${fmt(g(s.id,'energy_cost'),'gbp_m')}</td><td>${g(s.id,'pfi')?'Yes':'No'}</td></tr>`;});
-  h+=`</tbody></table></div></div>`;}else{h+=covNote('National ERIC 2024/25 estate ingestion is scheduled (WP2). Per-site estate condition — backlog, high-risk, floor area, energy and PFI — is currently loaded for the flagship system only.');}v.innerHTML=h;countUps();
-  barChart('estbar',sites.map(s=>s.name.split(',')[0].replace(' Hospital','')),sites.map(s=>g(s.id,'backlog_maint')),sites.map(()=>'#b45309'));
+  ssites.forEach(s=>{h+=`<tr><td>${esc(s.name)}</td><td class="num">${fmt(g(s.id,'backlog_maint'),'gbp_m')}</td><td class="num">${fmt(g(s.id,'high_risk_backlog'),'gbp_m')}</td><td class="num">${Math.round(g(s.id,'floor_area')).toLocaleString()}</td><td class="num">${fmt(g(s.id,'energy_cost'),'gbp_m')}</td><td>${g(s.id,'pfi')?'Yes':'No'}</td></tr>`;});
+  h+=`</tbody></table></div></div>`;}else{h+=covNote('Per-site ERIC detail is not published for this system in the 2024/25 collection.');}v.innerHTML=h;countUps();
+  barChart('estbar',bsites.map(s=>s.name.split(',')[0].replace(' Hospital','')),bsites.map(s=>g(s.id,'backlog_maint')),bsites.map(()=>'#b45309'));
 }
 
 /* ===== FINANCE ===== */
@@ -611,23 +613,30 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
 
 /* ===== WORKFORCE ===== */
 async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
-  const g=(sgc,m)=>{const r=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);return r?Number(r.value):0;};
+  const wOrgIds=(orgById[sel]&&orgById[sel].type==='acute_trust')?[sel]:sysTrusts().map(t=>t.id);
+  const gv=(sgc,m)=>{const own=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(own)return Number(own.value);const xs=f.filter(x=>wOrgIds.includes(x.organisation_id)&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(!xs.length)return null;const s=xs.reduce((a,x)=>a+Number(x.value),0);return (m==='wte'||m==='agency_wte')?s:s/xs.length;};
+  const g=(sgc,m)=>{const val=gv(sgc,m);return val==null?0:val;};
+  const nn=(sgc,m,unit)=>{const val=gv(sgc,m);return val==null?'—':(unit==='wte'?Math.round(val).toLocaleString():fmt(val,unit));};
   const totW=sgs.reduce((s,sg)=>s+g(sg.code,'wte'),0);const totA=sgs.reduce((s,sg)=>s+g(sg.code,'agency_wte'),0);
-  let h=sysNote()+ensureNote('workforce')+`<h1 class="serif">Workforce</h1><div class="lead">Published workforce position across the system's acute trusts — sickness, engagement and the Oversight-Framework people scores — then the flagship establishment by staff group.</div>`;
+  let h=sysNote()+ensureNote('workforce')+`<h1 class="serif">Workforce</h1><div class="lead">Published workforce position across the system's acute trusts — sickness, engagement and the Oversight-Framework people scores — then staff in post by staff group.</div>`;
   h+=nationalBlock(['sickness_rate','staff_engagement','of_of4004','of_of4104'],['sickness_rate','staff_engagement','of_of0084','of_of4104'],'');
   const sick=orgRows().find(r=>r.metric_code==='sickness_rate');
   const sSer=sick?officialSeries(sel,sick.metric_id):[];const sLast=sSer.length?sSer[sSer.length-1]:null;const sVal=sLast?Number(sLast.value):(sick?sick.value:null);
-  const hasWf=f.some(x=>x.organisation_id===sel&&x.staff_group_code!=null);
+  const wfRows=sgs.filter(sg=>['wte','vacancy_pct','sickness_pct','turnover_pct','agency_wte'].some(m=>gv(sg.code,m)!=null));
+  const hasWf=wfRows.length>0;
+  const wfOfficial=f.some(x=>wOrgIds.includes(x.organisation_id)&&x.staff_group_code!=null&&x.metric_code==='wte'&&x.confidence==='official');
+  const hasVac=sgs.some(sg=>gv(sg.code,'vacancy_pct')!=null);
   if(hasWf){
-  h+=`<div class="eyebrow">Flagship modelled establishment (illustrative)</div><div class="grid kpis">`+kpi('Total workforce',fmt(totW,'wte'),'WTE','substantive establishment · modelled','#191f2b')+kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce · modelled',totA/totW>0.05?'#b45309':'#166f4d')+kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing · modelled',g('nursing','vacancy_pct')>10?'#b45309':'#166f4d')+kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental · modelled','#191f2b')+`</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">Establishment by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>
-   <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">%</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`;
-  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE</th><th class="num">Vacancy (modelled)</th><th class="num">Sickness (modelled)</th><th class="num">Turnover (modelled)</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
-  sgs.forEach(sg=>{h+=`<tr><td>${esc(sg.name)}</td><td class="num">${Math.round(g(sg.code,'wte')).toLocaleString()}</td><td class="num">${fmt(g(sg.code,'vacancy_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'sickness_pct'),'pct')}</td><td class="num">${fmt(g(sg.code,'turnover_pct'),'pct')}</td><td class="num">${Math.round(g(sg.code,'agency_wte')).toLocaleString()}</td></tr>`;});
-  h+=`</tbody></table></div>`;}else{h+=covNote('Establishment, vacancy, sickness, turnover and agency detail by staff group carry the full modelled dataset for the flagship system.');}
+  h+=`<div class="eyebrow">${wfOfficial?'Staff in post by staff group · NHS Workforce Statistics':'Flagship modelled establishment (illustrative)'}${wOrgIds.length>1?' · system trusts combined':''}</div><div class="grid kpis">`+kpi('Total workforce',fmt(totW,'wte'),'WTE',wfOfficial?'staff in post · official':'substantive establishment · modelled','#191f2b')+(totA>0?kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce · modelled',totA/(totW||1)>0.05?'#b45309':'#166f4d'):'')+(gv('nursing','vacancy_pct')!=null?kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing · modelled',g('nursing','vacancy_pct')>10?'#b45309':'#166f4d'):'')+(gv('medical','vacancy_pct')!=null?kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental · modelled','#191f2b'):'')+`</div>`;
+  h+=hasVac?`<div class="two"><div class="card"><div class="h3">Staff in post by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>
+   <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">% · modelled</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`:`<div class="card"><div class="h3">Staff in post by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>`;
+  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE${wfOfficial?' (official)':''}</th><th class="num">Vacancy (modelled)</th><th class="num">Sickness (modelled)</th><th class="num">Turnover (modelled)</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
+  wfRows.forEach(sg=>{h+=`<tr><td>${esc(sg.name)}</td><td class="num">${nn(sg.code,'wte','wte')}</td><td class="num">${nn(sg.code,'vacancy_pct','pct')}</td><td class="num">${nn(sg.code,'sickness_pct','pct')}</td><td class="num">${nn(sg.code,'turnover_pct','pct')}</td><td class="num">${nn(sg.code,'agency_wte','wte')}</td></tr>`;});
+  h+=`</tbody></table></div>`;}else{h+=covNote('No staff-group establishment is published for this organisation in the NHS Workforce Statistics monthly series.');}
   v.innerHTML=h;countUps();
-  barChart('wfbar',sgs.map(s=>s.name.split(' ')[0]),sgs.map(s=>g(s.code,'wte')),sgs.map(()=>'#1f3a78'));
-  barChart('wfvac',sgs.map(s=>s.name.split(' ')[0]),sgs.map(s=>g(s.code,'vacancy_pct')),sgs.map(s=>g(s.code,'vacancy_pct')>10?'#b45309':'#44639f'));
+  const wfBars=wfRows.filter(sg=>gv(sg.code,'wte')!=null);
+  barChart('wfbar',wfBars.map(s=>s.name.split(' ')[0]),wfBars.map(s=>g(s.code,'wte')),wfBars.map(()=>'#1f3a78'));
+  if(hasVac)barChart('wfvac',wfRows.map(s=>s.name.split(' ')[0]),wfRows.map(s=>g(s.code,'vacancy_pct')),wfRows.map(s=>g(s.code,'vacancy_pct')>10?'#b45309':'#44639f'));
 }
 
 /* ===== POPULATION ===== */

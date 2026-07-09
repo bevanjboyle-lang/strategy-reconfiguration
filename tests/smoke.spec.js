@@ -243,7 +243,7 @@ test.describe('System Intelligence — smoke (E1)', () => {
   });
 
   // ===== WP3/WP4/WP1 · national domain pages, estate coverage, de-BSW, journey =====
-  const DOMAINS_MAIN = ['Finance', 'Workforce', 'Capacity', 'Activity', 'Performance'];
+  const DOMAINS_MAIN = ['Finance', 'Workforce', 'Capacity', 'Activity', 'Performance', 'Estate'];
 
   async function switchSystem(page, slug) {
     await page.selectOption('#syssel', slug);
@@ -285,15 +285,18 @@ test.describe('System Intelligence — smoke (E1)', () => {
     for (const d of DOMAINS_MAIN) await assertDomainPopulated(page, d);
   });
 
-  test('19 Estate · flagship shows ERIC KPIs; a non-flagship system shows a coverage note, never an empty panel', async ({ page }) => {
+  test('19 Estate · flagship AND non-flagship systems show national ERIC KPIs + per-site detail (WP2a)', async ({ page }) => {
     test.slow();
     await boot(page);
     await nav(page, 'Estate');
     await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'BSW estate KPIs').toBeVisible({ timeout: 25000 });
+    const bswSiteRows = await page.locator('.view table.dt tbody tr').count();
+    expect(bswSiteRows, 'BSW estate site rows').toBeGreaterThan(0);
     await switchSystem(page, 'nhs-devon-icb');
     await nav(page, 'Estate');
-    await expect(page.locator('.view'), 'Devon estate coverage note').toContainText(
-      /ERIC 2024\/25 estate ingestion is scheduled|flagship system only/i, { timeout: 25000 });
+    await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'Devon estate KPIs (national ERIC)').toBeVisible({ timeout: 25000 });
+    const devonSiteRows = await page.locator('.view table.dt tbody tr').count();
+    expect(devonSiteRows, 'Devon estate per-site rows (WP2a ERIC national)').toBeGreaterThan(0);
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });

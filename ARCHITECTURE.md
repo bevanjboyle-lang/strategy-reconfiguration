@@ -97,3 +97,11 @@ name / `sysLabel()` / `sysTrusts()[0]` replace former hard-coded BSW/RD1 literal
 
 `sr_commitments` (new serving table, RLS anon-select / authenticated-insert)
 persists the Decision-journey Commit stage's agreed top-5 + lens per system.
+
+## WP2 national splits (9 Jul 2026)
+Estate, workforce-by-staff-group and RTT-by-TFC are national: ERIC 2024/25 per-site facts
+(sr_dim_site ~1.1k sites) + trust curated estate_* metrics; NHS Workforce Statistics FTE by
+staff group (14 months); RTT incomplete + completed pathways by TFC (24 months, all acute
+trusts). Loaders: scripts/serving/load_wp2_*.py (idempotent source tags wp2-*-v1).
+renderEstate scopes sites per system and opens with a national curated panel; renderWorkforce
+is presence-aware (official vs modelled, group selection sums system trusts).
