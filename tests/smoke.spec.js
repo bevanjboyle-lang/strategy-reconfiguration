@@ -9,8 +9,11 @@ const NOISE = /favicon|openfreemap|maplibre|tile|abort|err_aborted|signal is abo
 
 // Boot = navigate + wait for the Overview exec summary, which only renders once
 // loadAll() has pulled the full Supabase model — i.e. "the app is genuinely up".
+const BSW_SLUG = 'nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
+// E1: '/' now lands on the Start (entry-choice) screen, so committed-system tests enter
+// via a deep link — which is itself part of the E1 contract under test.
 async function boot(page) {
-  await page.goto('/index.html');
+  await page.goto('/index.html?system=' + BSW_SLUG + '&view=overview');
   await expect(page.locator('.exec'), 'exec summary renders once data loads').toBeVisible({ timeout: 25000 });
 }
 
@@ -332,6 +335,89 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await page.locator('.view .lenses').first().locator('.lensbtn').filter({ hasText: 'Commit' }).click();
     await expect(page.getByRole('button', { name: 'Export priority pack' })).toBeVisible();
     await expect(page.locator('.view'), 'signed-out commit gate').toContainText('Sign in as a facilitator to commit');
+  });
+
+
+  // ===== E1/E2/E3 · entry choice, deep links, England overview, journey credibility =====
+
+  test('23 entry · a fresh open shows the Start screen, not a system', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.homewrap h1')).toContainText('Where do you want to start?');
+    await expect(page.locator('.door')).toHaveCount(3);
+    await expect(page.locator('#syssel')).toBeHidden();
+    expect(page.url()).not.toContain('system=');
+    await expect(page.locator('.exec')).toHaveCount(0);
+  });
+
+  test('24 door B · pick a system and land on Priority drivers', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html');
+    await page.selectOption('#homesys', 'nhs-devon-icb');
+    await page.locator('#doorB button', { hasText: 'Open the system view' }).click();
+    await expect(page.locator('.view h1'), 'drivers landing').toContainText('The four priority drivers', { timeout: 30000 });
+    expect(page.url()).toContain('system=nhs-devon-icb');
+    expect(page.url()).toContain('view=drivers');
+  });
+
+  test('25 deep link · ?system&view lands directly on the addressed page', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=nhs-devon-icb&view=estate');
+    await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'Devon estate via deep link').toBeVisible({ timeout: 30000 });
+    expect(page.url()).toContain('system=nhs-devon-icb');
+    expect(page.url()).toContain('view=estate');
+  });
+
+  test('26 no silent restore · a stored system becomes a resume chip, not a redirect', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('sr_system', 'nhs-devon-icb'); } catch (e) {} });
+    await page.goto('/index.html');
+    await expect(page.locator('.homewrap h1')).toContainText('Where do you want to start?');
+    await expect(page.locator('#doorC .hres').first(), 'resume chip names the stored system').toContainText(/Devon/i);
+    expect(page.url()).not.toContain('system=');
+  });
+
+  test('27 door A · explore the data enters the explorer with no system commitment', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html');
+    await page.locator('#doorA button', { hasText: 'Open the data explorer' }).click();
+    await expect(page.locator('.topbar .ttl'), 'metric explorer title').toContainText('Metric explorer', { timeout: 30000 });
+    expect(page.url()).toContain('view=xmetric');
+    expect(page.url()).not.toContain('system=');
+  });
+
+  test('28 England overview · national KPIs, pressure table, and the map as door B', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?view=england');
+    await expect(page.locator('.view h1')).toContainText('England overview', { timeout: 30000 });
+    await expect(page.locator('.view .grid.kpis .card.kpi').first()).toBeVisible();
+    const pressureRows = await page.locator('.view table.dt tbody tr').count();
+    expect(pressureRows, 'under-most-pressure rows').toBeGreaterThan(5);
+    await page.locator('.view .card', { hasText: 'Work a system' }).click();
+    await expect(page.locator('#promptsys'), 'system prompt opens').toBeVisible();
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('29 journey credibility · orient is system-scoped, nationally ranked; chips are earned', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=nhs-devon-icb&view=decide');
+    await expect(page.locator('.view')).toContainText('The agreed starting point', { timeout: 30000 });
+    await expect(page.locator('.view .row .sc').first(), 'national percentile shown').toContainText('worse than');
+    const heads = await page.locator('.view .row .t1').allInnerTexts();
+    for (const t of heads.slice(0, 4)) {
+      expect(/RA9|RH8|RK9/.test(t), 'orient row belongs to a Devon trust: ' + t).toBeTruthy();
+    }
+    await expect(page.locator('.view .jchip').filter({ hasText: 'Orient' })).toContainText('✓');
+    await expect(page.locator('.view .jchip').filter({ hasText: 'Frame' })).toContainText('○');
+  });
+
+  test('30 options · a non-flagship system gets the issues-to-options path, flagship set as reference', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=nhs-devon-icb&view=options');
+    await expect(page.locator('.view'), 'seed panel or own options').toContainText(/Draft options from your prioritised issues|drafted from this system's issue register/, { timeout: 30000 });
+    const cards = await page.locator('.view .card').count();
+    expect(cards, 'reference option cards still render').toBeGreaterThan(2);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
 });

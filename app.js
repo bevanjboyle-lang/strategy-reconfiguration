@@ -468,7 +468,10 @@ function renderLegend(){const el=document.getElementById('mlegend');if(!el)retur
   el.innerHTML=`<div class="ttl2">${NEED_LEGEND[mapState.metric]||''}</div>${rows2}<div class="lgrow" style="margin-top:6px;color:#5a6172">Sites coloured by trust CQC rating</div>`;}
 
 function kpi(l,val,suf,sub,ser,col){if(typeof ser==='string'){col=col||ser;ser=null;}const sp=Array.isArray(ser)&&ser.length>1?`<div class="spark">${spark(ser.slice(-12),col)}</div>`:'';const num=(typeof val==='number')?`<span class="cu" data-target="${val}">0</span>`:esc(val);return `<div class="card kpi"><div class="l">${l}</div><div class="v" style="color:${col}">${num}${suf?`<small>${suf}</small>`:''}</div><div class="s">${esc(sub)}</div>${sp}</div>`;}
-function rrow(r){const adj=adjustedOverride(r.metric_value_id);return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}${adj?' <span class="pill" style="background:#b45309;font-size:8.5px;padding:2px 6px;vertical-align:2px">adjusted</span>':''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${r.distress}</span></div>`;}
+function natWorsePct(r){const all=rows.filter(x=>x.metric_code===r.metric_code&&x.org_type==='acute_trust'&&!x.service_id&&x.value!=null);
+  if(all.length<10||r.value==null)return null;const hib=r.higher_is_better!==false;const v=Number(r.value);
+  const worse=all.filter(x=>hib?Number(x.value)>v:Number(x.value)<v).length;return Math.round(100*worse/all.length);}
+function rrow(r){const adj=adjustedOverride(r.metric_value_id);const wp=natWorsePct(r);return `<div class="row" onclick="openDrill('${r.organisation_id}','${r.metric_code}')"><span class="tag" style="background:${color(r.distress)}"></span><div class="m"><div class="t1">${esc(r.metric_name)}${r.org_code?' · '+r.org_code:''}${adj?' <span class="pill" style="background:#b45309;font-size:8.5px;padding:2px 6px;vertical-align:2px">adjusted</span>':''}</div><div class="t2">${fmt(r.value,r.unit)} · ${slab(r.status)}</div></div><span class="sc" style="color:${color(r.distress)}">${wp!=null?('worse than '+wp+'%<small style=\"display:block;font-size:8.5px;color:#9aa0af;font-weight:400\">of England · distress '+r.distress+'</small>'):r.distress}</span></div>`;}
 function countUps(){const rm=reducedMotion();document.querySelectorAll('.cu').forEach(el=>{const t=Number(el.dataset.target);if(isNaN(t))return;if(rm){el.textContent=Math.round(t);return;}const st=performance.now();(function f(n){const p=Math.min(1,(n-st)/650);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f);})(st);});}
 function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(31,58,120,.16)',borderColor:'#1f3a78',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa0af'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#3c4354'}}},responsive:true,maintainAspectRatio:false}});}
 
@@ -1016,7 +1019,13 @@ function testMeta(s){return {met:['met','#166f4d'],passed:['met','#166f4d'],part
 async function renderOptions(v){v.innerHTML='<div class="loading">Loading options…</div>';const OC=await ensureOptions();
   const opts=(OC.options||[]).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''));
   let h=`<h1 class="serif">Options &amp; appraisal</h1><div class="lead">The long list: configuration options developed from the issue register, appraised against the six ITT criteria.</div>`;
-  if(sysSlug!==BSW_SLUG)h+=`<div class="banner">The option set belongs to the flagship system in this working prototype — shown here unchanged.</div>`;
+  const soSet=new Set(sysOrgs().map(o=>o.id));
+  const ownIssues=issues.filter(i=>i.organisation_id&&soSet.has(i.organisation_id));
+  const sysOpts=opts.filter(o=>optIssues(o).some(i=>i.organisation_id&&soSet.has(i.organisation_id)));
+  if(sysSlug!==BSW_SLUG){
+    if(sysOpts.length)h+=`<div class="banner">${sysOpts.length} option${sysOpts.length>1?'s':''} drafted from this system's issue register; the flagship set remains visible for reference.</div>`;
+    else h+=optionSeedPanel(ownIssues);
+  }
   if(OC.error)h+=`<div class="banner">Option data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
   if(!opts.length){if(!OC.error)h+=`<div class="card"><div class="h3">No options yet</div><div class="cap">Options are promoted from AI drafts generated off the issue register.</div></div>`;v.innerHTML=h;return;}
   h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+opts.map(o=>{const iss=optIssues(o);const stCol={proposed:'#1f3a78',appraised:'#7a6200',shortlisted:'#166f4d',rejected:'#6a7183'}[o.status]||'#1f3a78';
@@ -1083,12 +1092,15 @@ function setDS(s){dstage=s;render();}window.setDS=setDS;
 /* WP4 · decision-journey guidance: per-stage action sentence + data-driven completion chips */
 const DJOURNEY={orient:'Agree what is true before debating solutions — the measures furthest from standard across the system.',surface:'Turn the evidence into a shared issue register; a system without its own register starts from an auto-drafted one.',frame:'Choose the lens — the weighting of criteria — that the workshop will judge priorities by.',prioritise:'Rank the issues under the chosen lens and stress-test how the order shifts lens to lens.',commit:'Lock the agreed top priorities and the delivery roadmap, then persist and print the pack.'};
 let commitCache=null;
-function dstageDone(code){const so=new Set(sysOrgs().map(o=>o.id));const own=issues.some(i=>i.organisation_id&&so.has(i.organisation_id));
-  const hasIssues=own||issues.length>0||(sysSlug!==BSW_SLUG&&sysIssueDrafts().length>0);
-  if(code==='orient')return rows.some(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious'));
-  if(code==='surface')return hasIssues;
-  if(code==='frame')return lensName!=='Balanced'||(typeof lensVotes!=='undefined'&&lensVotes.length>0);
-  if(code==='prioritise')return issues.length>0;
+/* E3 · chips are EARNED (F7): view-stages tick on being worked in this browser; evidence-stages tick
+   on real artefacts (a saved register for this system's trusts, a submitted/adopted lens, a commitment). */
+function jVisits(){try{return JSON.parse(localStorage.getItem('sr_j_'+sysSlug)||'{}')}catch(e){return{}}}
+function jMark(k){try{const v=jVisits();if(!v[k]){v[k]=1;localStorage.setItem('sr_j_'+sysSlug,JSON.stringify(v));}}catch(e){}}
+function dstageDone(code){const so=new Set(sysOrgs().map(o=>o.id));const own=issues.some(i=>i.organisation_id&&so.has(i.organisation_id));const v=jVisits();
+  if(code==='orient')return !!v.orient;
+  if(code==='surface')return own;
+  if(code==='frame')return !!v.voted||!!v.adopted;
+  if(code==='prioritise')return own&&!!v.prioritise;
   if(code==='commit')return !!(commitCache&&commitCache.slug===sysSlug);
   return false;}
 function dJourneyGuide(){const stages=[['orient','Orient'],['surface','Surface'],['frame','Frame'],['prioritise','Prioritise'],['commit','Commit']];
@@ -1104,15 +1116,15 @@ async function commitPriorities(){if(!isFacilitator()||!session){authMsg('Sign i
     authMsg('Agreed priorities committed.');await loadCommitment();render();
   }catch(e){authMsg('Could not persist — '+((e&&e.message)||'the commitments table is not yet provisioned')+'. The pack can still be printed.');}}
 window.commitPriorities=commitPriorities;
-function renderDecide(v){
+function renderDecide(v){if(dstage==='orient'||dstage==='prioritise')jMark(dstage);
   let h=sysNote()+`<h1 class="serif">Decision journey</h1><div class="lead">From one agreed picture of the system to a committed set of priorities: orient on the evidence, surface the problems, frame the lens, prioritise together, and commit.</div>`;
   h+=`<div class="lenses">`+[['orient','1 · Orient'],['surface','2 · Surface'],['frame','3 · Frame'],['prioritise','4 · Prioritise'],['commit','5 · Commit']].map(s=>`<button class="lensbtn ${dstage===s[0]?'on':''}" onclick="setDS('${s[0]}')">${s[1]}</button>`).join('')+`</div>${dJourneyGuide()}<div id="dbody"></div>`;
   v.innerHTML=h;const b=document.getElementById('dbody');
   if(dstage==='orient')dOrient(b);else if(dstage==='surface')dSurface(b);else if(dstage==='frame')dFrame(b);else if(dstage==='prioritise')dPrioritise(b);else dCommit(b);
 }
-function dOrient(b){
-  const closest=rows.filter(r=>r.org_type==='acute_trust'&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,8);
-  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">The agreed starting point</div><div class="cap">Before anyone argues about solutions, the system agrees what is true. These are the measures furthest from standard across the three trusts, from live published NHS data. Each can be challenged by the owning organisation — challenges are visible to everyone.</div></div>`;
+function dOrient(b){jMark('orient');
+  const closest=rows.filter(r=>r.org_type==='acute_trust'&&TRUSTS.includes(r.org_code)&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>natWorsePct(b)-natWorsePct(a)||b.distress-a.distress).slice(0,8);
+  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">The agreed starting point</div><div class="cap">Before anyone argues about solutions, the system agrees what is true. These are the measures furthest from standard across the system's trusts, from live published NHS data, ranked by how extreme each is nationally. Each can be challenged by the owning organisation — challenges are visible to everyone.</div></div>`;
   h+=`<div class="list">`+closest.map(rrow).join('')+`</div>`;
   h+=`<div style="margin-top:13px" class="grid three"><div class="card" style="cursor:pointer" onclick="setStage('drivers')"><div class="h3">Four priority drivers →</div><div class="cap">The review's framing of the evidence</div></div><div class="card" style="cursor:pointer" onclick="setStage('overview')"><div class="h3">System overview →</div><div class="cap">Map, domains and distress</div></div><div class="card" style="cursor:pointer" onclick="setDS('surface')"><div class="h3">Continue: Surface →</div><div class="cap">Name the problems worth solving</div></div></div>`;
   b.innerHTML=h;
@@ -1129,7 +1141,7 @@ function sliderBlock(){return criteria.map(c=>{const w=Math.round((weights[c.cod
 function wsum(iss){const tot=criteria.reduce((s,c)=>s+(weights[c.code]||0),0)||1;let s=0;criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===iss.id&&x.criterion_code===c.code);s+=(sc?Number(sc.score):0)*(weights[c.code]||0);});return s/tot;}
 function ranking(){return issues.map(i=>({i,val:wsum(i)})).sort((a,b)=>b.val-a.val);}
 function rankingForLens(L){const w=L.weights,tot=Object.values(w).reduce((a,b)=>a+b,0)||1;return issues.map(i=>{let s=0;criteria.forEach(c=>{const sc=iscores.find(x=>x.issue_id===i.id&&x.criterion_code===c.code);s+=(sc?Number(sc.score):0)*(w[c.code]||0);});return{code:i.code,val:s/tot};}).sort((a,b)=>b.val-a.val);}
-function dPrioritise(b){const topSets=lenses.map(l=>rankingForLens(l).slice(0,5).map(r=>r.code));const robust=new Set(topSets.length?topSets[0].filter(c=>topSets.every(s=>s.includes(c))):[]);
+function dPrioritise(b){jMark('prioritise');const topSets=lenses.map(l=>rankingForLens(l).slice(0,5).map(r=>r.code));const robust=new Set(topSets.length?topSets[0].filter(c=>topSets.every(s=>s.includes(c))):[]);
   let h=lensBar()+`<div class="two"><div class="card"><div class="h3">Weights</div><div class="cap">Live re-ranking</div>`+sliderBlock()+`</div><div class="card"><div class="h3">How priorities shift by lens</div><div class="chartbox"><canvas id="bump"></canvas></div></div></div>`;
   h+=sensitivityCard();
   h+=`<div class="eyebrow">Ranked priorities</div><div class="list">`+ranking().map((r,i)=>{const vv=Math.round(r.val);const col=vv>=70?'#b3261e':vv>=60?'#b45309':vv>=45?'#7a6200':'#166f4d';return `<div class="rank" onclick="openIssue('${r.i.code}')"><span class="n">${i+1}</span><div class="m"><div class="t1">${esc(r.i.title)}${robust.has(r.i.code)?'<span class="robust">robust</span>':''}</div><div class="bar" style="margin-top:7px"><div style="width:${vv}%;background:${col}"></div></div></div><span class="sc" style="color:${col}">${vv}</span></div>`;}).join('')+`</div>`;
@@ -1149,10 +1161,10 @@ function medianOf(arr){const s=arr.slice().sort((a,b)=>a-b);const n=s.length;ret
 async function submitLensVote(){if(!session){authMsg('Sign in to submit weights.');return;}
   const{error}=await sb.from('sr_lens_votes').insert({voter:sessionEmail(),weights:weights});
   if(error){authMsg('Weights not saved — '+(error.message||'insert blocked'));return;}
-  authMsg('Your weights are recorded.');await refreshLensVotes();}
+  authMsg('Your weights are recorded.');jMark('voted');await refreshLensVotes();}
 function adoptMedianWeights(){if(!isFacilitator()||!session)return;const vs=latestVotes();if(vs.length<2)return;
   const w={};criteria.forEach(c=>{w[c.code]=medianOf(vs.map(v=>Number((v.weights||{})[c.code]||0)));});
-  weights=w;lensName='Workshop median';render();authMsg('Median weights adopted as the working lens.');}
+  weights=w;lensName='Workshop median';jMark('adopted');render();authMsg('Median weights adopted as the working lens.');}
 function lensVotesInner(){const vs=latestVotes();
   let h='';
   if(session)h+=`<div style="margin-bottom:9px"><button class="btn" onclick="submitLensVote()">Submit my weights</button><span class="muted" style="font-size:11.5px;margin-left:9px">records the current sliders as the vote of ${esc(sessionEmail()||'')}</span></div>`;
@@ -1214,6 +1226,23 @@ async function saveDraftIssues(){if(!isFacilitator()||!session)return;const ds=s
   const{data}=await sb.from('sr_issues').select('*');issues=data||[];
   authMsg(ds.length+' draft issues saved to the register.');render();}
 window.saveDraftIssues=saveDraftIssues;
+
+/* E3 · F9 — the path from a prioritised issue to a draft option (any system, facilitator-gated) */
+function optionSeedPanel(ownIssues){
+  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">Draft options from your prioritised issues</div><div class="cap">No options exist for this system yet. Seed the long list from the issue register — each becomes a draft option shell ready for appraisal. The flagship set below is reference only.</div>`;
+  if(!ownIssues.length)h+=`<div class="note">No issues are registered for this system yet. Start in the <a href="#" onclick="setStage('decide');return false">decision journey</a> — Surface auto-drafts candidate issues you can save to the register.</div>`;
+  else{h+=`<div class="list">`+ownIssues.slice().sort((x,y)=>(y.severity||0)-(x.severity||0)).slice(0,5).map(i=>`<div class="row" style="cursor:default"><span class="tag" style="background:#44639f"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">severity ${i.severity||3}/5${i.ai_seed?' · auto-drafted issue':''}</div></div>${(isFacilitator()&&session)?`<button class="btn ghost" style="font-size:11.5px;padding:5px 10px" onclick="draftOptionFromIssue('${esc(i.code)}')">Create draft option</button>`:''}</div>`).join('')+`</div>`;
+    if(!(isFacilitator()&&session))h+=`<div class="note" style="margin-top:8px">Sign in as a facilitator to create draft options from these issues.</div>`;}
+  return h+`</div>`;}
+async function draftOptionFromIssue(code){if(!isFacilitator()||!session){authMsg('Sign in as a facilitator to draft options.');return;}
+  const i=issues.find(x=>x.code===code);if(!i)return;
+  const{data:dr,error:e1}=await sb.from('sr_ai_option_drafts').insert({title:'Address: '+i.title,option_type:'targeted_intervention',lens:'Balanced',issue_ids:[i.id],status:'draft',structured_output:{origin:'issue_seed',issue_code:i.code}}).select().single();
+  if(e1){authMsg('Draft not created — '+(e1.message||'insert blocked'));return;}
+  const ocode='OPT-'+String(i.code||'issue').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,16)+'-'+String(Date.now()).slice(-4);
+  const{error:e2}=await sb.from('sr_options').insert({code:ocode,title:'Address: '+i.title,option_type:'targeted_intervention',stage:'longlist',summary:(i.problem_statement||'Drafted from the prioritised issue register.')+' Draft option shell — to be developed in appraisal.',status:'proposed',owner:sessionEmail(),source_draft_id:dr.id});
+  if(e2){authMsg('Option not created — '+(e2.message||'insert blocked'));return;}
+  optCache=null;authMsg('Draft option created from the issue.');render();}
+window.draftOptionFromIssue=draftOptionFromIssue;
 
 /* ===== modals ===== */
 function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;const org=i.organisation_id?orgById[i.organisation_id]:null;hideTip();
