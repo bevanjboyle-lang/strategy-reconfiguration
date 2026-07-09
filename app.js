@@ -94,7 +94,7 @@ async function loadAll(){
   SYSTEMS=await gs.json();TRUSTMETA=await gt.json();SITES=await gsite.json();CQC=await gcqc.json();
   if(!SYSTEMS.find(s=>s.slug===sysSlug))sysSlug=BSW_SLUG;
   const [o,d,r,ov,cr,ln,iss,isc,sp,pd,sg,fl,si,bm]=await Promise.all([
-    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_v_metric_status').select('*').limit(45000),
+    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_mv_metric_status').select('*').limit(45000),
     sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
     sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
@@ -684,8 +684,8 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
   const g=(line)=>{const r=f.find(x=>x.organisation_id===sel&&x.line_code===line&&x.period===lp);return r?Number(r.value):0;};
   const income=g('inc_clinical')+g('inc_other');const pay=g('pay_substantive')+g('pay_bank')+g('pay_agency');const nonpay=g('np_drugs')+g('np_clin_supplies')+g('np_nonclin')+g('np_premises')+g('np_deprec')+g('np_other');
   const agencyPct=pay?100*g('pay_agency')/pay:0;
-  let h=sysNote()+ensureNote('finance')+`<h1 class="serif">Finance</h1><div class="lead">The published financial position across the system's acute trusts — variance to plan, Oversight-Framework finance scores and segment — then the full modelled I&E for the flagship.</div>`;
-  h+=nationalBlock(['of_of0079','of_of4003','of_of4103','of_of0085'],['deficit','of_of0079','of_of0085','of_of4103'],'');
+  let h=sysNote()+ensureNote('finance')+`<h1 class="serif">Finance</h1><div class="lead">The published financial position across the system's acute trusts — variance to plan, Oversight-Framework finance scores and segment — with audited annual-accounts depth (TAC) for every provider, then the full modelled I&E for the flagship.</div>`;
+  h+=nationalBlock(['tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],['deficit','tac_income_total','tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],'Annual accounts lines (TAC) are the audited year-end position; variance to plan is the in-year signal.');h+=`<div class="note" style="margin:2px 2px 10px">Rich annual accounts for every provider — income, expenditure, staff costs including bank and agency, balance sheet and cash flow — are in the <a href="#" onclick="xGoMetric('tac_income_total');return false">Data explorer</a> under finance.</div>`;
   const varr=orgRows().find(r=>r.metric_code==='deficit'),seg=orgRows().find(r=>r.metric_code==='oversight_segment');
   const vSer=varr?officialSeries(sel,varr.metric_id):[];const vLast=vSer.length?vSer[vSer.length-1]:null;const vVal=vLast?Number(vLast.value):(varr?varr.value:null);
   if(varr||seg)h+=`<div class="eyebrow">Published position</div><div class="grid kpis">`+
@@ -1487,7 +1487,7 @@ try{new MutationObserver(()=>{const m=document.querySelector('#modalroot .modal'
 
 /* ===== EXPLORER · three uncurated surfaces over the full serving catalogue =====
    xentity (Trust explorer) · xmetric (Metric explorer) · xgrid (Extract grid).
-   Catalogue-driven: sr_v_metric_catalog / sr_v_fact_catalog decide what is on offer, so
+   Catalogue-driven: sr_mv_metric_catalog / sr_mv_fact_catalog decide what is on offer, so
    newly ingested metrics and line-level splits appear automatically. Fetches are lazy per
    stage and cached (per trust / per metric·trust / catalogue once); extracts paginate
    PostgREST at 1,000 rows and cap at 20,000 values. */
@@ -1499,7 +1499,7 @@ const XSPLIT_MAP={dm01_6wk:'dm01_6wk_test_pct',cancer_62:'cancer_62_tumour_pct',
 function escAttr(s){return esc(s).replace(/"/g,'&quot;');}
 function sysTrustIds(){return TRUSTS.map(c=>(orgs.find(o=>o.code===c)||{}).id).filter(Boolean);}
 async function xEnsureCatalog(){if(xCatalog&&xFactCat)return;
-  const [c,f]=await Promise.all([sb.from('sr_v_metric_catalog').select('*').order('name').limit(2000),sb.from('sr_v_fact_catalog').select('*').limit(2000)]);
+  const [c,f]=await Promise.all([sb.from('sr_mv_metric_catalog').select('*').order('name').limit(2000),sb.from('sr_mv_fact_catalog').select('*').limit(2000)]);
   if(c.error)throw c.error;
   xCatalog=c.data||[];xFactCat={};((f&&f.data)||[]).forEach(x=>{xFactCat[x.metric_code]=x;});}
 function xSplitCode(code){const fc=XSPLIT_MAP[code]||code;const f=xFactCat&&xFactCat[fc];return (f&&Number(f.split_count)>0)?fc:null;}
