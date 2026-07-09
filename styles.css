@@ -72,7 +72,7 @@ table.dt tr:hover td{background:var(--surface2)}
 .hm th{font-size:10px;color:var(--muted);font-weight:700;padding:3px 5px;text-align:center;letter-spacing:.4px}
 .hm td{padding:0}.hm .cell{width:44px;height:30px;border-radius:2px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:11px;cursor:pointer;transition:.12s;font-family:"IBM Plex Mono",monospace}.hm .cell:hover{transform:scale(1.07)}
 .hm .rl{font-size:11px;font-weight:600;color:var(--ink2);padding-right:8px;white-space:nowrap;text-align:right}
-.chartbox{height:240px}.chartbox.sm{height:180px}
+.chartbox{height:240px}.chartbox.sm{height:180px}.chartbox.tall{height:360px}
 .lenses{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .lensbtn{font-size:12px;padding:7px 14px;border-radius:2px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink2);font-weight:600}
 .lensbtn.on{background:var(--ink);color:var(--card);border-color:var(--ink)}

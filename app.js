@@ -680,40 +680,153 @@ async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate�
 }
 
 /* ===== FINANCE ===== */
+/* Audited annual accounts (TAC) rendered as statements for ANY provider; the boot `series`
+   store already holds every metric_values series for the system's orgs. */
+function finFY(p){const y=+String(p).slice(0,4);return (y-1)+'/'+String(p).slice(2,4);}
+function tacIdByCode(){const m={};rows.forEach(r=>{if(!(r.metric_code in m))m[r.metric_code]=r.metric_id;});return m;}
 async function renderFinance(v){v.innerHTML='<div class="loading">Loading finance…</div>';const f=await ensure('finance');const lp=latestPeriod(f);
   const g=(line)=>{const r=f.find(x=>x.organisation_id===sel&&x.line_code===line&&x.period===lp);return r?Number(r.value):0;};
   const income=g('inc_clinical')+g('inc_other');const pay=g('pay_substantive')+g('pay_bank')+g('pay_agency');const nonpay=g('np_drugs')+g('np_clin_supplies')+g('np_nonclin')+g('np_premises')+g('np_deprec')+g('np_other');
   const agencyPct=pay?100*g('pay_agency')/pay:0;
-  let h=sysNote()+ensureNote('finance')+`<h1 class="serif">Finance</h1><div class="lead">The published financial position across the system's acute trusts — variance to plan, Oversight-Framework finance scores and segment — with audited annual-accounts depth (TAC) for every provider, then the full modelled I&E for the flagship.</div>`;
-  h+=nationalBlock(['tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],['deficit','tac_income_total','tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],'Annual accounts lines (TAC) are the audited year-end position; variance to plan is the in-year signal.');h+=`<div class="note" style="margin:2px 2px 10px">Rich annual accounts for every provider — income, expenditure, staff costs including bank and agency, balance sheet and cash flow — are in the <a href="#" onclick="xGoMetric('tac_income_total');return false">Data explorer</a> under finance.</div>`;
+  /* --- audited accounts (TAC) --- */
+  const idByCode=tacIdByCode();
+  const selOrg=orgById[sel]||{};const tIds=selOrg.type==='acute_trust'?[sel]:sysTrusts().map(t=>t.id);const grp=tIds.length>1;
+  const serOf=(oid,code)=>{const mid=idByCode[code];return mid?(series[oid+'|'+mid]||[]):[];};
+  const fys=[...new Set(tIds.flatMap(o=>serOf(o,'tac_income_total').map(x=>x.period)))].sort();
+  const at=(code,p)=>{let s=0,found=false;tIds.forEach(o=>{const e=serOf(o,code).find(x=>x.period===p);if(e&&e.value!=null){s+=Number(e.value);found=true;}});return found?s:null;};
+  const money=c=>p=>at(c,p);
+  const lastFy=fys[fys.length-1];
+  const agShare=p=>{const a=at('tac_pay_agency',p);const gr=(at('tac_pay_salaries',p)||0)+(at('tac_pay_bank',p)||0)+(a||0);return a!=null&&gr?100*a/gr:null;};
+  const stTable=(title,cap,spec)=>{let t=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">${title}</div>${cap?`<div class="cap" style="padding:2px 14px 0">${cap}</div>`:''}<table class="dt"><thead><tr><th style="min-width:210px">£m</th>`+fys.map(p=>`<th class="num">${finFY(p)}</th>`).join('')+`</tr></thead><tbody>`;
+    spec.forEach(rw=>{if(!fys.some(p=>rw.get(p)!=null))return;
+      t+=`<tr${rw.bold?' style="font-weight:700;border-top:1px solid #dcd9d0"':''}><td${rw.indent?' style="padding-left:26px;color:#5a6172;font-size:12px"':''}>${rw.label}</td>`+fys.map(p=>{const val=rw.get(p);let shown;
+        if(val==null)shown='—';
+        else if(rw.unit==='pct')shown=fmt(val,'pct');
+        else if(rw.paren)shown='('+fmt(Math.abs(val),'gbp_m').replace('−','')+')';
+        else shown=fmt(val,'gbp_m');
+        const col=rw.signCol&&val!=null?(val<0?'#b3261e':'#166f4d'):(rw.paren?'#5a6172':'#191f2b');
+        return `<td class="num" style="color:${col}">${shown}</td>`;}).join('')+`</tr>`;});
+    return t+`</tbody></table></div>`;};
+  let h=sysNote()+ensureNote('finance')+`<h1 class="serif">Finance</h1><div class="lead">${grp?'The audited financial position of the system\'s acute trusts combined':'The audited financial position of '+esc(selOrg.name||'this trust')} — income and expenditure account, staff costs including bank and agency, balance sheet and cash flow from six years of published annual accounts (TAC), with cost-index benchmarking and the in-year oversight signal.</div>`;
+  h+=nationalBlock(['tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],['deficit','tac_income_total','tac_surplus_year','tac_agency_share_pay','of_of0079','of_of4103'],'Annual accounts lines (TAC) are the audited year-end position; variance to plan is the in-year signal.');
   const varr=orgRows().find(r=>r.metric_code==='deficit'),seg=orgRows().find(r=>r.metric_code==='oversight_segment');
   const vSer=varr?officialSeries(sel,varr.metric_id):[];const vLast=vSer.length?vSer[vSer.length-1]:null;const vVal=vLast?Number(vLast.value):(varr?varr.value:null);
-  if(varr||seg)h+=`<div class="eyebrow">Published position</div><div class="grid kpis">`+
+  if(varr||seg)h+=`<div class="eyebrow">In-year position</div><div class="grid kpis">`+
     (varr?kpi('Variance to financial plan (YTD)',fmt(vVal,varr.unit),'','published quarterly · '+fmtPeriod((vLast||varr).period),vSer,color(varr.distress)):'')+
     (seg?kpi('Oversight segment',fmt(seg.value,'score'),'/4','NHS Oversight Framework · 4 = most support',null,Number(seg.value)>=4?'#b3261e':Number(seg.value)>=3?'#b45309':'#191f2b'):'')+`</div>`;
+  if(fys.length){
+    const inc=at('tac_income_total',lastFy),sur=at('tac_surplus_year',lastFy),mgn=inc?100*sur/inc:null,ag=agShare(lastFy);
+    const surSer=fys.map(p=>({period:p,value:at('tac_surplus_year',p)}));
+    h+=`<div class="eyebrow">Audited annual accounts · ${grp?'system trusts combined':esc(selOrg.code||'')} · FY${finFY(lastFy)}</div><div class="grid kpis">`+
+      kpi('Operating income',fmt(inc,'gbp_m'),'','audited · TAC '+finFY(lastFy),'#191f2b')+
+      kpi('Surplus / (deficit) for the year',fmt(sur,'gbp_m'),'',mgn!=null?('net margin '+fmt(mgn,'pct')):'',surSer,sur<0?'#b3261e':'#166f4d')+
+      kpi('Agency share of pay',fmt(ag,'pct'),'','agency + contract of gross pay',fys.map(p=>({period:p,value:agShare(p)})),ag>5?'#b45309':'#166f4d')+
+      kpi('Capital expenditure',fmt(at('tac_capex',lastFy),'gbp_m'),'','property, plant and equipment','#191f2b')+`</div>`;
+    h+=stTable('Income and expenditure account','Statement of comprehensive income lines · audited accounts, all years published in TAC',[
+      {label:'Income from patient care activities',get:money('tac_income_patient_care')},
+      {label:'Other operating income',get:money('tac_income_other')},
+      {label:'of which private patients',get:money('tac_income_private'),indent:1},
+      {label:'Total operating income',get:money('tac_income_total'),bold:1},
+      {label:'Operating expenses',get:money('tac_opex_total'),paren:1},
+      {label:'Operating surplus / (deficit)',get:money('tac_operating_surplus'),bold:1,signCol:1},
+      {label:'Finance expense',get:money('tac_finance_expense'),paren:1},
+      {label:'PDC dividend',get:money('tac_pdc_dividend'),paren:1},
+      {label:'Surplus / (deficit) for the year',get:money('tac_surplus_year'),bold:1,signCol:1},
+      {label:'Net margin',get:p=>{const i=at('tac_income_total',p),s=at('tac_surplus_year',p);return i?100*s/i:null;},unit:'pct',indent:1,signCol:1}]);
+    h+=`<div class="two">`+stTable('Operating expenditure detail','Published expense lines (selected · they do not sum to total expenses)',[
+      {label:'Staff costs (net)',get:money('tac_staff_costs_total'),bold:1},
+      {label:'Substantive salaries and wages',get:money('tac_pay_salaries'),indent:1},
+      {label:'Bank staff',get:money('tac_pay_bank'),indent:1},
+      {label:'Agency and contract staff',get:money('tac_pay_agency'),indent:1},
+      {label:'Agency share of pay',get:agShare,unit:'pct',indent:1},
+      {label:'Drugs',get:money('tac_drugs')},
+      {label:'Clinical supplies and services',get:money('tac_supplies_clinical')},
+      {label:'General supplies and services',get:money('tac_supplies_general')},
+      {label:'Purchase of healthcare from other bodies',get:money('tac_purchase_healthcare')},
+      {label:'Premises',get:money('tac_premises')},
+      {label:'Clinical negligence premium',get:money('tac_cnst_premium')},
+      {label:'Consultancy',get:money('tac_consultancy')},
+      {label:'Depreciation',get:money('tac_depreciation')}])+
+    `<div>`+stTable('Balance sheet','Statement of financial position lines',[
+      {label:'Property, plant and equipment',get:money('tac_ppe')},
+      {label:'Cash and cash equivalents',get:money('tac_cash')},
+      {label:'Total current assets',get:money('tac_current_assets')},
+      {label:'Total current liabilities',get:money('tac_current_liabilities'),paren:1},
+      {label:'Working capital',get:p=>{const a=at('tac_current_assets',p),l=at('tac_current_liabilities',p);return a!=null&&l!=null?a-l:null;},bold:1,signCol:1},
+      {label:'Borrowings',get:money('tac_borrowings'),paren:1},
+      {label:'Public dividend capital',get:money('tac_pdc_capital')},
+      {label:'Income and expenditure reserve',get:money('tac_ie_reserve'),signCol:1}])+
+    stTable('Cash flow','Statement of cash flows lines',[
+      {label:'Net cash from operations',get:money('tac_cash_from_ops'),signCol:1},
+      {label:'Capital expenditure (PPE)',get:money('tac_capex'),paren:1}])+`</div></div>`;
+    h+=`<div class="two"><div class="card"><div class="h3">Income vs expenditure</div><div class="cap">£m · six years audited</div><div class="chartbox"><canvas id="tfintrend"></canvas></div></div>
+     <div class="card"><div class="h3">Pay composition · FY${finFY(lastFy)}</div><div class="cap">Substantive · bank · agency (audited £m)</div><div class="chartbox"><canvas id="tfinpay"></canvas></div></div></div>`;
+    /* service-line spend and cost (NCC by service, sr_fact) */
+    const svcMap={};
+    f.forEach(x=>{if(tIds.includes(x.organisation_id)&&x.specialty_code&&(x.metric_code==='ncc_service_spend'||x.metric_code==='ncc_service_index')){
+      const e=svcMap[x.specialty_code]=svcMap[x.specialty_code]||{spend:0,act:0,exp:0};
+      if(x.metric_code==='ncc_service_spend')e.spend+=Number(x.value);
+      else{e.act+=Number(x.value);e.exp+=100;}}});
+    const svcRows=Object.keys(svcMap).map(k=>({code:k,spend:svcMap[k].spend,idx:svcMap[k].exp?svcMap[k].act/(svcMap[k].exp/100):null})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend);
+    if(svcRows.length){
+      const shown=svcRows.slice(0,20);const svcTot=svcRows.reduce((s,x)=>s+x.spend,0);
+      h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Spend and cost by service line${svcRows.length>20?' · top 20 of '+svcRows.length:''}</div><div class="cap" style="padding:2px 14px 0">National Cost Collection 2024/25 by service, MFF adjusted${grp?' · system trusts combined':''} · index 100 = costs as expected</div><table class="dt"><thead><tr><th>Service line</th><th class="num">Spend £m</th><th class="num">Share</th><th class="num">Cost index</th></tr></thead><tbody>`;
+      shown.forEach(x=>{const nm=x.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());const dv=x.idx!=null?x.idx-100:null;
+        h+=`<tr><td>${esc(nm)}</td><td class="num" style="font-weight:600">${fmt(x.spend,'gbp_m')}</td><td class="num muted">${svcTot?fmt(100*x.spend/svcTot,'pct'):'—'}</td><td class="num" style="color:${dv==null?'#9aa0af':dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${x.idx!=null?fmt(x.idx,'score'):'—'}</td></tr>`;});
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Index per service = actual vs expected cost, aggregated across inpatient, day case, outpatient and other departments${grp?'; simple average across trusts when the whole system is selected':''}.</div></div>`;}
+    /* cost index + national position (single trust only) */
+    if(!grp){
+      const nccRows=orgRows().filter(r=>r.metric_code&&r.metric_code.indexOf('ncc_index_')===0&&r.value!=null).sort((a,b)=>a.metric_code==='ncc_index_total'?-1:b.metric_code==='ncc_index_total'?1:Number(b.value)-Number(a.value));
+      const bmRows=['tac_net_margin','tac_agency_share_pay','tac_pay_share_income'].map(c=>orgRows().find(r=>r.metric_code===c)).filter(Boolean);
+      if(nccRows.length||bmRows.length){h+=`<div class="two">`;
+        if(nccRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Cost per unit of activity · NCC ${finFY(nccRows[0].period)}</div><div class="cap" style="padding:2px 14px 0">National Cost Collection index, MFF adjusted · 100 = costs as expected for this activity mix</div><table class="dt"><thead><tr><th>Care setting</th><th class="num">Index</th><th class="num">vs England</th></tr></thead><tbody>`;
+          nccRows.forEach(r=>{const wp=natWorsePct(r);const dv=Number(r.value)-100;h+=`<tr${r.metric_code==='ncc_index_total'?' style="font-weight:700"':''}><td>${esc(r.metric_name.replace('Cost index: ','').replace(' (NCCI, 100 = expected)',''))}</td><td class="num" style="color:${dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${fmt(r.value,'score')}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+          h+=`</tbody></table></div>`;}
+        if(bmRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Financial ratios vs England</div><div class="cap" style="padding:2px 14px 0">Latest audited year · every English trust benchmarked</div><table class="dt"><thead><tr><th>Ratio</th><th class="num">This trust</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
+          bmRows.forEach(r=>{const wp=natWorsePct(r);h+=`<tr onclick="openDrill('${sel}','${r.metric_code}')" style="cursor:pointer"><td>${esc(r.metric_name)}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+          h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Open any row for the full drill: trend, distribution and provenance.</div></div>`;}
+        h+=`</div>`;}
+    }
+  }else{h+=covNote('Audited annual accounts (TAC) have not been published for this organisation.');}
+  /* --- flagship in-year model (BSW demo), retained below the audited accounts --- */
   const hasFin=f.some(x=>x.organisation_id===sel&&x.line_code!=null);
   if(hasFin){
-  h+=`<div class="eyebrow">Flagship modelled detail (illustrative · pending PFR ingestion)</div><div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#191f2b')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#b3261e':'#166f4d')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#191f2b')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#b45309':'#166f4d')+`</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">Expenditure breakdown</div><div class="cap">Pay vs non-pay (£m)</div><div class="chartbox"><canvas id="finexp"></canvas></div></div>
-   <div class="card"><div class="h3">Pay composition</div><div class="cap">Substantive · bank · agency</div><div class="chartbox"><canvas id="finpay"></canvas></div></div></div>`;
-  h+=`<div class="eyebrow">Income & expenditure</div><div class="card" style="padding:4px 0"><div class="cap" style="padding:10px 14px 0">Modelled illustration pending PFR ingestion — tagged modelled</div><table class="dt"><tbody>`+
-   [['inc_clinical','NHS clinical income'],['inc_other','Other income'],['pay_substantive','Substantive pay'],['pay_bank','Bank staff'],['pay_agency','Agency staff'],['np_drugs','Drugs'],['np_clin_supplies','Clinical supplies'],['np_nonclin','Non-clinical supplies'],['np_premises','Premises'],['np_deprec','Depreciation'],['np_other','Other non-pay'],['res_ebitda','EBITDA'],['res_surplus','I&E surplus/(deficit)']].map(l=>`<tr><td>${l[1]}</td><td class="num" style="${l[0].startsWith('res')?'font-weight:700':''};color:${g(l[0])<0?'#b3261e':'#191f2b'}">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">Balance sheet</div><table class="dt"><tbody>`+[['bs_ppe','Property, plant & equipment'],['bs_curr_assets','Current assets'],['bs_cash','Cash & equivalents'],['bs_curr_liab','Current liabilities'],['bs_net_assets','Net assets']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div>
-   <div class="card"><div class="h3">Cash flow</div><table class="dt"><tbody>`+[['cf_ops','Net cash from operations'],['cf_capex','Capital expenditure'],['cf_close','Closing cash']].map(l=>`<tr><td>${l[1]}</td><td class="num">${fmt(g(l[0]),'gbp_m')}</td></tr>`).join('')+`</tbody></table></div></div>`;
-  }else{h+=covNote('Income & expenditure, pay, balance-sheet and cash-flow detail carry the full modelled dataset for the flagship system.');}
+  h+=`<div class="eyebrow" style="margin-top:16px">Flagship in-year model (illustrative · pending PFR ingestion)</div><div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#191f2b')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#b3261e':'#166f4d')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#191f2b')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#b45309':'#166f4d')+`</div>`;
+  h+=`<div class="two"><div class="card"><div class="h3">Expenditure breakdown</div><div class="cap">Pay vs non-pay (£m) · modelled</div><div class="chartbox"><canvas id="finexp"></canvas></div></div>
+   <div class="card"><div class="h3">Pay composition</div><div class="cap">Substantive · bank · agency · modelled</div><div class="chartbox"><canvas id="finpay"></canvas></div></div></div>`;
+  }
   v.innerHTML=h;countUps();
+  if(fys.length){
+    lineChart('tfintrend',fys.map(finFY),[
+      {label:'Total operating income',data:fys.map(p=>at('tac_income_total',p)),borderColor:'#1f3a78',backgroundColor:'transparent',tension:.3,pointRadius:2,borderWidth:2},
+      {label:'Operating expenses',data:fys.map(p=>at('tac_opex_total',p)),borderColor:'#b45309',backgroundColor:'transparent',tension:.3,pointRadius:2,borderWidth:2}]);
+    const payEl=document.getElementById('tfinpay');
+    if(payEl&&window.Chart)charts.tfinpay=new Chart(payEl.getContext('2d'),{type:'doughnut',data:{labels:['Substantive','Bank','Agency'],datasets:[{data:[at('tac_pay_salaries',lastFy)||0,at('tac_pay_bank',lastFy)||0,at('tac_pay_agency',lastFy)||0],backgroundColor:['#1f3a78','#44639f','#b45309'],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},responsive:true,maintainAspectRatio:false}});
+  }
+  if(hasFin){
   barChart('finexp',['Substantive','Bank','Agency','Drugs','Clin supplies','Non-clin','Premises','Deprec','Other'],[g('pay_substantive'),g('pay_bank'),g('pay_agency'),g('np_drugs'),g('np_clin_supplies'),g('np_nonclin'),g('np_premises'),g('np_deprec'),g('np_other')],['#1f3a78','#44639f','#7c93c4','#44639f','#b7c4de','#d8dfec','#7c93c4','#8a6a1e','#cfd8d0']);
   charts.finpay=document.getElementById('finpay')&&new Chart(document.getElementById('finpay').getContext('2d'),{type:'doughnut',data:{labels:['Substantive','Bank','Agency'],datasets:[{data:[g('pay_substantive'),g('pay_bank'),g('pay_agency')],backgroundColor:['#1f3a78','#44639f','#b45309'],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},responsive:true,maintainAspectRatio:false}});
+  }
 }
 
 /* ===== WORKFORCE ===== */
 async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
-  const wOrgIds=(orgById[sel]&&orgById[sel].type==='acute_trust')?[sel]:sysTrusts().map(t=>t.id);
+  const selOrg=orgById[sel]||{};
+  const wOrgIds=(selOrg.type==='acute_trust')?[sel]:sysTrusts().map(t=>t.id);const grp=wOrgIds.length>1;
   const gv=(sgc,m)=>{const own=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(own)return Number(own.value);const xs=f.filter(x=>wOrgIds.includes(x.organisation_id)&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(!xs.length)return null;const s=xs.reduce((a,x)=>a+Number(x.value),0);return (m==='wte'||m==='agency_wte')?s:s/xs.length;};
   const g=(sgc,m)=>{const val=gv(sgc,m);return val==null?0:val;};
   const nn=(sgc,m,unit)=>{const val=gv(sgc,m);return val==null?'—':(unit==='wte'?Math.round(val).toLocaleString():fmt(val,unit));};
+  /* staff-group monthly series (official FTE), for 12-month change */
+  const sgSeries=sgc=>{const map={};f.forEach(x=>{if(wOrgIds.includes(x.organisation_id)&&x.staff_group_code===sgc&&x.metric_code==='wte')map[x.period]=(map[x.period]||0)+Number(x.value);});return Object.keys(map).sort().map(p=>({period:p,value:map[p]}));};
   const totW=sgs.reduce((s,sg)=>s+g(sg.code,'wte'),0);const totA=sgs.reduce((s,sg)=>s+g(sg.code,'agency_wte'),0);
-  let h=sysNote()+ensureNote('workforce')+`<h1 class="serif">Workforce</h1><div class="lead">Published workforce position across the system's acute trusts — sickness, engagement and the Oversight-Framework people scores — then staff in post by staff group.</div>`;
+  /* audited pay + survey from the boot series/rows */
+  const idByCode=tacIdByCode();
+  const serOf=(oid,code)=>{const mid=idByCode[code];return mid?(series[oid+'|'+mid]||[]):[];};
+  const fys=[...new Set(wOrgIds.flatMap(o=>serOf(o,'tac_staff_costs_total').map(x=>x.period)))].sort();
+  const at=(code,p)=>{let s=0,found=false;wOrgIds.forEach(o=>{const e=serOf(o,code).find(x=>x.period===p);if(e&&e.value!=null){s+=Number(e.value);found=true;}});return found?s:null;};
+  const lastFy=fys[fys.length-1];
+  const agShare=p=>{const a=at('tac_pay_agency',p);const gr=(at('tac_pay_salaries',p)||0)+(at('tac_pay_bank',p)||0)+(a||0);return a!=null&&gr?100*a/gr:null;};
+  let h=sysNote()+ensureNote('workforce')+`<h1 class="serif">Workforce</h1><div class="lead">${grp?'The published workforce position across the system\'s acute trusts':'The published workforce position of '+esc(selOrg.name||'this trust')} — staff in post by group with trend, medical staffing by specialty, sickness, agency and bank reliance from audited accounts, and the staff survey.</div>`;
   h+=nationalBlock(['sickness_rate','staff_engagement','of_of4004','of_of4104'],['sickness_rate','staff_engagement','of_of0084','of_of4104'],'');
   const sick=orgRows().find(r=>r.metric_code==='sickness_rate');
   const sSer=sick?officialSeries(sel,sick.metric_id):[];const sLast=sSer.length?sSer[sSer.length-1]:null;const sVal=sLast?Number(sLast.value):(sick?sick.value:null);
@@ -721,17 +834,60 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
   const hasWf=wfRows.length>0;
   const wfOfficial=f.some(x=>wOrgIds.includes(x.organisation_id)&&x.staff_group_code!=null&&x.metric_code==='wte'&&x.confidence==='official');
   const hasVac=sgs.some(sg=>gv(sg.code,'vacancy_pct')!=null);
+  const consR=orgRows().find(r=>r.metric_code==='consultant_share_medical');
   if(hasWf){
-  h+=`<div class="eyebrow">${wfOfficial?'Staff in post by staff group · NHS Workforce Statistics':'Flagship modelled establishment (illustrative)'}${wOrgIds.length>1?' · system trusts combined':''}</div><div class="grid kpis">`+kpi('Total workforce',fmt(totW,'wte'),'WTE',wfOfficial?'staff in post · official':'substantive establishment · modelled','#191f2b')+(totA>0?kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce · modelled',totA/(totW||1)>0.05?'#b45309':'#166f4d'):'')+(gv('nursing','vacancy_pct')!=null?kpi('Nursing vacancy',fmt(g('nursing','vacancy_pct'),'pct'),'','registered nursing · modelled',g('nursing','vacancy_pct')>10?'#b45309':'#166f4d'):'')+(gv('medical','vacancy_pct')!=null?kpi('Medical vacancy',fmt(g('medical','vacancy_pct'),'pct'),'','medical & dental · modelled','#191f2b'):'')+`</div>`;
+  h+=`<div class="eyebrow">${wfOfficial?'Staff in post by staff group · NHS Workforce Statistics':'Flagship modelled establishment (illustrative)'}${grp?' · system trusts combined':''}</div><div class="grid kpis">`+
+    kpi('Total workforce',fmt(totW,'wte'),'WTE',wfOfficial?'staff in post · official · '+fmtPeriod(lp):'substantive establishment · modelled','#191f2b')+
+    (sVal!=null?kpi('Sickness absence',fmt(sVal,'pct'),'','published quarterly · '+fmtPeriod((sLast||sick).period),sSer,color(sick?sick.distress:0)):'')+
+    (lastFy?kpi('Agency share of pay',fmt(agShare(lastFy),'pct'),'','audited accounts FY'+finFY(lastFy),fys.map(p=>({period:p,value:agShare(p)})),agShare(lastFy)>5?'#b45309':'#166f4d'):'')+
+    (consR?kpi('Consultant share of medical',fmt(consR.value,'pct'),'','of medical and dental WTE','#191f2b'):(totA>0?kpi('Agency WTE',fmt(totA,'wte'),'WTE',Math.round(100*totA/(totW||1))+'% of workforce · modelled',totA/(totW||1)>0.05?'#b45309':'#166f4d'):''))+`</div>`;
   h+=hasVac?`<div class="two"><div class="card"><div class="h3">Staff in post by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>
-   <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">% · modelled</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`:`<div class="card"><div class="h3">Staff in post by staff group</div><div class="cap">WTE</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>`;
-  h+=`<div class="eyebrow">Workforce detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Staff group</th><th class="num">WTE${wfOfficial?' (official)':''}</th><th class="num">Vacancy (modelled)</th><th class="num">Sickness (modelled)</th><th class="num">Turnover (modelled)</th><th class="num">Agency WTE</th></tr></thead><tbody>`;
-  wfRows.forEach(sg=>{h+=`<tr><td>${esc(sg.name)}</td><td class="num">${nn(sg.code,'wte','wte')}</td><td class="num">${nn(sg.code,'vacancy_pct','pct')}</td><td class="num">${nn(sg.code,'sickness_pct','pct')}</td><td class="num">${nn(sg.code,'turnover_pct','pct')}</td><td class="num">${nn(sg.code,'agency_wte','wte')}</td></tr>`;});
-  h+=`</tbody></table></div>`;}else{h+=covNote('No staff-group establishment is published for this organisation in the NHS Workforce Statistics monthly series.');}
+   <div class="card"><div class="h3">Vacancy by staff group</div><div class="cap">% · modelled</div><div class="chartbox"><canvas id="wfvac"></canvas></div></div></div>`:`<div class="card" style="margin-bottom:14px"><div class="h3">Staff in post by staff group</div><div class="cap">WTE · official monthly series</div><div class="chartbox"><canvas id="wfbar"></canvas></div></div>`;
+  /* staff-group table: official columns first, modelled columns only where the flagship model holds them */
+  const cols=[['wte','WTE'+(wfOfficial?' (official)':'')]];
+  if(hasVac)cols.push(['vacancy_pct','Vacancy (modelled)']);
+  if(sgs.some(sg=>gv(sg.code,'sickness_pct')!=null))cols.push(['sickness_pct','Sickness (modelled)']);
+  if(sgs.some(sg=>gv(sg.code,'turnover_pct')!=null))cols.push(['turnover_pct','Turnover (modelled)']);
+  if(totA>0)cols.push(['agency_wte','Agency WTE']);
+  h+=`<div class="eyebrow">Staff group detail</div><div class="card" style="padding:4px 0;overflow-x:auto"><table class="dt"><thead><tr><th>Staff group</th>`+cols.map(c=>`<th class="num">${c[1]}</th>`).join('')+`<th class="num">12-month change</th><th style="width:112px">Trend</th></tr></thead><tbody>`;
+  wfRows.forEach(sg=>{const ser=sgSeries(sg.code);const chg=ser.length>1?(ser[ser.length-1].value-ser[0].value):null;const chgPct=chg!=null&&ser[0].value?100*chg/ser[0].value:null;
+    h+=`<tr><td>${esc(sg.name)}</td>`+cols.map(c=>`<td class="num">${nn(sg.code,c[0],c[0]==='wte'||c[0]==='agency_wte'?'wte':'pct')}</td>`).join('')+
+      `<td class="num" style="color:${chg==null?'#9aa0af':chg>=0?'#166f4d':'#b45309'}">${chg==null?'—':(chg>0?'+':'')+Math.round(chg).toLocaleString()+(chgPct!=null?' ('+(chgPct>0?'+':'')+(Math.round(chgPct*10)/10)+'%)':'')}</td><td>${ser.length>1?`<div style="height:22px">${spark(ser.slice(-12),'#1f3a78')}</div>`:'<span class="muted" style="font-size:10px">—</span>'}</td></tr>`;});
+  h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Trust-level vacancy and turnover rates are not published in national statistics: NHS Vacancy Statistics reports England and regions only, and Model Hospital's vacancy view uses unpublished provider returns. The published pressure signals are sickness (quarterly, above), agency and bank reliance from audited accounts (below) and the staff survey.</div></div>`;
+  }else{h+=covNote('No staff-group establishment is published for this organisation in the NHS Workforce Statistics monthly series.');}
+  /* medical staffing by specialty (official census) */
+  const specNm={};specs.forEach(s=>{specNm[s.code]=s.name;});
+  const medMap={};let medPeriod=null;
+  f.forEach(x=>{if(wOrgIds.includes(x.organisation_id)&&x.metric_code==='medical_wte'&&x.specialty_code){medMap[x.specialty_code]=(medMap[x.specialty_code]||0)+Number(x.value);if(!medPeriod||x.period>medPeriod)medPeriod=x.period;}});
+  const medRows=Object.keys(medMap).map(k=>({code:k,wte:medMap[k]})).sort((a,b)=>b.wte-a.wte);
+  const medTot=medRows.reduce((s,r)=>s+r.wte,0);
+  if(medRows.length){
+    const shown=medRows.slice(0,18);
+    h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Medical staffing by specialty${medRows.length>18?' · top 18 of '+medRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Doctors in post · NHS Workforce Statistics ${fmtPeriod(medPeriod)}${grp?' · system trusts combined':''}</div><table class="dt"><thead><tr><th>Specialty</th><th class="num">WTE</th><th class="num">Share of medical</th></tr></thead><tbody>`;
+    shown.forEach(r=>{const nm=specNm[r.code]||r.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());h+=`<tr><td>${esc(nm)}</td><td class="num">${Math.round(r.wte).toLocaleString()}</td><td class="num muted">${medTot?fmt(100*r.wte/medTot,'pct'):'—'}</td></tr>`;});
+    h+=`</tbody></table></div><div class="card"><div class="h3">Largest specialties</div><div class="cap">WTE doctors in post</div><div class="chartbox tall"><canvas id="wfmed"></canvas></div></div></div>`;}
+  /* agency + bank from audited accounts */
+  if(lastFy){
+    h+=`<div class="eyebrow">Temporary staffing · audited accounts</div><div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><table class="dt"><thead><tr><th style="min-width:210px">£m</th>`+fys.map(p=>`<th class="num">${finFY(p)}</th>`).join('')+`</tr></thead><tbody>`;
+    [['tac_staff_costs_total','Total staff costs (net)',1],['tac_pay_salaries','Substantive salaries and wages',0],['tac_pay_bank','Bank staff',0],['tac_pay_agency','Agency and contract staff',0]].forEach(l=>{
+      h+=`<tr${l[2]?' style="font-weight:700"':''}><td>${l[1]}</td>`+fys.map(p=>{const val=at(l[0],p);return `<td class="num">${val==null?'—':fmt(val,'gbp_m')}</td>`;}).join('')+`</tr>`;});
+    h+=`<tr><td style="padding-left:26px;color:#5a6172;font-size:12px">Agency share of pay</td>`+fys.map(p=>{const val=agShare(p);return `<td class="num" style="color:${val>5?'#b45309':'#166f4d'}">${val==null?'—':fmt(val,'pct')}</td>`;}).join('')+`</tr>`;
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Audited annual accounts (TAC) · bank and agency spend for every English trust · full statements on the Finance page.</div></div>`;}
+  /* staff survey */
+  const NSS=[['staff_engagement','Engagement'],['nss_morale','Morale'],['nss_pp1_compassionate','Compassionate and inclusive'],['nss_pp2_recognised','Recognised and rewarded'],['nss_pp3_voice','A voice that counts'],['nss_pp4_safe_healthy','Safe and healthy'],['nss_pp5_learning','Always learning'],['nss_pp6_flexible','Working flexibly'],['nss_pp7_team','We are a team']];
+  const svOrg=grp?focusTrust():sel;const svRows=NSS.map(n=>{const r=rows.find(x=>x.organisation_id===svOrg&&x.metric_code===n[0]&&!x.service_id);return r?{lab:n[1],r}:null;}).filter(Boolean);
+  if(svRows.length){
+    h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Staff survey · ${esc((orgById[svOrg]||{}).code||'')}${grp?' (one trust shown — switch organisation above for others)':''}</div><div class="cap" style="padding:2px 14px 0">NHS Staff Survey 2025 · People Promise elements, 0-10 · national benchmark</div><table class="dt"><thead><tr><th>Theme</th><th class="num">Score</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
+    svRows.forEach(x=>{const wp=natWorsePct(x.r);h+=`<tr onclick="openDrill('${svOrg}','${x.r.metric_code}')" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="num" style="font-weight:600;color:${color(x.r.distress)}">${fmt(x.r.value,'score')}</td><td class="num muted">${x.r.nm_value!=null?fmt(x.r.nm_value,'score'):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+    h+=`</tbody></table></div><div class="card"><div class="h3">Survey vs national median</div><div class="cap">0-10 theme scores</div><div class="chartbox tall"><canvas id="wfsvy"></canvas></div></div></div>`;}
   v.innerHTML=h;countUps();
   const wfBars=wfRows.filter(sg=>gv(sg.code,'wte')!=null);
   barChart('wfbar',wfBars.map(s=>s.name.split(' ')[0]),wfBars.map(s=>g(s.code,'wte')),wfBars.map(()=>'#1f3a78'));
   if(hasVac)barChart('wfvac',wfRows.map(s=>s.name.split(' ')[0]),wfRows.map(s=>g(s.code,'vacancy_pct')),wfRows.map(s=>g(s.code,'vacancy_pct')>10?'#b45309':'#44639f'));
+  if(medRows.length){const mb=medRows.slice(0,12);
+    barChart('wfmed',mb.map(r=>(specNm[r.code]||r.code.replace(/_/g,' ')).slice(0,18)),mb.map(r=>Math.round(r.wte)),mb.map(()=>'#1f3a78'),{indexAxis:'y',scales:{x:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}},y:{ticks:{font:{size:9},color:'#6a7183'},grid:{display:false}}}});}
+  if(svRows.length&&document.getElementById('wfsvy')&&window.Chart){
+    charts.wfsvy=new Chart(document.getElementById('wfsvy').getContext('2d'),{type:'bar',data:{labels:svRows.map(x=>x.lab),datasets:[{label:'This trust',data:svRows.map(x=>Number(x.r.value)),backgroundColor:'#1f3a78',borderRadius:4,maxBarThickness:18},{label:'National median',data:svRows.map(x=>x.r.nm_value!=null?Number(x.r.nm_value):null),backgroundColor:'#c9c4b8',borderRadius:4,maxBarThickness:18}]},options:{indexAxis:'y',plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:9},color:'#6a7183'}}},scales:{x:{min:0,max:10,ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}},y:{ticks:{font:{size:9},color:'#6a7183'},grid:{display:false}}},responsive:true,maintainAspectRatio:false}});}
 }
 
 /* ===== POPULATION ===== */
@@ -1495,7 +1651,7 @@ let xSelOrg=null,xSelMetric=null,xQ='',xDom=null,xOvl=null,xSelSplit='',xShowAll
 let xCatalog=null,xFactCat=null,xSeriesCache={},xMSeries={},xSplitData={};
 let xgSel=[],xgScope='system',xgOrgs=[],xgQ='',xgOrgQ='',xgFrom='',xgTo='',xgData=null,xgCapped=false,xgBusy=false;
 /* Status-metric code → sr_fact line-split code where the loader stores splits under a sibling code. */
-const XSPLIT_MAP={dm01_6wk:'dm01_6wk_test_pct',cancer_62:'cancer_62_tumour_pct',bed_occupancy:'beds_specialty_occupied',beds_ga_occupied:'beds_specialty_occupied',beds_ga_available:'beds_specialty_occupied'};
+const XSPLIT_MAP={dm01_6wk:'dm01_6wk_test_pct',cancer_62:'cancer_62_tumour_pct',bed_occupancy:'beds_specialty_occupied',beds_ga_occupied:'beds_specialty_occupied',beds_ga_available:'beds_specialty_occupied',ncc_index_total:'ncc_service_index',tac_opex_total:'ncc_service_spend'};
 function escAttr(s){return esc(s).replace(/"/g,'&quot;');}
 function sysTrustIds(){return TRUSTS.map(c=>(orgs.find(o=>o.code===c)||{}).id).filter(Boolean);}
 async function xEnsureCatalog(){if(xCatalog&&xFactCat)return;
