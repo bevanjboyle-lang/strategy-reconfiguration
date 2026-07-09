@@ -228,3 +228,42 @@ and Journey Review - 9 Jul 2026.docx' (findings F1-F12).
 - [x] Suite 22 → 30 (entry screen, door B landing, deep links, no-silent-restore, door A
   neutrality, England overview + prompt, scoped/earned journey, options seed panel).
   30/30 green first run (~2m).
+
+
+## Full-Fat Data Programme (9 Jul 2026) — plan + Wave D-A shipped
+
+Plan: 'Full-Fat Data Programme - 9 Jul 2026.docx' (audited headroom: 566 gold-mart metric
+keys, ERIC 244 site columns, 16-file workforce zip, unserved silver families; verified
+external: TAC annual accounts 2016/17-2024/25, National Cost Collection 2023/24+2024/25,
+NHS Vacancy Statistics to Jun 2026). Decisions (Bevan): start D-A now; finance = TAC+NCC at
+annual grain (D-C); refresh stays MANUAL for now (no GitHub Actions yet); scope = FULL
+provider landscape (acute + ambulance + MH + community).
+
+- [x] D-A0 landscape orgs — +71 sr_organisations from Workforce Core 1 cluster groups
+  (10 ambulance_trust, 47 mh_trust, 14 community_trust; ICBs excluded). 210 orgs total.
+- [x] D-A1 ERIC full landscape — load_wp2_eric.py org filter widened to all four provider
+  types and force-reloaded: sr_dim_site 2,897 sites / 206 trusts (+1,793), 17,382 base site
+  facts, 1,030 trust values. load_da_eric_trust.py adds 9 curated estate metrics
+  (capital new-build/improve/maintain/equipment, parking income, fires, carbon savings,
+  water cost, occupied-floor %) = 1,854 values + 5,794 site facts (#da-eric-full-v1 /
+  #da-eric-site-v1). MH/community estate is now real (e.g. RV5 backlog GBP173m, 74.6% occupied).
+- [x] D-A2 workforce depth — landscape wte 6,140 rows (71 new orgs, monthly);
+  medical_wte by specialty (slugged names) 5,288 rows · 205 orgs · 79 specialties, latest
+  month; curated consultant_wte / medical_wte / consultant_share_medical 615 values
+  (#da-wf-land-v1 / #da-wf-medspec-v1 / #da-wf-grades-v1). NOTE: sr_metrics.higher_is_better
+  is NOT NULL — pass a boolean.
+- [x] D-A3 cancer national — cancer_62_tumour_pct national split 36,736 rows · 155 orgs ·
+  13 tumour groups · 24 months (BSW keeps deeper d4 series); new curated cancer_31
+  (31-day DTT, standard 96) 6,647 values · 151 orgs · 49 months (#da-cancer-v1 /
+  #da-cancer31-v1).
+- [x] Dictionary: sr_metrics + subdomain column (migration da_metrics_subdomain), set on
+  new metrics. Freshness 26 families; QA 56 checks 54 ok / 2 known warns / 0 fail.
+- Serving after D-A: 167 metric defs (158 populated) · 124,499 curated obs · 48 split
+  codes · 412,527 split rows · 210 orgs.
+- NEXT (per the programme doc): rest of D-A (WLMDS demographics, cancelled ops, UEC sitrep
+  aggregates, beds completion, A&E supplementary/discharge, ERIC multi-year history),
+  D-B parsers (staff survey, HCAI, CQC domains, FFT settings, monthly sickness),
+  D-C rich finance (TAC 9 years + NCC + vacancy statistics), and the LANDSCAPE UI PASS —
+  new org types are data-complete but invisible in the app (explorer/pickers/strips filter
+  org_type==='acute_trust'); needs provider-type grouping in pickers, England surfaces and
+  catalogue coverage labels.
