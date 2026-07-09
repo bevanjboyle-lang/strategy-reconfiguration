@@ -94,7 +94,7 @@ async function loadAll(){
   SYSTEMS=await gs.json();TRUSTMETA=await gt.json();SITES=await gsite.json();CQC=await gcqc.json();
   if(!SYSTEMS.find(s=>s.slug===sysSlug))sysSlug=BSW_SLUG;
   const [o,d,r,ov,cr,ln,iss,isc,sp,pd,sg,fl,si,bm]=await Promise.all([
-    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_mv_metric_status').select('*').limit(45000),
+    sb.from('sr_organisations').select('*').limit(5000),sb.from('sr_v_org_distress').select('*').limit(5000),sb.from('sr_mv_metric_status').select('*').limit(60000),
     sb.from('sr_overrides').select('*'),sb.from('sr_criteria').select('*').order('sort'),sb.from('sr_lenses').select('*').order('sort'),
     sb.from('sr_issues').select('*'),sb.from('sr_issue_scores').select('*'),
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
@@ -1543,9 +1543,12 @@ async function renderXEntity(v){
   h+=`<div class="card" style="margin-bottom:4px"><div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;justify-content:space-between"><div><div class="h3" style="font-size:18px">${esc(o.name||'')}</div><div class="cap" style="margin-bottom:0">${esc(o.code||'')}${meta.type?' · '+esc(meta.type):''}${sysm?' · '+esc(sysm.name)+' · '+esc((sysm.region||'').replace(/-/g,' ')):''}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cq&&cq[0]?`<span class="pill" style="background:${/inadequate/i.test(cq[0])?'#b3261e':/requires/i.test(cq[0])?'#b45309':/outstanding/i.test(cq[0])?'#166f4d':'#44639f'}">CQC · ${esc(cq[0])}</span>`:''}${frag?`<span class="pill" style="background:${color(frag.distress)}">fragility ${fmt(frag.value,'score')}/100</span>`:''}${dd?`<span class="pill" style="background:${color(dd.distress_index)}">distress ${dd.distress_index}/100 · ${dd.near_failure_count||0} near-failure</span>`:''}<span class="pill" style="background:#6a7183">${orows.length} metrics</span></div></div></div>`;
   const extra=[...new Set(orows.map(r=>r.domain))].filter(d=>!DOMAINS.some(x=>x[0]===d)).sort();
   const doms=DOMAINS.concat(extra.map(d=>[d,(d||'other').replace(/_/g,' ')])).filter(d=>orows.some(r=>r.domain===d[0]));
-  doms.forEach(dm=>{const rs=orows.filter(r=>r.domain===dm[0]).sort((a,b)=>(b.distress||0)-(a.distress||0));
+  const subOf={};(xCatalog||[]).forEach(c=>{subOf[c.code]=c.subdomain||'';});
+  doms.forEach(dm=>{const rs=orows.filter(r=>r.domain===dm[0]).sort((a,b)=>{const sa=subOf[a.metric_code]||'',sb2=subOf[b.metric_code]||'';if(sa!==sb2)return sa<sb2?-1:1;return (b.distress||0)-(a.distress||0);});
+    const subCount=new Set(rs.map(r=>subOf[r.metric_code]||'')).size;let lastSub=null;
     h+=`<div class="eyebrow">${esc(dm[1])} · ${rs.length} ${rs.length===1?'metric':'metrics'}</div><div class="card" style="padding:4px 0;overflow-x:auto;position:relative"><a class="csvlink" href="#" onclick="xeCsv('${dm[0]}','${esc(o.code||'trust')}-${dm[0]}-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="xetbl_${dm[0]}"><thead><tr><th>Metric</th><th class="num">Latest</th><th class="num">vs standard</th><th class="num">vs nat. median</th><th style="width:112px">Trend · last 12</th><th>SPC</th><th></th></tr></thead><tbody>`;
     rs.forEach((r,i)=>{const rid=dm[0]+'_'+i;const ser=xSer(xSelOrg,r);const sp=spc(ser.map(x=>Number(x.value)),r.higher_is_better!==false);
+      if(subCount>1){const sSub=subOf[r.metric_code]||'';if(sSub!==lastSub){h+=`<tr><td colspan="7" style="padding:9px 14px 3px;font-size:9.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--mut,#6a7183);border-bottom:none">${esc((sSub||'general').replace(/_/g,' '))}</td></tr>`;lastSub=sSub;}}
       const spCol=sp?(sp.verdict.indexOf('deterioration')>=0?'#b45309':sp.verdict.indexOf('improvement')>=0?'#166f4d':'#6a7183'):null;
       const goodCol=dv=>dv==null?'#9aa0af':dv===0?'#6a7183':((dv>0)===(r.higher_is_better!==false)?'#166f4d':'#b3261e');
       const dfmt=dv=>dv==null?'—':(dv>0?'+':dv<0?'−':'')+fmt(Math.abs(dv),r.unit);
@@ -1583,9 +1586,15 @@ function xmCovLine(c){return `${c.org_count} trusts · ${fmtPeriod(c.first_perio
 function xmList(){const q=(xQ||'').toLowerCase();
   let l=xCatalog.filter(c=>(!xDom||c.domain===xDom)&&(!q||((c.name||'')+' '+(c.code||'')).toLowerCase().indexOf(q)>=0));
   if(q)l=l.slice().sort((a,b)=>(b.org_count-a.org_count)||((a.name||'')<(b.name||'')?-1:1));
+  else l=l.slice().sort((a,b)=>{const da=a.domain||'~',db=b.domain||'~';if(da!==db)return da<db?-1:1;const sa=a.subdomain||'~',sb2=b.subdomain||'~';if(sa!==sb2)return sa<sb2?-1:1;return (a.name||'')<(b.name||'')?-1:1;});
   return l;}
-function xmRenderList(){const el=document.getElementById('xmlist');if(!el)return;const l=xmList();
-  el.innerHTML=(l.length?l.slice(0,150).map(c=>`<div class="row" onclick="xSelectMetric('${c.code}')" style="${c.code===xSelMetric?'background:var(--surface2)':''}"><span class="tag" style="background:${c.code===xSelMetric?'#191f2b':'#dcd9d0'}"></span><div class="m"><div class="t1">${esc(c.name)}</div><div class="t2">${esc(c.code)} · ${esc(c.domain||'—')} · ${xmCovLine(c)}</div><div class="t2">${esc(c.latest_source||'')}${c.confidences?' · '+esc(c.confidences):''}</div></div></div>`).join('')+(l.length>150?`<div class="note" style="padding:8px 14px">${l.length-150} more — narrow the search.</div>`:''):'<div class="note" style="padding:10px 14px">No metrics match.</div>');}
+function xmRenderList(){const el=document.getElementById('xmlist');if(!el)return;const l=xmList();const q=(xQ||'').toLowerCase();
+  let out='',lastG=null;
+  l.slice(0,150).forEach(c=>{
+    if(!q){const g=(c.domain||'other')+(c.subdomain?' · '+c.subdomain:'');
+      if(g!==lastG){out+=`<div class="eyebrow" style="margin:10px 8px 3px">${esc(g.replace(/_/g,' '))}</div>`;lastG=g;}}
+    out+=`<div class="row" onclick="xSelectMetric('${c.code}')" style="${c.code===xSelMetric?'background:var(--surface2)':''}"><span class="tag" style="background:${c.code===xSelMetric?'#191f2b':'#dcd9d0'}"></span><div class="m"><div class="t1">${esc(c.name)}</div><div class="t2">${esc(c.code)} · ${esc(c.domain||'—')}${c.subdomain?' · '+esc(c.subdomain.replace(/_/g,' ')):''} · ${xmCovLine(c)}</div><div class="t2">${esc(c.latest_source||'')}${c.confidences?' · '+esc(c.confidences):''}</div></div></div>`;});
+  el.innerHTML=(l.length?out+(l.length>150?`<div class="note" style="padding:8px 14px">${l.length-150} more — narrow the search.</div>`:''):'<div class="note" style="padding:10px 14px">No metrics match.</div>');}
 function xSelectMetric(code){xSelMetric=code;xSelSplit='';xShowAllRank=false;render();}
 function xSetDom(d){xDom=xDom===d?null:d;render();}
 function xToggleOvl(id){if(!xOvl)xOvl=[];const i=xOvl.indexOf(id);if(i>=0)xOvl.splice(i,1);else{if(xOvl.length>=6){authMsg('Up to 6 trusts on the overlay — untick one first.');render();return;}xOvl.push(id);}render();}
@@ -1625,7 +1634,7 @@ async function renderXMetric(v){
     const shown=xShowAllRank?rr:rr.slice(0,30);
     const spl=xSplitInfo(xSelMetric);
     h+=`<div>`;
-    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">${esc(name)}</div><div class="cap">${esc(xSelMetric)}${cat?' · '+esc(cat.domain||'')+' · '+xmCovLine(cat):''}${std!=null?' · standard '+fmt(std,unit):''}${(cat&&cat.latest_source)||(anyRow&&anyRow.source)?' · '+esc((cat&&cat.latest_source)||anyRow.source):''}</div>`+
+    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">${esc(name)}</div><div class="cap">${esc(xSelMetric)}${cat?' · '+esc(cat.domain||'')+(cat.subdomain?' / '+esc(cat.subdomain.replace(/_/g,' ')):'')+' · '+xmCovLine(cat):''}${std!=null?' · standard '+fmt(std,unit):''}${(cat&&cat.latest_source)||(anyRow&&anyRow.source)?' · '+esc((cat&&cat.latest_source)||anyRow.source):''}</div>`+
       (rr.length>=10?`<div class="cap" style="margin:2px 0 2px">All English acute trusts · latest published · current system's trusts marked as diamonds</div>${distStrip(xSelMetric,ids)}`:'')+`</div>`;
     h+=`<div class="card" style="padding:4px 0;overflow-x:auto;position:relative;margin-bottom:14px"><a class="csvlink" href="#" onclick="csvTable('xmrank','${xSelMetric}-england-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="xmrank"><thead><tr><th style="width:34px">#</th><th>Overlay · trust</th><th class="num">Latest</th><th>Status</th><th class="num">Period</th></tr></thead><tbody>`;
     shown.forEach((r,i)=>{const on=xOvl.indexOf(r.organisation_id)>=0;
