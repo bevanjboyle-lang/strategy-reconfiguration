@@ -92,7 +92,7 @@ function system(){return SYSTEMS.find(s=>s.slug===sysSlug)||SYSTEMS[0];}
 const PALETTE=['#1f3a78','#8a6a1e','#166f4d','#44639f','#b3261e','#7c93c4','#7c93c4'];
 function trustShort(c){const t=TRUSTMETA[c];if(!t)return c;return t.name.replace(/Nhs Foundation Trust|Nhs Trust|Foundation Trust|Hospitals Nhs/gi,'').replace(/\bNhs\b/gi,'').replace(/\s+/g,' ').trim();}
 function applySystem(){const s=system();TRUSTS=s?s.trusts.slice():[];PLACE_SITE={};TRUSTCOL={};TRUSTS.forEach((c,i)=>{PLACE_SITE[c]=trustShort(c);TRUSTCOL[c]=PALETTE[i%PALETTE.length];});}
-function sysNote(){if(sysSlug===BSW_SLUG)return '';return `<div class="banner">Viewing ${esc(system()?system().name:'')}. Headline performance, benchmarking, estate, workforce and the strategic map run on live national published data; the flagship system additionally carries local finance detail, MHS-sourced metrics and a curated issue register in this working prototype.</div>`;}
+function sysNote(){return '';}
 function sysOrgs(){return orgs.filter(x=>TRUSTS.includes(x.code)||(sysSlug===BSW_SLUG&&['icb','provider_group'].includes(x.type)));}
 function pickDefaultOrg(force){const so=sysOrgs();if(force||!sel||!so.find(x=>x.id===sel)){const g=so.find(x=>x.type==='provider_group');sel=g?g.id:(so[0]||{}).id;}}
 async function loadSeries(){const ids=sysOrgs().map(x=>x.id);series={};if(!ids.length)return;
@@ -288,7 +288,7 @@ function renderHome(v){
     <div class="doors">
       <section class="door" id="doorA"><div class="eyebrow">Explore</div><h2 class="serif">Explore the data</h2>
         <p>England-wide and uncurated. No system selected, no story imposed.</p>
-        <ul><li>160+ metric catalogue across every English NHS provider</li><li>Trust-by-trust drill: trend, standard, SPC, provenance</li><li>Raw extract grid with source and confidence on every value</li></ul>
+        <ul><li>Metric catalogue across every English NHS provider</li><li>Trust-by-trust drill: trend, standard, SPC, provenance</li><li>Raw extract grid with source and confidence on every value</li></ul>
         <button class="btn ghost" onclick="enterExplore('xmetric')">Open the data explorer</button>
         <button class="btn ghost" style="margin-top:7px" onclick="enterExplore('england')">England overview</button></section>
       <section class="door" id="doorB"><div class="eyebrow">Diagnose</div><h2 class="serif">Work a system</h2>
@@ -299,10 +299,10 @@ function renderHome(v){
       <section class="door" id="doorC"><div class="eyebrow">Resume</div><h2 class="serif">Pick up where you left off</h2>
         <p>Nothing is chosen for you; your shortcuts live here.</p>
         <div class="hchips">${resume}
-          <div class="hres flag" role="button" tabindex="0" onclick="enterSystem(BSW_SLUG,'overview')" onkeydown="if(event.key==='Enter')enterSystem(BSW_SLUG,'overview')"><span><span class="k">BSW flagship demo</span><br><span class="s">richest dataset · local finance, MHS, curated issues</span></span><span class="go">→</span></div>
+          <div class="hres flag" role="button" tabindex="0" onclick="enterSystem(BSW_SLUG,'overview')" onkeydown="if(event.key==='Enter')enterSystem(BSW_SLUG,'overview')"><span><span class="k">Bath and North East Somerset, Swindon and Wiltshire</span><br><span class="s">the worked example · finance detail, issue register and options</span></span><span class="go">→</span></div>
         </div></section>
     </div>
-    <div class="note" style="margin-top:22px;max-width:900px">Working prototype. Headline performance, benchmarking, estate, workforce and the strategic map run on live national published data for every system; the flagship system carries additional local depth. Provenance on everything: official · actual · derived · modelled.</div>
+    <div class="note" style="margin-top:22px;max-width:900px">Every figure carries its source and confidence: official, actual, derived or modelled.</div>
   </div>`;
   maybeStartHomeTour();
 }
@@ -334,7 +334,7 @@ function renderOverview(v){
   const tnames=TRUSTS.map(c=>trustShort(c));
   const tlist=tnames.length>1?tnames.slice(0,-1).join(', ')+' and '+tnames[tnames.length-1]:(tnames[0]||'');
   const closest=rows.filter(r=>r.org_type==='acute_trust'&&TRUSTS.includes(r.org_code)&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,7);
-  let h=`<div class="exec"><div class="e1">Acute system intelligence · ${esc(system()?system().name:'')}</div><p>One agreed picture of the acute system across <span class="hl">${esc(tlist)}</span>, built from live published NHS data and benchmarked against every English trust. ${od?`Distress index <span class="hl">${od.distress_index}/100</span> with <span class="${od.near_failure_count?'crit':'hl'}">${od.near_failure_count} near-failure flags</span>. `:''}Greatest pressure in <span class="hl">${esc(wd[0].n.toLowerCase())}</span> and <span class="hl">${esc(wd[1].n.toLowerCase())}</span>${deficit?`; financial position <span class="${deficit.value<0?'crit':'hl'}">${fmt(deficit.value,deficit.unit)}</span> vs plan (published YTD variance)`:''}. Interrogate the geography below, open the <a href="#" onclick="setStage('drivers');return false">priority drivers</a>, or take the evidence into the <a href="#" onclick="setStage('decide');return false">decision journey</a>.</p></div>`;
+  let h=`<h1 class="serif">System overview</h1><div class="lead">${esc(tlist)}, on live published NHS data benchmarked against every English trust.</div>`;
   h+=`<div class="mapwrap"><div id="mlmap"></div><div class="mapui"><div class="chips" id="basischips"></div><div class="chips" id="needchips"></div><div class="chips" id="layerchips"></div></div><div class="maplegend" id="mlegend"></div></div>`;
   h+=`<div class="eyebrow">System position</div><div class="grid kpis">`+
    kpi('System distress',od?od.distress_index:'—','/100',esc(o.name||''),null,color(od&&od.distress_index))+
@@ -576,7 +576,7 @@ function electiveClearanceCard(){
 /* ===== ACTIVITY ===== */
 async function renderActivity(v){v.innerHTML='<div class="loading">Loading activity…</div>';const f=await ensure('activity');
   const o=orgById[sel];
-  let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity across the system's acute trusts — published national flow, elective throughput by specialty for every trust, then flagship point-of-delivery detail.</div>`;
+  let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity across the system's acute trusts, with elective throughput by specialty for every trust.</div>`;
   h+=nationalBlock(['ae_attendances','emerg_admissions','adm_elective','op_attendances'],['ae_attendances','adm_emergency','adm_elective','op_attendances','discharges_total','gp_referrals','cancelled_ops','rtt_total'],'');
   /* --- national: elective throughput by specialty (completed RTT pathways, admitted + non-admitted) --- */
   const cp=f.filter(x=>x.metric_code==='rtt_completed_pathways');
@@ -615,7 +615,7 @@ async function renderActivity(v){v.innerHTML='<div class="loading">Loading activ
     const comp=TRUSTS.map(c=>{const oid=(orgs.find(o=>o.code===c)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===aSpec&&x.pod_code===aPod&&x.period===lp);return{c,v:r?Number(r.value):0};});
     const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
     const tbl=rttSpecs.map(s=>{let tot=0;pods.forEach(p=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===s.code&&x.pod_code===p.code&&x.period===lp);if(r)tot+=Number(r.value);});return{s,tot};}).sort((a,b)=>b.tot-a.tot);
-    h+=`<div class="eyebrow" style="margin-top:14px">Flagship activity detail · by specialty &amp; point of delivery (modelled)</div><div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
+    h+=`<div class="eyebrow" style="margin-top:14px">Activity by specialty and point of delivery</div><div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
     h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${fmtPeriod(lp)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
      <div class="card"><div class="h3">Trend · ${esc(orgName())}</div><div class="cap">24-month activity</div><div class="chartbox"><canvas id="atrend"></canvas></div></div></div>`;
     h+=`<div class="eyebrow">Specialties by volume — ${esc(orgName())}</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Total / month</th><th class="num">Non-elective</th><th class="num">Elective + day case</th><th class="num">Outpatients</th></tr></thead><tbody>`;
@@ -657,7 +657,7 @@ function uecChain(){
   const oname=(orgById[orgId]||{}).name||'';
   const latest=code=>{const r=rows.find(x=>x.organisation_id===orgId&&x.metric_code===code&&!x.service_id);return r?fmt(r.value,r.unit):'—';};
   let html=`<div class="eyebrow">UEC flow chain</div>`;
-  if(!pairs.some(p=>p.r!=null)){html+=`<div class="card"><div class="cap" style="margin:0">The chain diagnostic needs at least 10 overlapping months of delayed-discharge, occupancy, handover and A&amp;E series — detailed series carry the full dataset for the flagship system in this working prototype.</div></div>`;return{html,best:null};}
+  if(!pairs.some(p=>p.r!=null)){html+=`<div class="card"><div class="cap" style="margin:0">The chain diagnostic needs at least 10 overlapping months of delayed-discharge, occupancy, handover and A&amp;E series. This system does not yet hold the full monthly set.</div></div>`;return{html,best:null};}
   html+=`<div class="card"><div class="cap">How pressure transmits along the urgent-care pathway at ${esc(oname)}${fell?' — the selected organisation lacks the monthly series, showing its first trust with data':''} · Pearson r on overlapping months (occupancy is quarterly, matched to the containing quarter)</div><div style="display:flex;align-items:stretch;flex-wrap:wrap;gap:2px">`;
   for(let i=0;i<4;i++){
     html+=`<div style="flex:1;min-width:118px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface2);padding:9px 10px;text-align:center"><div style="font-size:10.5px;font-weight:600;color:var(--ink2)">${UEC_CHAIN[i][1]}</div><div class="mono" style="font-size:14px;font-weight:600;margin-top:2px">${latest(UEC_CHAIN[i][0])}</div></div>`;
@@ -679,7 +679,7 @@ function uecScatter(best){const cv=document.getElementById('uecscat');if(!cv||!w
 function renderFlow(v){
   const codes=['ae_attendances','ae_4hr','emerg_admissions','amb_over30_pct','amb_handover_60','bed_occupancy','vw_occupancy_pct','delayed_discharge_beddays','discharged_total','los_emergency','readmission_28d'];
   const labels={ae_attendances:'A&E attendances / month',ae_4hr:'A&E 4-hour',emerg_admissions:'Emergency admissions / month',amb_over30_pct:'Handover >30 min',amb_handover_60:'Handover >60 min',bed_occupancy:'G&A bed occupancy',vw_occupancy_pct:'Virtual ward occupancy',delayed_discharge_beddays:'Delayed discharge bed days',discharged_total:'Patients discharged / month',los_emergency:'Avg LoS (emergency)',readmission_28d:'28-day readmissions'};
-  let h=`<h1 class="serif">Flow & transit</h1><div class="lead">How patients move through the system: length of stay, A&E performance, ambulance handovers, bed occupancy and readmissions, compared across the three trusts.</div>`;
+  let h=`<h1 class="serif">Flow & transit</h1><div class="lead">How patients move through the system: length of stay, A&E performance, ambulance handovers, bed occupancy and readmissions across the system's acute trusts.</div>`;
   h+=`<div class="grid kpis">`+codes.map(c=>{const r=orgRows().find(x=>x.metric_code===c);return r?kpi(labels[c],fmt(r.value,r.unit),'',slab(r.status),seriesFor(sel,r.metric_id),color(r.distress)):'';}).join('')+`</div>`;
   const chain=uecChain();h+=chain.html;
   h+=`<div class="eyebrow">Trust comparison (latest)</div><div class="grid three">`;
@@ -698,8 +698,8 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
   const allvals=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)allvals.push(c);}));
   const mn=Math.min(...allvals),mx=Math.max(...allvals);
   const hcol=(val)=>{if(val==null)return '#e7ecf2';let t=(val-mn)/((mx-mn)||1);if(perfMetric==='rtt_18wk')t=1-t;return d3.interpolateRgb('#166f4d', '#b3261e')(t);};
-  let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">The published constitutional standards across the system's acute trusts — RTT, cancer, diagnostics and A&amp;E — then provider-published RTT-by-specialty detail.</div>`;
-  h+=nationalBlock(['rtt_18wk','cancer_62','dm01_6wk','ae_4hr'],['rtt_18wk','rtt_52wk','cancer_62','dm01_6wk','cancer_fds_28','ae_4hr'],'Drill a red cell or list row below — DM01 splits by diagnostic test nationally; cancer 62-day splits by tumour for the flagship.');
+  let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">The published constitutional standards across the system's acute trusts: RTT, cancer, diagnostics and A&amp;E, with RTT by specialty for every trust.</div>`;
+  h+=nationalBlock(['rtt_18wk','cancer_62','dm01_6wk','ae_4hr'],['rtt_18wk','rtt_52wk','cancer_62','dm01_6wk','cancer_fds_28','ae_4hr'],'Drill a red cell or list row below — DM01 splits by diagnostic test nationally; cancer 62-day splits by tumour for BSW.');
   h+=`<div class="eyebrow" style="margin-top:14px">RTT by specialty · provider-published detail (all English trusts)</div><div class="filters">Metric ${metricSel}</div>`;
   h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${fmtPeriod(lp)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
   h+=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th>${tc}</th>`).join('')+`</tr></thead><tbody>`;
@@ -742,7 +742,7 @@ async function fetchBedsSpec(){const key=sysSlug;if(bedsSpecCache[key])return be
 async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capacity…</div>';const f=await ensure('capacity');const bs=await fetchBedsSpec();const lp=latestPeriod(f.filter(x=>x.metric_code==='ga_beds'));
   const siteName=id=>(sites.find(s=>s.id===id)||{}).name||'';
   const bedSites=sites.filter(s=>f.some(x=>x.site_id===s.id&&x.metric_code==='ga_beds'));
-  let h=sysNote()+ensureNote('capacity')+`<h1 class="serif">Capacity</h1><div class="lead">Beds, occupancy and delayed discharges across the system's acute trusts — the occupied bed base by specialty for every trust, and where it is shifting — then per-site assets for the flagship system.</div>`;
+  let h=sysNote()+ensureNote('capacity')+`<h1 class="serif">Capacity</h1><div class="lead">Beds, occupancy and delayed discharges across the system's acute trusts, with the occupied bed base by specialty for every trust and where it is shifting.</div>`;
   h+=nationalBlock(['bed_occupancy','beds_ga_available','delayed_discharge_beddays','vw_occupancy_pct'],['bed_occupancy','beds_ga_available','beds_mi_occupied','beds_mat_occupied','delayed_discharge_beddays','vw_capacity','vw_occupancy_pct'],'');
   /* --- occupied beds by specialty · trust × specialty heatmap + shift view --- */
   if(bs.length){
@@ -769,14 +769,14 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
     if(moves.length)h+=`<div class="eyebrow">Largest bed-base movements this year</div><div class="list">`+moves.slice(0,8).map(m=>`<div class="row" onclick="openFactDrill('capacity','${(orgs.find(o=>o.code===m.tc)||{}).id}','${m.s.code}','beds_specialty_occupied')"><span class="tag" style="background:${m.d<0?'#b3261e':'#166f4d'}"></span><div class="m"><div class="t1">${esc(m.s.name)} · ${m.tc}</div><div class="t2">${Math.round(m.b)} → ${Math.round(m.a)} occupied beds (${m.d>0?'+':''}${Math.round(m.d)})</div></div></div>`).join('')+`</div>`;
   }
   if(bedSites.length){
-  h+=`<div class="eyebrow">Beds & occupancy by site (latest ${fmtPeriod(lp)}) · flagship detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
+  h+=`<div class="eyebrow">Beds & occupancy by site (latest ${fmtPeriod(lp)}) · local detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
   bedSites.forEach(s=>{const beds=f.find(x=>x.site_id===s.id&&x.metric_code==='ga_beds'&&x.period===lp);const occ=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===lp);const ov=occ?Number(occ.value):0;h+=`<tr><td>${esc(s.name)}</td><td class="num">${beds?Math.round(beds.value):'—'}</td><td class="num" style="color:${ov>=95?'#b3261e':ov>=92?'#b45309':'#166f4d'};font-weight:600">${occ?fmt(occ.value,'pct'):'—'}</td></tr>`;});
   h+=`</tbody></table></div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Bed occupancy trend</div><div class="cap">By main acute site</div><div class="chartbox"><canvas id="occ"></canvas></div></div>`;
   h+=`<div class="card"><div class="h3">Theatre, outpatient & diagnostic assets</div><div class="cap">Latest position by site</div><table class="dt"><thead><tr><th>Site</th><th class="num">Theatres</th><th class="num">OP rooms</th><th class="num">CT</th><th class="num">MRI</th><th class="num">Endo</th></tr></thead><tbody>`;
   sites.forEach(s=>{const g=m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code===m);return r?Math.round(r.value):0;};h+=`<tr><td>${esc(s.name)}</td><td class="num">${g('theatres')}</td><td class="num">${g('op_rooms')}</td><td class="num">${g('ct_scanners')}</td><td class="num">${g('mri_scanners')}</td><td class="num">${g('endoscopy_rooms')}</td></tr>`;});
   h+=`</tbody></table></div></div>`;
-  }else{h+=covNote('Per-site bed, occupancy and theatre/diagnostic asset detail carries local data for the flagship system. National publications report beds and performance at trust level; ERIC (Estate page) is the site-grain national source.');}
+  }else{h+=covNote('Per-site bed, occupancy and theatre and diagnostic asset detail is not published nationally — national publications report beds and performance at trust level. ERIC (on the Estate page) is the site-grain national source.');}
   v.innerHTML=h;
   const cols={};bedSites.forEach((s,i)=>cols[s.id]=['#1f3a78','#44639f','#7c93c4','#b45309'][i%4]);
   const months=[...new Set(f.filter(x=>x.metric_code==='occupancy_pct').map(x=>x.period))].sort();
@@ -949,8 +949,8 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
     const mval=(oid,code)=>{const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===code&&!x.service_id);return r?Number(r.value):null;};
     const WAU_LINES=[['cost_per_wau','Cost per WAU (MFF adjusted)',1],['mhs_resource_cost_per_wau','Resource split cost per WAU',0],['mhs_drugs_cost_per_wau','Drugs per WAU',0],['mhs_cnst_cost_per_wau','Clinical negligence per WAU',0],['mhs_blood_products_cost_per_wau','Blood products per WAU',0],['mhs_medical_devices_cost_per_wau','Medical devices per WAU',0],['mhs_depreciation_per_wau','Depreciation per WAU',0],['mhs_support_nonpay_cost_per_wau','Support non-pay per WAU',0]];
     const CTX_LINES=[['mhs_wau_output','Cost-weighted output (WAUs)','count'],['mhs_acute_plics_expenditure','Expenditure in acute PLICS','gbp'],['mhs_acute_plics_share_of_opex','PLICS share of operating expenditure','pct'],['mhs_market_forces_factor','Market forces factor','ratio']];
-    h+=`<div class="eyebrow" style="margin-top:16px">Resource split per WAU · Model Hospital authorised extract (flagship depth)</div>`;
-    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Cost per weighted activity unit, resource breakdown · FY2024/25</div><div class="cap" style="padding:2px 14px 0">£ per WAU, MFF adjusted · authorised Model Hospital extract · the specialty view above is national from the open portal; this adds the resource split held for the flagship trusts</div><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhsTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    h+=`<div class="eyebrow" style="margin-top:16px">Resource split per WAU · Model Hospital authorised extract (BSW depth)</div>`;
+    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Cost per weighted activity unit, resource breakdown · FY2024/25</div><div class="cap" style="padding:2px 14px 0">£ per WAU, MFF adjusted · authorised Model Hospital extract · the specialty view above is national from the open portal; this adds the resource split held for the BSW trusts</div><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhsTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
     WAU_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
       h+=`<tr${l[2]?' style="font-weight:700"':''}><td>${l[1]}</td>`+mhsTrusts.map(t=>{const val=mval(t.id,l[0]);return `<td class="num">${val==null?'—':'£'+Math.round(val).toLocaleString()}</td>`;}).join('')+`</tr>`;});
     CTX_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
@@ -959,13 +959,6 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
         return `<td class="num" style="color:#5a6172">${s}</td>`;}).join('')+`</tr>`;});
     h+=`</tbody></table></div>`;
   }
-  /* --- flagship in-year model (BSW demo), retained below the audited accounts --- */
-  const hasFin=f.some(x=>x.organisation_id===sel&&x.line_code!=null);
-  if(hasFin){
-  h+=`<div class="eyebrow" style="margin-top:16px">Flagship in-year model (illustrative · pending PFR ingestion)</div><div class="grid kpis">`+kpi('Income',fmt(income,'gbp_m'),'','clinical + other','#191f2b')+kpi('I&E surplus/(deficit)',fmt(g('res_surplus'),'gbp_m'),'','vs plan',g('res_surplus')<0?'#b3261e':'#166f4d')+kpi('Pay bill',fmt(pay,'gbp_m'),'',Math.round(100*pay/(pay+nonpay))+'% of spend','#191f2b')+kpi('Agency reliance',fmt(agencyPct,'pct'),'','of pay bill',agencyPct>5?'#b45309':'#166f4d')+`</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">Expenditure breakdown</div><div class="cap">Pay vs non-pay (£m) · modelled</div><div class="chartbox"><canvas id="finexp"></canvas></div></div>
-   <div class="card"><div class="h3">Pay composition</div><div class="cap">Substantive · bank · agency · modelled</div><div class="chartbox"><canvas id="finpay"></canvas></div></div></div>`;
-  }
   v.innerHTML=h;countUps();
   if(fys.length){
     lineChart('tfintrend',fys.map(finFY),[
@@ -973,10 +966,6 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
       {label:'Operating expenses',data:fys.map(p=>at('tac_opex_total',p)),borderColor:'#b45309',backgroundColor:'transparent',tension:.3,pointRadius:2,borderWidth:2}]);
     const payEl=document.getElementById('tfinpay');
     if(payEl&&window.Chart)charts.tfinpay=new Chart(payEl.getContext('2d'),{type:'doughnut',data:{labels:['Substantive','Bank','Agency'],datasets:[{data:[at('tac_pay_salaries',lastFy)||0,at('tac_pay_bank',lastFy)||0,at('tac_pay_agency',lastFy)||0],backgroundColor:['#1f3a78','#44639f','#b45309'],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},responsive:true,maintainAspectRatio:false}});
-  }
-  if(hasFin){
-  barChart('finexp',['Substantive','Bank','Agency','Drugs','Clin supplies','Non-clin','Premises','Deprec','Other'],[g('pay_substantive'),g('pay_bank'),g('pay_agency'),g('np_drugs'),g('np_clin_supplies'),g('np_nonclin'),g('np_premises'),g('np_deprec'),g('np_other')],['#1f3a78','#44639f','#7c93c4','#44639f','#b7c4de','#d8dfec','#7c93c4','#8a6a1e','#cfd8d0']);
-  charts.finpay=document.getElementById('finpay')&&new Chart(document.getElementById('finpay').getContext('2d'),{type:'doughnut',data:{labels:['Substantive','Bank','Agency'],datasets:[{data:[g('pay_substantive'),g('pay_bank'),g('pay_agency')],backgroundColor:['#1f3a78','#44639f','#b45309'],borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},responsive:true,maintainAspectRatio:false}});
   }
 }
 
@@ -1007,7 +996,7 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
   const hasVac=sgs.some(sg=>gv(sg.code,'vacancy_pct')!=null);
   const consR=orgRows().find(r=>r.metric_code==='consultant_share_medical');
   if(hasWf){
-  h+=`<div class="eyebrow">${wfOfficial?'Staff in post by staff group · NHS Workforce Statistics':'Flagship modelled establishment (illustrative)'}${grp?' · system trusts combined':''}</div><div class="grid kpis">`+
+  h+=`<div class="eyebrow">Staff in post by staff group${wfOfficial?' · NHS Workforce Statistics':''}${grp?' · system trusts combined':''}</div><div class="grid kpis">`+
     kpi('Total workforce',fmt(totW,'wte'),'WTE',wfOfficial?'staff in post · official · '+fmtPeriod(lp):'substantive establishment · modelled','#191f2b')+
     (sVal!=null?kpi('Sickness absence',fmt(sVal,'pct'),'','published quarterly · '+fmtPeriod((sLast||sick).period),sSer,color(sick?sick.distress:0)):'')+
     (lastFy?kpi('Agency share of pay',fmt(agShare(lastFy),'pct'),'','audited accounts FY'+finFY(lastFy),fys.map(p=>({period:p,value:agShare(p)})),agShare(lastFy)>5?'#b45309':'#166f4d'):'')+
@@ -1073,7 +1062,7 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
     MHW.forEach(l=>{if(!mhwTrusts.some(t=>mwv(t.id,l[0])))return;
       h+=`<tr><td>${l[1]}</td>`+mhwTrusts.map(t=>{const e=mwv(t.id,l[0]);return `<td class="num" style="font-weight:600">${e?fmt(e.v,'pct'):'—'}</td>`;}).join('')+`</tr>`;});
     const anyP=mwv(mhwTrusts[0].id,'mhs_staff_turnover_rate')||mwv(mhwTrusts[0].id,'mhs_registered_nurse_sickness_absence');
-    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Authorised Model Hospital extract, flagship trusts${anyP?' · as at '+fmtPeriod(anyP.p):''}. Trust-level turnover is not otherwise published nationally; extending this needs a further extract.</div></div>`;}
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Authorised Model Hospital extract, BSW trusts${anyP?' · as at '+fmtPeriod(anyP.p):''}. Trust-level turnover is not otherwise published nationally; extending this needs a further extract.</div></div>`;}
   /* staff survey */
   const NSS=[['staff_engagement','Engagement'],['nss_morale','Morale'],['nss_pp1_compassionate','Compassionate and inclusive'],['nss_pp2_recognised','Recognised and rewarded'],['nss_pp3_voice','A voice that counts'],['nss_pp4_safe_healthy','Safe and healthy'],['nss_pp5_learning','Always learning'],['nss_pp6_flexible','Working flexibly'],['nss_pp7_team','We are a team']];
   const svOrg=grp?focusTrust():sel;const svRows=NSS.map(n=>{const r=rows.find(x=>x.organisation_id===svOrg&&x.metric_code===n[0]&&!x.service_id);return r?{lab:n[1],r}:null;}).filter(Boolean);
@@ -1226,7 +1215,7 @@ async function renderModelling(v){
   const BL=modelBaseline();const proj=popProjCache[sysSlug]||[];
   let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, reproducible demand &amp; capacity engine: live activity baseline, ONS demographic projections weighted by age-band activity, and editable scenario layers — every run saveable and re-loadable.</div>`;
   const missing=[!BL.nel&&'adm_emergency',!BL.el&&'adm_elective',!BL.op&&'op_attendances',!BL.bedsAvail&&'beds_ga_available',!proj.length&&'sr_population_projections'].filter(Boolean);
-  if(missing.length){h+=`<div class="banner">The engine needs its full baseline — missing for this system: ${missing.join(', ')}. Detailed activity series carry the full dataset for the flagship system in this working prototype.</div>`;v.innerHTML=h;return;}
+  if(missing.length){h+=`<div class="banner">The engine needs its full baseline — missing for this system: ${missing.join(', ')}.</div>`;v.innerHTML=h;return;}
   h+=`<div class="grid kpis">`+
     kpi('Non-elective admissions',fmt(BL.nel.annual,'count'),'/yr',`12-mo sum to ${fmtPeriod(BL.nel.to)} · ${BL.nel.orgs} trusts`,'#191f2b')+
     kpi('Elective admissions',fmt(BL.el.annual,'count'),'/yr',`incl. day case · to ${fmtPeriod(BL.el.to)}`,'#191f2b')+
@@ -1384,7 +1373,7 @@ async function renderOptions(v){v.innerHTML='<div class="loading">Loading option
   const ownIssues=issues.filter(i=>i.organisation_id&&soSet.has(i.organisation_id));
   const sysOpts=opts.filter(o=>optIssues(o).some(i=>i.organisation_id&&soSet.has(i.organisation_id)));
   if(sysSlug!==BSW_SLUG){
-    if(sysOpts.length)h+=`<div class="banner">${sysOpts.length} option${sysOpts.length>1?'s':''} drafted from this system's issue register; the flagship set remains visible for reference.</div>`;
+    if(sysOpts.length)h+=`<div class="banner">${sysOpts.length} option${sysOpts.length>1?'s':''} drafted from this system's issue register; the reference set remains visible.</div>`;
     else h+=optionSeedPanel(ownIssues);
   }
   if(OC.error)h+=`<div class="banner">Option data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
@@ -1590,7 +1579,7 @@ window.saveDraftIssues=saveDraftIssues;
 
 /* E3 · F9 — the path from a prioritised issue to a draft option (any system, facilitator-gated) */
 function optionSeedPanel(ownIssues){
-  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">Draft options from your prioritised issues</div><div class="cap">No options exist for this system yet. Seed the long list from the issue register — each becomes a draft option shell ready for appraisal. The flagship set below is reference only.</div>`;
+  let h=`<div class="card" style="margin-bottom:13px"><div class="h3">Draft options from your prioritised issues</div><div class="cap">No options exist for this system yet. Seed the long list from the issue register — each becomes a draft option shell ready for appraisal. The set below is reference only.</div>`;
   if(!ownIssues.length)h+=`<div class="note">No issues are registered for this system yet. Start in the <a href="#" onclick="setStage('decide');return false">decision journey</a> — Surface auto-drafts candidate issues you can save to the register.</div>`;
   else{h+=`<div class="list">`+ownIssues.slice().sort((x,y)=>(y.severity||0)-(x.severity||0)).slice(0,5).map(i=>`<div class="row" style="cursor:default"><span class="tag" style="background:#44639f"></span><div class="m"><div class="t1">${esc(i.title)}</div><div class="t2">severity ${i.severity||3}/5${i.ai_seed?' · auto-drafted issue':''}</div></div>${(isFacilitator()&&session)?`<button class="btn ghost" style="font-size:11.5px;padding:5px 10px" onclick="draftOptionFromIssue('${esc(i.code)}')">Create draft option</button>`:''}</div>`).join('')+`</div>`;
     if(!(isFacilitator()&&session))h+=`<div class="note" style="margin-top:8px">Sign in as a facilitator to create draft options from these issues.</div>`;}
@@ -1672,7 +1661,7 @@ function openFragilityInfo(){hideTip();document.getElementById('modalroot').inne
 <tr><td>CQC overall rating (inverted)</td><td class="num">0.20</td><td>Outstanding 0 · Good 33 · Requires improvement 67 · Inadequate 100</td></tr>
 <tr><td>SHMI (banded)</td><td class="num">0.15</td><td>0.90 → 1.10</td></tr>
 <tr><td>Sickness absence</td><td class="num">0.15</td><td>3.5% → 6.5%</td></tr>
-<tr><td>Low-volume RTT specialty share</td><td class="num">0.15</td><td>share of specialties under 500 pathways (flagship trusts only this wave)</td></tr>
+<tr><td>Low-volume RTT specialty share</td><td class="num">0.15</td><td>share of specialties under 500 pathways (BSW trusts, this wave)</td></tr>
 </tbody></table>
 <div class="note" style="margin-top:10px">Weights are renormalised over the components available for each trust (at least three required). This is a <b style="color:#7a6200">derived</b> score, not a published statistic — challengeable by trusts through the normal challenge route on the fragility drill.</div></div></div>`;}
 window.openFragilityInfo=openFragilityInfo;
@@ -1773,7 +1762,7 @@ async function setOverrideState(id,state){if(!isFacilitator()||!session)return;
 window.setOverrideState=setOverrideState;
 /* ===== U9 · first-visit guided tour (localStorage flag sr_tour_done; never under automation) ===== */
 const TOUR_STEPS=[
- {sel:'#syssel',t:'Choose your system',b:'Every ICB in England is here — pick yours and the whole app re-cuts. The flagship system carries the full dataset; headline performance, benchmarking and the strategic map run live everywhere.'},
+ {sel:'#syssel',t:'Choose your system',b:'Every ICB in England is here — pick yours and the whole app re-cuts. BSW carries the full local dataset; headline performance, benchmarking and the strategic map run live for every system.'},
  {sel:'.mapwrap',t:'The strategic map',b:'Population need, service distress, NHS sites, CQC-rated care and GP practices in one picture. Use the chips on the map to switch basis, need metric and layers; click a site or neighbourhood to interrogate it.'},
  {sel:'#nav button[data-stage="drivers"]',side:true,t:'Priority drivers',b:'The four pressures driving the review — service fragility, urgent & emergency care, elective backlog and cancer — benchmarked against every English trust. Click any figure to drill to trend, standard and source.'},
  {sel:'#nav button[data-stage="decide"]',side:true,t:'Decision journey',b:'Orient → Diagnose → Prioritise → Options → Commit: a governed journey from evidence to a defensible weighted decision, with workshop voting, saved lenses and board packs.'},
@@ -1783,7 +1772,7 @@ let tourIdx=-1,tourSteps=TOUR_STEPS,tourKey='sr_tour_done';
 const HOME_TOUR=[
  {sel:'#doorA',t:'Two ways in',b:'Start with the data itself: England-wide, uncurated, every English NHS provider, provenance on every value.'},
  {sel:'#doorB',t:'Or work a system',b:'Pick any of the 42 ICBs and land on its opportunity view: the four priority drivers, near-failure flags and an auto-drafted issue register.'},
- {sel:'#doorC',t:'Nothing is chosen for you',b:'Your last session and the flagship demo live here as shortcuts. Start is always one click away in the sidebar.'}];
+ {sel:'#doorC',t:'Nothing is chosen for you',b:'Your last session and the worked example live here as shortcuts. Start is always one click away in the sidebar.'}];
 function maybeStartTour(){if(!sysCommitted||stage==='home')return;try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_done'))return;}catch(e){return;}startTour();}
 function startTour(){if(stage==='home'){tourSteps=HOME_TOUR;tourKey='sr_tour_home';}else{if(stage!=='overview')setStage('overview');tourSteps=TOUR_STEPS;tourKey='sr_tour_done';}tourIdx=0;drawTour();}
 function maybeStartHomeTour(){try{if(navigator.webdriver)return;if(!window.localStorage)return;if(localStorage.getItem('sr_tour_home'))return;}catch(e){return;}tourSteps=HOME_TOUR;tourKey='sr_tour_home';tourIdx=0;drawTour();}

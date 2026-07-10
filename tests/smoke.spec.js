@@ -7,14 +7,14 @@ const { test, expect } = require('@playwright/test');
 // favicon 404 from the bare static server.
 const NOISE = /favicon|openfreemap|maplibre|tile|abort|err_aborted|signal is aborted|failed to fetch/i;
 
-// Boot = navigate + wait for the Overview exec summary, which only renders once
+// Boot = navigate + wait for the Overview "System position" KPIs, which only render once
 // loadAll() has pulled the full Supabase model — i.e. "the app is genuinely up".
 const BSW_SLUG = 'nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
 // E1: '/' now lands on the Start (entry-choice) screen, so committed-system tests enter
 // via a deep link — which is itself part of the E1 contract under test.
 async function boot(page) {
   await page.goto('/index.html?system=' + BSW_SLUG + '&view=overview');
-  await expect(page.locator('.exec'), 'exec summary renders once data loads').toBeVisible({ timeout: 25000 });
+  await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'overview KPIs render once data loads').toBeVisible({ timeout: 25000 });
 }
 
 async function nav(page, label) {
@@ -39,9 +39,10 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(real, 'unexpected console errors:\n' + real.join('\n')).toEqual([]);
   });
 
-  test('02 overview: exec summary distress index + four-driver ribbon', async ({ page }) => {
+  test('02 overview: system position KPIs + four-driver ribbon', async ({ page }) => {
     await boot(page);
-    await expect(page.locator('.exec')).toContainText(/Distress index\s*\d+\/100/);
+    await expect(page.locator('.view h1')).toContainText('System overview');
+    await expect(page.locator('.view .grid.kpis .card.kpi').filter({ hasText: 'System distress' })).toHaveCount(1);
     const ribbon = page.locator('.card.kpi:has-text("open driver")');
     await expect(ribbon).toHaveCount(4);
     for (const name of ['Service fragility', 'Urgent & emergency care', 'Elective backlog', 'Cancer pathway']) {
@@ -62,10 +63,10 @@ test.describe('System Intelligence — smoke (E1)', () => {
     }, null, { timeout: 20000 });
   });
 
-  test('04 system switch: Devon exec summary + org selector repopulates', async ({ page }) => {
+  test('04 system switch: Devon overview + org selector repopulates', async ({ page }) => {
     await boot(page);
     await page.selectOption('#syssel', 'nhs-devon-icb');
-    await expect(page.locator('.exec')).toContainText('Devon', { timeout: 25000 });
+    await expect(page.locator('.view .lead')).toContainText('Torbay', { timeout: 25000 });
     await expect(page.locator('#orgsel option')).toHaveCount(3);
   });
 
