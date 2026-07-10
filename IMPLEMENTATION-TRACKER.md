@@ -418,3 +418,33 @@ derive specialty views first-hand where needed, and assess site-level analysis.
 - Gates: 32/32 twice (1.9m each); deployed and screenshot-verified on Devon (activity,
   capacity, finance, workforce). Torbay findings surfaced by the new views: critical care
   cost index 196, community services 225.9 (97% of trusts do better), clinical oncology 153.
+
+## Run record — 10 Jul 2026 (later): Model Hospital utilisation audit + fix (d400df1)
+Bevan challenged how much of Model Hospital we actually use ("misled by Codex"; "where is
+the WAU?"). Findings, verified against lake + serving:
+- Codex NEVER ingested Model Hospital: the lake's open_model_health_system source family
+  is one 4KB landing.html (login wall); zero warehouse tables. The source register entry
+  created the false impression.
+- An authorised extract DOES exist in serving (June session): 24 metrics x 3 BSW trusts —
+  cost_per_wau + resource splits (drugs/CNST/blood/devices/depreciation/support non-pay),
+  WAU output, PLICS expenditure + share, MFF, mhs_specialty_cost_per_wau (~23 specialties
+  per trust, keyed by service_id), productivity growth, turnover, staff-group sickness,
+  infection thresholds, SHMI banding.
+- WHY INVISIBLE (three stacked faults): (1) specialty WAU rows keyed on service_id which
+  every fetch filters; (2) 96 synthetic demo cost_per_wau rows with LATER periods shadowed
+  the official values — swept the whole store and deleted 1,445 synthetic rows shadowing
+  official values across 22 metrics (turnover, sickness, cqc_rating, cancer, RTT etc),
+  matviews refreshed; (3) no curated screen referenced mhs_ codes.
+- FIXED: Finance gains "Productivity · Model Hospital authorised extract" (cost/WAU table
+  across the 3 trusts + context lines + specialty cost-per-WAU heatmap via hmGrid's new
+  explicit column list); Workforce gains turnover + staff-group sickness extract block.
+  GWH £3,486 / RUH £3,377 / SFT £4,090 per WAU now visible with provenance.
+- Assessment doc written and filed: "Model Hospital utilisation assessment - 10 Jul 2026.docx"
+  (project folder). Structural truth: MH is presentation over ~5 families; public families
+  we now hold at national scale (TAC/NCC/workforce/survey/HCAI/SHMI/CQC/ERIC); login-gated
+  families (PLICS WAU absolutes, GIRFT, theatres, corporate services) = extract-only;
+  HES-derived specialty operations need DARS. Recommended: one structured extract session
+  with Bevan's login (compartment shopping list incl national medians/quartiles MH shows),
+  DARS decision if competing with MH specialty compartments commercially, terms check
+  before any national re-serving of MH-only values.
+- Gate 30 passed + 2 retry-flaky (known load-sensitive pair); live verified with screenshot.
