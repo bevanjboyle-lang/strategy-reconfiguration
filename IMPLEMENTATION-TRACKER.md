@@ -379,3 +379,42 @@ flagship-only layouts. Fix shipped:
 - Verification: RA9 statement identities exact (income 729.3 − opex 771.9 = −42.6
   operating deficit; net −48.7, margin −6.7%; NCCI 112.4); suite 32/32 in 1.9m;
   deployed and screenshotted live (shots/shot_fin_ra9.png, shot_wf_ra9.png).
+
+## Run record — 10 Jul 2026: specialty heatmaps everywhere + Activity rebuild + site-level assessment (02f888a, 486799a)
+Bevan's ask: replicate the RTT specialty heatmap across domains, fix the empty Activity tab,
+derive specialty views first-hand where needed, and assess site-level analysis.
+- [x] Root cause on Activity: the page rendered only flagship modelled activity_count
+  (BSW, 18 specs) — empty for every other system. Rebuilt on national completed RTT
+  pathways (23 TFCs x 135 trusts x 24 months, already served): trust x specialty heatmap
+  with Volume (12m) / Change vs prior 12m toggle, focus-trust throughput table with
+  12m change + monthly sparklines. Across-system table gains discharges, GP referrals,
+  cancelled ops. Flagship POD block retained where present.
+- [x] Reusable heatmap kit: hmGrid + hmSeq (sequential, sqrt-scaled, legible text on pale
+  cells) + hmDiv (diverging, sign-aware span) + hmPerfCol (min-max red-worst) + kfmt/pctfmt.
+- [x] Performance: two new national heatmaps — DM01 waiting 6+ weeks by trust x test type
+  (15 tests, cell opens the test drill) and cancer 62-day by trust x tumour group
+  (13 slugged groups, 3-month average derived first-hand to steady small monthly counts,
+  cell opens the tumour drill).
+- [x] Capacity: occupied bed base by trust x specialty (KH03, top 24 by system bed base,
+  scoped 16-month fetch cached per system) with Occupied/Shift-vs-year toggle, plus a
+  "largest bed-base movements" list (>=3 bed changes ranked).
+- [x] Finance: cost index by trust x service line heatmap (NCC 2024/25 MFF adjusted,
+  top 20 services by system spend, diverging around 100).
+- [x] Workforce: doctors in post by trust x specialty heatmap (census WTE) + FRAGILE ROTAS
+  derivation — specialty x trust cells under five whole-time doctors, ranked, with a
+  cross-check caveat. First-order reconfiguration signal computed client-side.
+- [x] Estate site-level: backlog GBP/m2 and high-risk share derived per site in the detail
+  table (condition intensity normalised for size).
+- [x] ensure() hardened: order period desc + limit 30k (was unordered 20k — silent random
+  truncation risk for big systems). openFactDrill labels extended; RTT X-code groupings
+  named (X02/X04/X05/X06); NCC truncated service name fixed; national-median client
+  fallback where mv nm_value is null (tac ratios + survey — mv nm_value gap noted for
+  a future DB fix).
+- [x] Site-level assessment (lake probe): FW mart holds ~12 site-like entity codes only —
+  national publications are trust-grain except ERIC (2,897 sites, fully loaded + now
+  intensity-derived). Site-level performance/activity needs local trust returns (flagship
+  path) or new sources (ECDS site-level A&E supplementaries, MSDS maternity unit level) —
+  logged as candidates, not loaded.
+- Gates: 32/32 twice (1.9m each); deployed and screenshot-verified on Devon (activity,
+  capacity, finance, workforce). Torbay findings surfaced by the new views: critical care
+  cost index 196, community services 225.9 (97% of trusts do better), clinical oncology 153.
