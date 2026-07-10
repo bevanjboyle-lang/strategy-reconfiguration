@@ -65,9 +65,10 @@ function orgName(){return (orgById[sel]||{}).name||'';}
 const SPEC_X={X01:'Total (all specialties)',X02:'Other · medical services',X03:'Other · mental health',X04:'Other · surgical services',X05:'Other · other services',X06:'Other · paediatric services',C_999:'Other'};
 function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:(SPEC_X[c]||c);}
 /* ===== Generic trust × row heatmap (the RTT-by-specialty pattern, reusable) ===== */
-function hmGrid(rowsArr,cellFn,colFn,fmFn,clickFn){
-  let t=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th title="${escAttr(trustShort(tc))}">${tc}</th>`).join('')+`</tr></thead><tbody>`;
-  rowsArr.forEach(rw=>{t+=`<tr><td class="rl">${esc(rw.name)}</td>`+TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=cellFn(tc,rw.code);const cs=colFn(c);
+function hmGrid(rowsArr,cellFn,colFn,fmFn,clickFn,colTrusts){
+  const cols=colTrusts||TRUSTS;
+  let t=`<table class="hm"><thead><tr><th></th>`+cols.map(tc=>`<th title="${escAttr(trustShort(tc))}">${tc}</th>`).join('')+`</tr></thead><tbody>`;
+  rowsArr.forEach(rw=>{t+=`<tr><td class="rl">${esc(rw.name)}</td>`+cols.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=cellFn(tc,rw.code);const cs=colFn(c);
     return `<td><div class="cell" style="background:${cs.bg};color:${cs.fg}" ${clickFn?`onclick="${clickFn(oid,rw.code)}"`:''}>${fmFn(c)}</div></td>`;}).join('')+`</tr>`;});
   return t+`</tbody></table>`;
 }
@@ -903,6 +904,47 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
         h+=`</div>`;}
     }
   }else{h+=covNote('Audited annual accounts (TAC) have not been published for this organisation.');}
+  /* --- Model Hospital authorised extract · WAU productivity (trusts holding the extract) --- */
+  const mhsTrusts=sysTrusts().filter(t=>rows.some(r=>r.organisation_id===t.id&&r.metric_code==='cost_per_wau'&&r.confidence==='official'));
+  if(mhsTrusts.length){
+    const mval=(oid,code)=>{const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===code&&!x.service_id);return r?Number(r.value):null;};
+    const WAU_LINES=[['cost_per_wau','Cost per WAU (MFF adjusted)',1],['mhs_resource_cost_per_wau','Resource split cost per WAU',0],['mhs_drugs_cost_per_wau','Drugs per WAU',0],['mhs_cnst_cost_per_wau','Clinical negligence per WAU',0],['mhs_blood_products_cost_per_wau','Blood products per WAU',0],['mhs_medical_devices_cost_per_wau','Medical devices per WAU',0],['mhs_depreciation_per_wau','Depreciation per WAU',0],['mhs_support_nonpay_cost_per_wau','Support non-pay per WAU',0]];
+    const CTX_LINES=[['mhs_wau_output','Cost-weighted output (WAUs)','count'],['mhs_acute_plics_expenditure','Expenditure in acute PLICS','gbp'],['mhs_acute_plics_share_of_opex','PLICS share of operating expenditure','pct'],['mhs_market_forces_factor','Market forces factor','ratio']];
+    h+=`<div class="eyebrow" style="margin-top:16px">Productivity · Model Hospital authorised extract</div>`;
+    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Cost per weighted activity unit · FY2024/25</div><div class="cap" style="padding:2px 14px 0">£ per WAU, MFF adjusted · authorised Model Hospital extract, flagship trusts · the open NCC cost index above is the published national benchmark for the same collection</div><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhsTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    WAU_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
+      h+=`<tr${l[2]?' style="font-weight:700"':''}><td>${l[1]}</td>`+mhsTrusts.map(t=>{const val=mval(t.id,l[0]);return `<td class="num">${val==null?'—':'£'+Math.round(val).toLocaleString()}</td>`;}).join('')+`</tr>`;});
+    CTX_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
+      h+=`<tr><td style="color:#5a6172;font-size:12px">${l[1]}</td>`+mhsTrusts.map(t=>{const val=mval(t.id,l[0]);let s='—';
+        if(val!=null)s=l[2]==='gbp'?fmt(val/1e6,'gbp_m'):l[2]==='pct'?fmt(val,'pct'):l[2]==='ratio'?(Math.round(val*1000)/1000)+'':Math.round(val).toLocaleString();
+        return `<td class="num" style="color:#5a6172">${s}</td>`;}).join('')+`</tr>`;});
+    h+=`</tbody></table></div>`;
+    /* specialty cost per WAU heatmap (service-keyed extract rows) */
+    try{
+      if(!window.mhsSvcCache){
+        const mid=(rows.find(r=>r.metric_code==='mhs_specialty_cost_per_wau')||{}).metric_id;
+        let mid2=mid;
+        if(!mid2){const{data:md}=await sb.from('sr_metrics').select('id').eq('code','mhs_specialty_cost_per_wau').limit(1);mid2=md&&md[0]&&md[0].id;}
+        if(mid2){const[{data:sv},{data:svc}]=await Promise.all([
+          sb.from('sr_metric_values').select('organisation_id,service_id,value,period').eq('metric_id',mid2).not('service_id','is',null).limit(2000),
+          sb.from('sr_services').select('id,name')]);
+          const nm={};(svc||[]).forEach(s2=>{nm[s2.id]=s2.name;});
+          window.mhsSvcCache=(sv||[]).map(x=>({oid:x.organisation_id,svc:nm[x.service_id]||'Service',value:Number(x.value),period:x.period}));}
+        else window.mhsSvcCache=[];}
+      const msv=window.mhsSvcCache.filter(x=>mhsTrusts.some(t=>t.id===x.oid));
+      if(msv.length){
+        const latestBy={};msv.forEach(x=>{const k=x.oid+'|'+x.svc;if(!latestBy[k]||x.period>latestBy[k].period)latestBy[k]=x;});
+        const svcTot={};Object.values(latestBy).forEach(x=>{svcTot[x.svc]=(svcTot[x.svc]||0)+x.value;});
+        const rowsHm=Object.keys(svcTot).map(k=>({code:k,name:k,tot:svcTot[k]})).sort((a,b)=>b.tot-a.tot);
+        const mhsCodes=mhsTrusts.map(t=>t.code);
+        const cellW=(tc,svcName)=>{const t=mhsTrusts.find(x=>x.code===tc);const e=t&&latestBy[t.id+'|'+svcName];return e?e.value:null;};
+        const wVals=[];rowsHm.forEach(s=>mhsCodes.forEach(tc=>{const c=cellW(tc,s.code);if(c!=null)wVals.push(c);}));
+        h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Specialty cost per WAU by trust</div><div class="cap">£ per WAU, MFF adjusted · Model Hospital authorised extract · darker = costlier per weighted unit</div>`;
+        h+=hmGrid(rowsHm,cellW,hmSeq(wVals),v2=>v2==null?'':(v2>=1000?((Math.round(v2/100)/10)+'k'):Math.round(v2)),null,mhsCodes);
+        h+=`<div class="note" style="margin-top:8px">This is the Model Hospital specialty productivity view, held for the flagship trusts from the authorised extract. Extending it to more systems needs a further authorised extract; the national cost picture by service line comes from the open NCC data above.</div></div>`;
+      }
+    }catch(e){console.warn('mhs specialty wau failed',e);}
+  }
   /* --- flagship in-year model (BSW demo), retained below the audited accounts --- */
   const hasFin=f.some(x=>x.organisation_id===sel&&x.line_code!=null);
   if(hasFin){
@@ -1008,6 +1050,16 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
       h+=`<tr${l[2]?' style="font-weight:700"':''}><td>${l[1]}</td>`+fys.map(p=>{const val=at(l[0],p);return `<td class="num">${val==null?'—':fmt(val,'gbp_m')}</td>`;}).join('')+`</tr>`;});
     h+=`<tr><td style="padding-left:26px;color:#5a6172;font-size:12px">Agency share of pay</td>`+fys.map(p=>{const val=agShare(p);return `<td class="num" style="color:${val>5?'#b45309':'#166f4d'}">${val==null?'—':fmt(val,'pct')}</td>`;}).join('')+`</tr>`;
     h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Audited annual accounts (TAC) · bank and agency spend for every English trust · full statements on the Finance page.</div></div>`;}
+  /* Model Hospital authorised extract · turnover + staff-group sickness (flagship trusts) */
+  const MHW=[['mhs_staff_turnover_rate','All staff turnover rate'],['mhs_registered_nurse_sickness_absence','Registered nurse sickness absence'],['mhs_medical_dental_sickness_absence','Medical and dental sickness absence']];
+  const mhwTrusts=sysTrusts().filter(t=>MHW.some(l=>rows.some(r=>r.organisation_id===t.id&&r.metric_code===l[0]&&r.value!=null)));
+  if(mhwTrusts.length){
+    const mwv=(oid,code)=>{const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===code&&!x.service_id);return r?{v:Number(r.value),p:r.period}:null;};
+    h+=`<div class="eyebrow">Turnover and staff-group sickness · Model Hospital authorised extract</div><div class="card" style="padding:4px 0;margin-bottom:14px"><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhwTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    MHW.forEach(l=>{if(!mhwTrusts.some(t=>mwv(t.id,l[0])))return;
+      h+=`<tr><td>${l[1]}</td>`+mhwTrusts.map(t=>{const e=mwv(t.id,l[0]);return `<td class="num" style="font-weight:600">${e?fmt(e.v,'pct'):'—'}</td>`;}).join('')+`</tr>`;});
+    const anyP=mwv(mhwTrusts[0].id,'mhs_staff_turnover_rate')||mwv(mhwTrusts[0].id,'mhs_registered_nurse_sickness_absence');
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Authorised Model Hospital extract, flagship trusts${anyP?' · as at '+fmtPeriod(anyP.p):''}. Trust-level turnover is not otherwise published nationally; extending this needs a further extract.</div></div>`;}
   /* staff survey */
   const NSS=[['staff_engagement','Engagement'],['nss_morale','Morale'],['nss_pp1_compassionate','Compassionate and inclusive'],['nss_pp2_recognised','Recognised and rewarded'],['nss_pp3_voice','A voice that counts'],['nss_pp4_safe_healthy','Safe and healthy'],['nss_pp5_learning','Always learning'],['nss_pp6_flexible','Working flexibly'],['nss_pp7_team','We are a team']];
   const svOrg=grp?focusTrust():sel;const svRows=NSS.map(n=>{const r=rows.find(x=>x.organisation_id===svOrg&&x.metric_code===n[0]&&!x.service_id);return r?{lab:n[1],r}:null;}).filter(Boolean);
