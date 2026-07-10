@@ -30,7 +30,7 @@ let issueEvidence=[],evidenceItems=[],lastEnsureError=null,showSourceValue=false
 let specs=[],pods=[],sgs=[],flines=[],sites=[];
 let orgById={},distByOrg={},distByCode={},topo=null,fcache={};
 let stage='overview',sel=null,driver=null,drill=null,lensName='Balanced',weights={},charts={};
-let aSpec='110',aPod='NEL',perfMetric='rtt_18wk';
+let aSpec='110',aPod='NEL',perfMetric='rtt_18wk',aMode='vol',capMode='beds',bedsSpecCache={};
 function color(d){if(d==null)return '#9aa0af';if(d>=70)return '#b3261e';if(d>=55)return '#b45309';if(d>=35)return '#7a6200';return '#166f4d';}
 function slab(s){return {near_failure:'near-failure',serious:'serious',watch:'watch',stable:'stable'}[s]||s;}
 function fmt(v,u){if(v==null||v==='')return '—';v=Number(v);if(u==='pct')return (Math.round(v*10)/10)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(Math.round(v*10)/10).toLocaleString()+'m';if(u==='count'||u==='wte')return Math.round(v).toLocaleString();if(u==='days')return (Math.round(v*10)/10)+' days';if(u==='m2')return Math.round(v).toLocaleString()+' m²';if(u==='flag')return v?'Yes':'No';if(u==='score'||u==='ratio')return ''+(Math.round(v*10)/10);return ''+v;}
@@ -63,6 +63,21 @@ function orgRows(){return rows.filter(r=>r.organisation_id===sel);}
 function killCharts(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
 function orgName(){return (orgById[sel]||{}).name||'';}
 function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:c;}
+/* ===== Generic trust × row heatmap (the RTT-by-specialty pattern, reusable) ===== */
+function hmGrid(rowsArr,cellFn,colFn,fmFn,clickFn){
+  let t=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th title="${escAttr(trustShort(tc))}">${tc}</th>`).join('')+`</tr></thead><tbody>`;
+  rowsArr.forEach(rw=>{t+=`<tr><td class="rl">${esc(rw.name)}</td>`+TRUSTS.map(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=cellFn(tc,rw.code);const cs=colFn(c);
+    return `<td><div class="cell" style="background:${cs.bg};color:${cs.fg}" ${clickFn?`onclick="${clickFn(oid,rw.code)}"`:''}>${fmFn(c)}</div></td>`;}).join('')+`</tr>`;});
+  return t+`</tbody></table>`;
+}
+function hmSeq(vals){const nz=vals.filter(v=>v!=null&&v>0);const mx=nz.length?Math.max(...nz):1;
+  return v=>{if(v==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.sqrt(Math.max(0,v)/mx);return{bg:d3.interpolateRgb('#e4eaf4','#1f3a78')(t),fg:t>0.45?'#fff':'#33415e'};};}
+function hmDiv(center,span){return v=>{if(v==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.max(0,Math.min(1,((v-center)/span+1)/2));return{bg:d3.interpolateRgb('#166f4d','#b3261e')(t),fg:'#fff'};};}
+function hmPerfCol(vals,redLow){const nz=vals.filter(v=>v!=null);const mn=nz.length?Math.min(...nz):0,mx=nz.length?Math.max(...nz):1;
+  return v=>{if(v==null)return{bg:'#e7ecf2',fg:'#9aa0af'};let t=(v-mn)/((mx-mn)||1);if(redLow)t=1-t;return{bg:d3.interpolateRgb('#166f4d','#b3261e')(t),fg:'#fff'};};}
+const kfmt=v=>v==null?'':Math.abs(v)>=10000?(Math.round(v/1000)+'k'):Math.abs(v)>=1000?((Math.round(v/100)/10)+'k'):Math.round(v).toLocaleString();
+const pctfmt=v=>v==null?'':(v>0?'+':'')+(Math.round(v*10)/10)+'%';
+function prettySlug(s){return String(s).replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());}
 
 const BSW_SLUG='nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
 let SYSTEMS=[],TRUSTMETA={},SITES=[],CQC={};
@@ -131,7 +146,7 @@ async function loadAll(){
 
 async function ensure(domain){const key=domain+'|'+sysSlug;if(fcache[key])return fcache[key];
   /* Scoped to the selected system's organisations: line-level facts (DM01 by test) now span all trusts nationally. */
-  try{const{data,error}=await sb.from('sr_fact').select('*').eq('domain',domain).in('organisation_id',sysOrgs().map(x=>x.id)).limit(20000);if(error)throw error;fcache[key]=data||[];lastEnsureError=null;return fcache[key];}
+  try{const{data,error}=await sb.from('sr_fact').select('*').eq('domain',domain).in('organisation_id',sysOrgs().map(x=>x.id)).order('period',{ascending:false}).limit(30000);if(error)throw error;fcache[key]=data||[];lastEnsureError=null;return fcache[key];}
   catch(e){console.warn('sr_fact fetch failed for '+domain,e);lastEnsureError=domain;return [];}}
 function ensureNote(domain){return lastEnsureError===domain?`<div class="banner">Detail data for this page could not be loaded (network) — showing what is available. <a href="#" onclick="location.reload();return false">Retry</a></div>`:'';}
 function renderNav(){document.getElementById('nav').innerHTML=NAV.map(g=>`<div class="navgrp"><div class="lab">${g[0]}</div><div class="nav" role="navigation" aria-label="${esc(g[0].toLowerCase())} pages">`+g[1].map(s=>`<button class="${stage===s[0]?'on':''}" data-stage="${s[0]}" aria-label="${esc(s[1])}"${stage===s[0]?' aria-current="page"':''} onclick="setStage('${s[0]}')"><span class="ic"></span><span>${s[1]}</span></button>`).join('')+`</div></div>`).join('');}
@@ -537,29 +552,62 @@ function electiveClearanceCard(){
 
 /* ===== ACTIVITY ===== */
 async function renderActivity(v){v.innerHTML='<div class="loading">Loading activity…</div>';const f=await ensure('activity');
-  const rttSpecs=specs.filter(s=>s.is_rtt);
-  const lp=latestPeriod(f);
   const o=orgById[sel];
-  const specSel=`<select class="sel" id="aspec" onchange="aSpec=this.value;render()">`+rttSpecs.map(s=>`<option value="${s.code}" ${s.code===aSpec?'selected':''}>${esc(s.code+' '+s.name)}</option>`).join('')+`</select>`;
-  const podSel=`<select class="sel" id="apod" onchange="aPod=this.value;render()">`+pods.map(p=>`<option value="${p.code}" ${p.code===aPod?'selected':''}>${esc(p.name)}</option>`).join('')+`</select>`;
-  // comparison across trusts for aSpec/aPod latest
-  const comp=TRUSTS.map(c=>{const oid=(orgs.find(o=>o.code===c)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===aSpec&&x.pod_code===aPod&&x.period===lp);return{c,v:r?Number(r.value):0};});
-  // trend for selected org
-  const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
-  // table: specialties by total activity (all PODs) for selected org latest
-  const tbl=rttSpecs.map(s=>{let tot=0;pods.forEach(p=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===s.code&&x.pod_code===p.code&&x.period===lp);if(r)tot+=Number(r.value);});return{s,tot};}).sort((a,b)=>b.tot-a.tot);
-  let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity across the system's acute trusts — published national flow, then flagship specialty detail.</div>`;
-  h+=nationalBlock(['ae_attendances','emerg_admissions','adm_elective','op_attendances'],['ae_attendances','adm_emergency','adm_elective','op_attendances','rtt_total'],'');
-  h+=`<div class="eyebrow" style="margin-top:14px">Flagship activity detail · by specialty &amp; point of delivery</div><div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
-  h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${fmtPeriod(lp)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
-   <div class="card"><div class="h3">Trend · ${esc(orgName())}</div><div class="cap">24-month activity</div><div class="chartbox"><canvas id="atrend"></canvas></div></div></div>`;
-  h+=`<div class="eyebrow">Specialties by volume — ${esc(orgName())}</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Total / month</th><th class="num">Non-elective</th><th class="num">Elective + day case</th><th class="num">Outpatients</th></tr></thead><tbody>`;
-  tbl.forEach(t=>{const g=(pod)=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===t.s.code&&x.pod_code===pod&&x.period===lp);return r?Number(r.value):0;};const elc=g('EL')+g('DC');const op=g('OPF')+g('OPFU');
-    h+=`<tr style="cursor:pointer" onclick="aSpec='${t.s.code}';render()"><td>${esc(t.s.code+' '+t.s.name)}</td><td class="num">${Math.round(t.tot).toLocaleString()}</td><td class="num">${Math.round(g('NEL')).toLocaleString()}</td><td class="num">${Math.round(elc).toLocaleString()}</td><td class="num">${Math.round(op).toLocaleString()}</td></tr>`;});
-  h+=`</tbody></table></div>`;
-  v.innerHTML=h;
-  barChart('acomp',comp.map(x=>PLACE_SITE[x.c]),comp.map(x=>x.v),comp.map(x=>TRUSTCOL[x.c]));
-  lineChart('atrend',trend.map(x=>fmtPeriod(x.period)),[{data:trend.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
+  let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity across the system's acute trusts — published national flow, elective throughput by specialty for every trust, then flagship point-of-delivery detail.</div>`;
+  h+=nationalBlock(['ae_attendances','emerg_admissions','adm_elective','op_attendances'],['ae_attendances','adm_emergency','adm_elective','op_attendances','discharges_total','gp_referrals','cancelled_ops','rtt_total'],'');
+  /* --- national: elective throughput by specialty (completed RTT pathways, admitted + non-admitted) --- */
+  const cp=f.filter(x=>x.metric_code==='rtt_completed_pathways');
+  const cpPeriods=[...new Set(cp.map(x=>x.period))].sort();
+  if(cpPeriods.length){
+    const last12=cpPeriods.slice(-12),prev12=cpPeriods.slice(-24,-12);
+    const idx={};cp.forEach(x=>{const k=x.organisation_id+'|'+x.specialty_code+'|'+x.period;idx[k]=(idx[k]||0)+Number(x.value);});
+    const sum=(oid,sc,ps)=>{let s=0,n=0;ps.forEach(p=>{const val=idx[oid+'|'+sc+'|'+p];if(val!=null){s+=val;n++;}});return n?s:null;};
+    const tIds=TRUSTS.map(tc=>(orgs.find(x=>x.code===tc)||{}).id);
+    const specSet=[...new Set(cp.map(x=>x.specialty_code))];
+    const specTot=specSet.map(sc=>({code:sc,name:specName(sc),tot:tIds.reduce((s,oid)=>s+(sum(oid,sc,last12)||0),0)})).filter(x=>x.tot>0).sort((a,b)=>b.tot-a.tot);
+    const cellVol=(tc,sc)=>{const oid=(orgs.find(x=>x.code===tc)||{}).id;return sum(oid,sc,last12);};
+    const cellChg=(tc,sc)=>{const oid=(orgs.find(x=>x.code===tc)||{}).id;const a=sum(oid,sc,last12),b=sum(oid,sc,prev12);return (a!=null&&b)?100*(a-b)/b:null;};
+    const volVals=[];specTot.forEach(s=>TRUSTS.forEach(tc=>{const c=cellVol(tc,s.code);if(c!=null)volVals.push(c);}));
+    const modeBtns=`<div class="chips" style="margin:0 0 8px">`+[['vol','Volume · last 12 months'],['chg','Change vs prior 12 months']].map(m=>`<button class="chip ${aMode===m[0]?'on':''}" onclick="aMode='${m[0]}';render()" aria-pressed="${aMode===m[0]}">${m[1]}</button>`).join('')+`</div>`;
+    h+=`<div class="eyebrow" style="margin-top:14px">Elective throughput by specialty · completed RTT pathways, all English trusts</div>`;
+    h+=`<div class="card" style="overflow-x:auto"><div class="h3">${aMode==='vol'?'Completed pathways by trust × specialty':'Throughput change by trust × specialty'}</div><div class="cap">${aMode==='vol'?'Admitted + non-admitted pathways completed, 12 months to '+fmtPeriod(cpPeriods[cpPeriods.length-1]):'12 months to '+fmtPeriod(cpPeriods[cpPeriods.length-1])+' vs the prior 12 · red = falling throughput'} · derived from provider-published RTT</div>${modeBtns}`;
+    h+=hmGrid(specTot,aMode==='vol'?cellVol:cellChg,aMode==='vol'?hmSeq(volVals):hmDiv(0,-25),aMode==='vol'?kfmt:pctfmt,(oid,sc)=>`openFactDrill('activity','${oid}','${sc}','rtt_completed_pathways')`);
+    h+=`</div>`;
+    /* focus trust: top specialties with change and monthly spark */
+    const fo=orgById[focusTrust()]||{};
+    const foRows=specTot.slice(0,14).map(s=>{const a=sum(fo.id,s.code,last12),b=sum(fo.id,s.code,prev12);const ser=cpPeriods.slice(-12).map(p=>({period:p,value:idx[fo.id+'|'+s.code+'|'+p]||0}));
+      return {s,a,chg:(a!=null&&b)?100*(a-b)/b:null,ser};}).filter(x=>x.a!=null);
+    if(foRows.length){
+      h+=`<div class="eyebrow">Specialty throughput · ${esc(fo.name||'')}</div><div class="card" style="padding:4px 0;overflow-x:auto"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Completed · 12m</th><th class="num">vs prior 12m</th><th style="width:112px">Monthly</th></tr></thead><tbody>`;
+      foRows.forEach(x=>{h+=`<tr style="cursor:pointer" onclick="openFactDrill('activity','${fo.id}','${x.s.code}','rtt_completed_pathways')"><td>${esc(x.s.code+' '+x.s.name)}</td><td class="num" style="font-weight:600">${Math.round(x.a).toLocaleString()}</td><td class="num" style="color:${x.chg==null?'#9aa0af':x.chg<0?'#b3261e':'#166f4d'}">${pctfmt(x.chg)}</td><td><div style="height:22px">${spark(x.ser,'#1f3a78')}</div></td></tr>`;});
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Completed pathways count treatment episodes that closed an RTT clock — the published proxy for elective activity by specialty. HES admitted/outpatient splits by treatment specialty are a planned addition.</div></div>`;}
+  }else{h+=covNote('Completed-pathways specialty detail has not loaded for this system (network) — retry, or open the Data explorer.');}
+  /* --- flagship modelled point-of-delivery detail --- */
+  const hasPod=f.some(x=>x.organisation_id===sel&&x.metric_code==='activity_count');
+  if(hasPod){
+    const rttSpecs=specs.filter(s=>s.is_rtt);
+    const lp=latestPeriod(f.filter(x=>x.metric_code==='activity_count'));
+    const specSel=`<select class="sel" id="aspec" onchange="aSpec=this.value;render()">`+rttSpecs.map(s=>`<option value="${s.code}" ${s.code===aSpec?'selected':''}>${esc(s.code+' '+s.name)}</option>`).join('')+`</select>`;
+    const podSel=`<select class="sel" id="apod" onchange="aPod=this.value;render()">`+pods.map(p=>`<option value="${p.code}" ${p.code===aPod?'selected':''}>${esc(p.name)}</option>`).join('')+`</select>`;
+    const comp=TRUSTS.map(c=>{const oid=(orgs.find(o=>o.code===c)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===aSpec&&x.pod_code===aPod&&x.period===lp);return{c,v:r?Number(r.value):0};});
+    const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
+    const tbl=rttSpecs.map(s=>{let tot=0;pods.forEach(p=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===s.code&&x.pod_code===p.code&&x.period===lp);if(r)tot+=Number(r.value);});return{s,tot};}).sort((a,b)=>b.tot-a.tot);
+    h+=`<div class="eyebrow" style="margin-top:14px">Flagship activity detail · by specialty &amp; point of delivery (modelled)</div><div class="filters">Specialty ${specSel} Point of delivery ${podSel}</div>`;
+    h+=`<div class="two"><div class="card"><div class="h3">${esc(specName(aSpec))} · ${esc((pods.find(p=>p.code===aPod)||{}).name)}</div><div class="cap">Monthly activity by trust (latest ${fmtPeriod(lp)})</div><div class="chartbox"><canvas id="acomp"></canvas></div></div>
+     <div class="card"><div class="h3">Trend · ${esc(orgName())}</div><div class="cap">24-month activity</div><div class="chartbox"><canvas id="atrend"></canvas></div></div></div>`;
+    h+=`<div class="eyebrow">Specialties by volume — ${esc(orgName())}</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Specialty</th><th class="num">Total / month</th><th class="num">Non-elective</th><th class="num">Elective + day case</th><th class="num">Outpatients</th></tr></thead><tbody>`;
+    tbl.forEach(t=>{const g=(pod)=>{const r=f.find(x=>x.organisation_id===sel&&x.specialty_code===t.s.code&&x.pod_code===pod&&x.period===lp);return r?Number(r.value):0;};const elc=g('EL')+g('DC');const op=g('OPF')+g('OPFU');
+      h+=`<tr style="cursor:pointer" onclick="aSpec='${t.s.code}';render()"><td>${esc(t.s.code+' '+t.s.name)}</td><td class="num">${Math.round(t.tot).toLocaleString()}</td><td class="num">${Math.round(g('NEL')).toLocaleString()}</td><td class="num">${Math.round(elc).toLocaleString()}</td><td class="num">${Math.round(op).toLocaleString()}</td></tr>`;});
+    h+=`</tbody></table></div>`;
+  }
+  v.innerHTML=h;countUps();
+  if(hasPod){
+    const lp=latestPeriod(f.filter(x=>x.metric_code==='activity_count'));
+    const comp=TRUSTS.map(c=>{const oid=(orgs.find(o=>o.code===c)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===aSpec&&x.pod_code===aPod&&x.period===lp);return{c,v:r?Number(r.value):0};});
+    const trend=f.filter(x=>x.organisation_id===sel&&x.specialty_code===aSpec&&x.pod_code===aPod).sort((a,b)=>a.period<b.period?-1:1);
+    barChart('acomp',comp.map(x=>PLACE_SITE[x.c]),comp.map(x=>x.v),comp.map(x=>TRUSTCOL[x.c]));
+    lineChart('atrend',trend.map(x=>fmtPeriod(x.period)),[{data:trend.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
+  }
 }
 
 /* ===== FLOW ===== */
@@ -638,15 +686,65 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
   const pain=[];rttSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cell(tc,s.code);if(c!=null)pain.push({tc,s,v:c});}));
   pain.sort((a,b)=>perfMetric==='rtt_18wk'?a.v-b.v:b.v-a.v);
   h+=`<div class="eyebrow">Sharpest pain points</div><div class="list">`+pain.slice(0,8).map(p=>`<div class="row" onclick="openFactDrill('performance','${(orgs.find(o=>o.code===p.tc)||{}).id}','${p.s.code}','${perfMetric}')"><span class="tag" style="background:${hcol(p.v)}"></span><div class="m"><div class="t1">${esc(p.s.name)} · ${p.tc}</div><div class="t2">${perfMetric==='rtt_18wk'?fmt(p.v,'pct')+' within 18 weeks':Math.round(p.v).toLocaleString()+(perfMetric==='rtt_52wk'?' over 52 weeks':' waiting')}</div></div></div>`).join('')+`</div>`;
+  /* --- diagnostics by test type · trust × test heatmap --- */
+  const dm=f.filter(x=>x.metric_code==='dm01_6wk_test_pct'&&x.line_code);
+  if(dm.length){
+    const dlp=latestPeriod(dm);
+    const tests=[...new Set(dm.filter(x=>x.period===dlp).map(x=>x.line_code))].sort();
+    const dcell=(tc,lc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=dm.find(x=>x.organisation_id===oid&&x.line_code===lc&&x.period===dlp);return r?Number(r.value):null;};
+    const dvals=[];tests.forEach(lc=>TRUSTS.forEach(tc=>{const c=dcell(tc,lc);if(c!=null)dvals.push(c);}));
+    h+=`<div class="eyebrow" style="margin-top:14px">Diagnostics by test type · DM01, all English trusts</div><div class="card" style="overflow-x:auto"><div class="h3">Waiting 6+ weeks by trust × test</div><div class="cap">% of the diagnostic waiting list at 6+ weeks · ${fmtPeriod(dlp)} · standard under 5% · red = worst</div>`;
+    h+=hmGrid(tests.map(t=>({code:t,name:t})),dcell,hmPerfCol(dvals,false),v2=>v2==null?'':Math.round(v2),(oid)=>`openTestDrill('${oid}')`);
+    h+=`<div class="note" style="margin-top:8px">Any cell opens the trust's full test-level drill with 24-month trends.</div></div>`;}
+  /* --- cancer by tumour group · trust × tumour heatmap (3-month average to steady small counts) --- */
+  const ca=f.filter(x=>x.metric_code==='cancer_62_tumour_pct'&&x.line_code&&/^[a-z0-9_]+$/.test(x.line_code));
+  if(ca.length){
+    const cps=[...new Set(ca.map(x=>x.period))].sort();const c3=cps.slice(-3);
+    const tums=[...new Set(ca.filter(x=>c3.includes(x.period)).map(x=>x.line_code))].sort();
+    const ccell=(tc,lc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const xs=ca.filter(x=>x.organisation_id===oid&&x.line_code===lc&&c3.includes(x.period));if(!xs.length)return null;return xs.reduce((s,x)=>s+Number(x.value),0)/xs.length;};
+    const cvals=[];tums.forEach(lc=>TRUSTS.forEach(tc=>{const c=ccell(tc,lc);if(c!=null)cvals.push(c);}));
+    h+=`<div class="eyebrow" style="margin-top:14px">Cancer by tumour group · 62-day standard, all English trusts</div><div class="card" style="overflow-x:auto"><div class="h3">62-day performance by trust × tumour group</div><div class="cap">% treated within 62 days of urgent referral · average of the 3 months to ${fmtPeriod(cps[cps.length-1])} (small monthly counts are volatile) · standard 85% · red = worst</div>`;
+    h+=hmGrid(tums.map(t=>({code:t,name:prettySlug(t).replace(/ a$/,'')})),ccell,hmPerfCol(cvals,true),v2=>v2==null?'':Math.round(v2),(oid)=>`openTumourDrill('${oid}')`);
+    h+=`<div class="note" style="margin-top:8px">Derived first-hand from the provider-published monthly tumour splits; any cell opens the trust's tumour drill.</div></div>`;}
   v.innerHTML=h;
 }
 
 /* ===== CAPACITY ===== */
-async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capacity…</div>';const f=await ensure('capacity');const lp=latestPeriod(f.filter(x=>x.metric_code==='ga_beds'));
+async function fetchBedsSpec(){const key=sysSlug;if(bedsSpecCache[key])return bedsSpecCache[key];
+  const ids=sysTrusts().map(t=>t.id);if(!ids.length)return (bedsSpecCache[key]=[]);
+  const cut=new Date();cut.setMonth(cut.getMonth()-16);
+  try{const{data,error}=await sb.from('sr_fact').select('organisation_id,specialty_code,period,value').eq('metric_code','beds_specialty_occupied').in('organisation_id',ids).gte('period',cut.toISOString().slice(0,10)).limit(20000);
+    if(error)throw error;bedsSpecCache[key]=data||[];}catch(e){console.warn('beds specialty fetch failed',e);bedsSpecCache[key]=[];}
+  return bedsSpecCache[key];}
+async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capacity…</div>';const f=await ensure('capacity');const bs=await fetchBedsSpec();const lp=latestPeriod(f.filter(x=>x.metric_code==='ga_beds'));
   const siteName=id=>(sites.find(s=>s.id===id)||{}).name||'';
   const bedSites=sites.filter(s=>f.some(x=>x.site_id===s.id&&x.metric_code==='ga_beds'));
-  let h=sysNote()+ensureNote('capacity')+`<h1 class="serif">Capacity</h1><div class="lead">Beds, occupancy and delayed discharges across the system's acute trusts, then per-site theatre, outpatient and diagnostic assets for the flagship system.</div>`;
-  h+=nationalBlock(['bed_occupancy','beds_ga_available','delayed_discharge_beddays','vw_occupancy_pct'],['bed_occupancy','beds_ga_available','delayed_discharge_beddays','vw_occupancy_pct'],'');
+  let h=sysNote()+ensureNote('capacity')+`<h1 class="serif">Capacity</h1><div class="lead">Beds, occupancy and delayed discharges across the system's acute trusts — the occupied bed base by specialty for every trust, and where it is shifting — then per-site assets for the flagship system.</div>`;
+  h+=nationalBlock(['bed_occupancy','beds_ga_available','delayed_discharge_beddays','vw_occupancy_pct'],['bed_occupancy','beds_ga_available','beds_mi_occupied','beds_mat_occupied','delayed_discharge_beddays','vw_capacity','vw_occupancy_pct'],'');
+  /* --- occupied beds by specialty · trust × specialty heatmap + shift view --- */
+  if(bs.length){
+    const bps=[...new Set(bs.map(x=>x.period))].sort();
+    const blp=bps[bps.length-1];const bprev=bps.length>4?bps[bps.length-5]:bps[0];
+    const bidx={};bs.forEach(x=>{bidx[x.organisation_id+'|'+x.specialty_code+'|'+x.period]=Number(x.value);});
+    const bAt=(oid,sc,p)=>{const val=bidx[oid+'|'+sc+'|'+p];return val==null?null:val;};
+    const tIds=sysTrusts().map(t=>t.id);
+    const bSpecs=[...new Set(bs.filter(x=>x.period===blp).map(x=>x.specialty_code))]
+      .map(sc=>({code:sc,name:specName(sc),tot:tIds.reduce((s,oid)=>s+(bAt(oid,sc,blp)||0),0)}))
+      .filter(x=>x.tot>=1).sort((a,b)=>b.tot-a.tot).slice(0,24);
+    const cellB=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;return bAt(oid,sc,blp);};
+    const cellShift=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const a=bAt(oid,sc,blp),b=bAt(oid,sc,bprev);return (a!=null&&b!=null&&b>0)?100*(a-b)/b:null;};
+    const bVals=[];bSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=cellB(tc,s.code);if(c!=null)bVals.push(c);}));
+    const modeBtns=`<div class="chips" style="margin:0 0 8px">`+[['beds','Occupied beds · latest quarter'],['shift','Shift vs a year earlier']].map(m=>`<button class="chip ${capMode===m[0]?'on':''}" onclick="capMode='${m[0]}';render()" aria-pressed="${capMode===m[0]}">${m[1]}</button>`).join('')+`</div>`;
+    h+=`<div class="eyebrow" style="margin-top:14px">Occupied bed base by specialty · all English trusts</div>`;
+    h+=`<div class="card" style="overflow-x:auto"><div class="h3">${capMode==='beds'?'Occupied overnight beds by trust × specialty':'Bed-base shift by trust × specialty'}</div><div class="cap">${capMode==='beds'?'Average occupied overnight beds · quarter to '+fmtPeriod(blp):'Change in occupied beds, '+fmtPeriod(blp)+' vs '+fmtPeriod(bprev)+' · red = shrinking'} · top ${bSpecs.length} specialties by system bed base · derived from KH03 quarterly</div>${modeBtns}`;
+    h+=hmGrid(bSpecs,capMode==='beds'?cellB:cellShift,capMode==='beds'?hmSeq(bVals):hmDiv(0,-30),capMode==='beds'?kfmt:pctfmt,(oid,sc)=>`openFactDrill('capacity','${oid}','${sc}','beds_specialty_occupied')`);
+    h+=`</div>`;
+    /* biggest movements list */
+    const moves=[];bSpecs.forEach(s=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const a=bAt(oid,s.code,blp),b=bAt(oid,s.code,bprev);
+      if(a!=null&&b!=null&&Math.abs(a-b)>=3)moves.push({tc,s,a,b,d:a-b});}));
+    moves.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+    if(moves.length)h+=`<div class="eyebrow">Largest bed-base movements this year</div><div class="list">`+moves.slice(0,8).map(m=>`<div class="row" onclick="openFactDrill('capacity','${(orgs.find(o=>o.code===m.tc)||{}).id}','${m.s.code}','beds_specialty_occupied')"><span class="tag" style="background:${m.d<0?'#b3261e':'#166f4d'}"></span><div class="m"><div class="t1">${esc(m.s.name)} · ${m.tc}</div><div class="t2">${Math.round(m.b)} → ${Math.round(m.a)} occupied beds (${m.d>0?'+':''}${Math.round(m.d)})</div></div></div>`).join('')+`</div>`;
+  }
   if(bedSites.length){
   h+=`<div class="eyebrow">Beds & occupancy by site (latest ${fmtPeriod(lp)}) · flagship detail</div><div class="card" style="padding:4px 0"><table class="dt"><thead><tr><th>Site</th><th class="num">G&A beds</th><th class="num">Occupancy</th></tr></thead><tbody>`;
   bedSites.forEach(s=>{const beds=f.find(x=>x.site_id===s.id&&x.metric_code==='ga_beds'&&x.period===lp);const occ=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===lp);const ov=occ?Number(occ.value):0;h+=`<tr><td>${esc(s.name)}</td><td class="num">${beds?Math.round(beds.value):'—'}</td><td class="num" style="color:${ov>=95?'#b3261e':ov>=92?'#b45309':'#166f4d'};font-weight:600">${occ?fmt(occ.value,'pct'):'—'}</td></tr>`;});
@@ -673,9 +771,10 @@ async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate�
   if(hasEst){
   h+=`<div class="eyebrow" style="margin-top:14px">Site detail · ERIC 2024/25</div><div class="grid kpis">`+kpi('Total backlog maintenance',fmt(totBacklog,'gbp_m'),'','across all reported sites','#191f2b')+kpi('High-risk backlog',fmt(totHigh,'gbp_m'),'','urgent remediation','#b45309')+kpi('Critical infrastructure risk',fmt(totCrit,'gbp_m'),'','high + significant risk','#b3261e')+kpi('Total floor area',fmt(totArea,'m2'),'','gross internal area','#191f2b')+`</div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Backlog maintenance by site${ssites.length>12?' · top 12':''}</div><div class="cap">£m</div><div class="chartbox"><canvas id="estbar"></canvas></div></div>
-   <div class="card"><div class="h3">Estate detail by site</div><div class="cap">ERIC field set</div><table class="dt"><thead><tr><th>Site</th><th class="num">Backlog</th><th class="num">High-risk</th><th class="num">Floor m²</th><th class="num">Energy</th><th>PFI</th></tr></thead><tbody>`;
-  ssites.forEach(s=>{h+=`<tr><td>${esc(s.name)}</td><td class="num">${fmt(g(s.id,'backlog_maint'),'gbp_m')}</td><td class="num">${fmt(g(s.id,'high_risk_backlog'),'gbp_m')}</td><td class="num">${Math.round(g(s.id,'floor_area')).toLocaleString()}</td><td class="num">${fmt(g(s.id,'energy_cost'),'gbp_m')}</td><td>${g(s.id,'pfi')?'Yes':'No'}</td></tr>`;});
-  h+=`</tbody></table></div></div>`;}else{h+=covNote('Per-site ERIC detail is not published for this system in the 2024/25 collection.');}v.innerHTML=h;countUps();
+   <div class="card"><div class="h3">Estate detail by site</div><div class="cap">ERIC field set · £/m² columns derived from backlog and floor area</div><table class="dt"><thead><tr><th>Site</th><th class="num">Backlog</th><th class="num">Backlog £/m²</th><th class="num">High-risk share</th><th class="num">Floor m²</th><th class="num">Energy</th><th>PFI</th></tr></thead><tbody>`;
+  ssites.forEach(s=>{const fa=g(s.id,'floor_area');const bl=g(s.id,'backlog_maint');const bpm=fa>0?1e6*bl/fa:null;const hrs=bl>0?100*g(s.id,'high_risk_backlog')/bl:null;
+    h+=`<tr><td>${esc(s.name)}</td><td class="num">${fmt(bl,'gbp_m')}</td><td class="num" style="font-weight:600;color:${bpm==null?'#9aa0af':bpm>400?'#b3261e':bpm>150?'#b45309':'#166f4d'}">${bpm==null?'—':'£'+Math.round(bpm).toLocaleString()}</td><td class="num" style="color:${hrs!=null&&hrs>25?'#b3261e':'#191f2b'}">${hrs==null?'—':fmt(hrs,'pct')}</td><td class="num">${Math.round(fa).toLocaleString()}</td><td class="num">${fmt(g(s.id,'energy_cost'),'gbp_m')}</td><td>${g(s.id,'pfi')?'Yes':'No'}</td></tr>`;});
+  h+=`</tbody></table><div class="note" style="padding:6px 2px 2px">Backlog £/m² normalises condition for site size — the cross-system comparator for which buildings are wearing out fastest. Site-level data in national publications currently covers estates (ERIC); performance and activity publish at trust level, so site splits there need local data.</div></div></div>`;}else{h+=covNote('Per-site ERIC detail is not published for this system in the 2024/25 collection.');}v.innerHTML=h;countUps();
   barChart('estbar',bsites.map(s=>s.name.split(',')[0].replace(' Hospital','')),bsites.map(s=>g(s.id,'backlog_maint')),bsites.map(()=>'#b45309'));
 }
 
@@ -773,7 +872,18 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
       h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Spend and cost by service line${svcRows.length>20?' · top 20 of '+svcRows.length:''}</div><div class="cap" style="padding:2px 14px 0">National Cost Collection 2024/25 by service, MFF adjusted${grp?' · system trusts combined':''} · index 100 = costs as expected</div><table class="dt"><thead><tr><th>Service line</th><th class="num">Spend £m</th><th class="num">Share</th><th class="num">Cost index</th></tr></thead><tbody>`;
       shown.forEach(x=>{const nm=x.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());const dv=x.idx!=null?x.idx-100:null;
         h+=`<tr><td>${esc(nm)}</td><td class="num" style="font-weight:600">${fmt(x.spend,'gbp_m')}</td><td class="num muted">${svcTot?fmt(100*x.spend/svcTot,'pct'):'—'}</td><td class="num" style="color:${dv==null?'#9aa0af':dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${x.idx!=null?fmt(x.idx,'score'):'—'}</td></tr>`;});
-      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Index per service = actual vs expected cost, aggregated across inpatient, day case, outpatient and other departments${grp?'; simple average across trusts when the whole system is selected':''}.</div></div>`;}
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Index per service = actual vs expected cost, aggregated across inpatient, day case, outpatient and other departments${grp?'; simple average across trusts when the whole system is selected':''}.</div></div>`;
+      /* trust × service cost-index heatmap across the system */
+      const svcIdx={},svcSpend={};
+      f.forEach(x=>{if(x.specialty_code&&sysTrusts().some(t=>t.id===x.organisation_id)){
+        if(x.metric_code==='ncc_service_index')svcIdx[x.organisation_id+'|'+x.specialty_code]=Number(x.value);
+        if(x.metric_code==='ncc_service_spend')svcSpend[x.specialty_code]=(svcSpend[x.specialty_code]||0)+Number(x.value);}});
+      const hmSvc=Object.keys(svcSpend).map(k=>({code:k,name:prettySlug(k),tot:svcSpend[k]})).sort((a,b)=>b.tot-a.tot).slice(0,20);
+      if(hmSvc.length&&TRUSTS.length>1){
+        const scell=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const val=svcIdx[oid+'|'+sc];return val==null?null:val;};
+        h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Cost index by trust × service line</div><div class="cap">NCC 2024/25, MFF adjusted · 100 = costs as expected · red = costlier than expected · top ${hmSvc.length} services by system spend</div>`;
+        h+=hmGrid(hmSvc,scell,hmDiv(100,30),v2=>v2==null?'':Math.round(v2),(oid,sc)=>`openFactDrill('finance','${oid}','${sc}','ncc_service_index')`);
+        h+=`<div class="note" style="margin-top:8px">Where a column runs red, that trust's casemix-adjusted costs sit above national expectation across services — a consolidation and productivity conversation, not an automatic verdict.</div></div>`;}}
     /* cost index + national position (single trust only) */
     if(!grp){
       const nccRows=orgRows().filter(r=>r.metric_code&&r.metric_code.indexOf('ncc_index_')===0&&r.value!=null).sort((a,b)=>a.metric_code==='ncc_index_total'?-1:b.metric_code==='ncc_index_total'?1:Number(b.value)-Number(a.value));
@@ -865,7 +975,27 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
     const shown=medRows.slice(0,18);
     h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Medical staffing by specialty${medRows.length>18?' · top 18 of '+medRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Doctors in post · NHS Workforce Statistics ${fmtPeriod(medPeriod)}${grp?' · system trusts combined':''}</div><table class="dt"><thead><tr><th>Specialty</th><th class="num">WTE</th><th class="num">Share of medical</th></tr></thead><tbody>`;
     shown.forEach(r=>{const nm=specNm[r.code]||r.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());h+=`<tr><td>${esc(nm)}</td><td class="num">${Math.round(r.wte).toLocaleString()}</td><td class="num muted">${medTot?fmt(100*r.wte/medTot,'pct'):'—'}</td></tr>`;});
-    h+=`</tbody></table></div><div class="card"><div class="h3">Largest specialties</div><div class="cap">WTE doctors in post</div><div class="chartbox tall"><canvas id="wfmed"></canvas></div></div></div>`;}
+    h+=`</tbody></table></div><div class="card"><div class="h3">Largest specialties</div><div class="cap">WTE doctors in post</div><div class="chartbox tall"><canvas id="wfmed"></canvas></div></div></div>`;
+    /* trust × specialty medical staffing heatmap + fragile rotas (system view) */
+    if(sysTrusts().length>1){
+      const medIdx={},medSys={};
+      f.forEach(x=>{if(x.metric_code==='medical_wte'&&x.specialty_code&&sysTrusts().some(t=>t.id===x.organisation_id)){
+        medIdx[x.organisation_id+'|'+x.specialty_code]=(medIdx[x.organisation_id+'|'+x.specialty_code]||0)+Number(x.value);
+        medSys[x.specialty_code]=(medSys[x.specialty_code]||0)+Number(x.value);}});
+      const mSpecs=Object.keys(medSys).map(k=>({code:k,name:specNm[k]||prettySlug(k),tot:medSys[k]})).sort((a,b)=>b.tot-a.tot).slice(0,24);
+      const mcell=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const val=medIdx[oid+'|'+sc];return val==null?null:val;};
+      const mVals=[];mSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=mcell(tc,s.code);if(c!=null)mVals.push(c);}));
+      if(mSpecs.length){
+        h+=`<div class="eyebrow">Medical staffing across the system · trust × specialty</div><div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Doctors in post by trust × specialty</div><div class="cap">WTE, all grades · ${fmtPeriod(medPeriod)} · top ${mSpecs.length} specialties by system WTE</div>`;
+        h+=hmGrid(mSpecs,mcell,hmSeq(mVals),v2=>v2==null?'':(v2<10?(Math.round(v2*10)/10):Math.round(v2)),(oid,sc)=>`openFactDrill('workforce','${oid}','${sc}','medical_wte')`);
+        h+=`</div>`;
+        const fragile=[];mSpecs.forEach(s=>TRUSTS.forEach(tc=>{const c=mcell(tc,s.code);if(c!=null&&c>0&&c<5)fragile.push({tc,s,c});}));
+        fragile.sort((a,b)=>a.c-b.c);
+        if(fragile.length)h+=`<div class="eyebrow">Fragile rotas · fewer than five whole-time doctors</div><div class="card" style="padding:4px 0;margin-bottom:14px"><table class="dt"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">WTE in post</th></tr></thead><tbody>`+
+          fragile.slice(0,12).map(x=>`<tr><td>${esc(x.s.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.c<3?'#b3261e':'#b45309'}">${Math.round(x.c*10)/10}</td></tr>`).join('')+
+          `</tbody></table><div class="note" style="padding:6px 14px 10px">A service carried by fewer than five whole-time doctors is exposed to single points of failure in rota cover — a first-order fragility signal for reconfiguration, derived from the published specialty census. Cross-check against the fragility composite before drawing conclusions.</div></div>`;}
+    }
+  }
   /* agency + bank from audited accounts */
   if(lastFy){
     h+=`<div class="eyebrow">Temporary staffing · audited accounts</div><div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><table class="dt"><thead><tr><th style="min-width:210px">£m</th>`+fys.map(p=>`<th class="num">${finFY(p)}</th>`).join('')+`</tr></thead><tbody>`;
@@ -1419,8 +1549,11 @@ function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;cons
     el.innerHTML=linked.map(o=>{const cs2=criteria.map(c=>({c,v:optCrit(o,c.code)})).filter(x=>x.v!=null);const hi=cs2.length?cs2.reduce((a,b)=>b.v>a.v?b:a):null,lo=cs2.length?cs2.reduce((a,b)=>b.v<a.v?b:a):null;const ts=(OC.tests||[]).filter(t=>t.option_id===o.id);const met=ts.filter(t=>['met','passed'].includes(t.status)).length,red=ts.filter(t=>['high_risk','unmet'].includes(t.status)).length;
       return `<div style="padding:5px 0;border-bottom:1px solid var(--line2)"><a href="#" style="font-weight:600" onclick="openOption('${o.id}');return false">${esc(optShort(o.title))}</a><div class="muted" style="font-size:11px">registered link (promoted AI draft carries this issue) → strongest ${hi?esc(hi.c.name)+' ('+hi.v+')':'—'} · weakest ${lo?esc(lo.c.name)+' ('+lo.v+')':'—'} → statutory tests ${met}/${ts.length} met${red?' · '+red+' high-risk':''}</div></div>`;}).join('');});}
 window.openIssue=openIssue;
-async function openFactDrill(domain,orgId,specCode,metric){const f=await ensure(domain);const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';
-  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()" aria-label="Close dialog">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${metric==='rtt_18wk'?'RTT 18-week %':metric==='rtt_incomplete'?'Waiting list':'52-week breaches'}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Source: ${esc(ser.length&&ser[ser.length-1].source?ser[ser.length-1].source:'modelled pending ingestion')} · confidence: <b style="color:${ser.length&&ser[ser.length-1].confidence==='actual'?'#166f4d':'#7a6200'}">${esc(ser.length?(ser[ser.length-1].confidence||'modelled'):'modelled')}</b> · ${ser.length} months</div></div></div>`;
+const FD_LABELS={rtt_18wk:'RTT 18-week %',rtt_incomplete:'Waiting list',rtt_52wk:'52-week breaches',rtt_completed_pathways:'Completed RTT pathways / month',beds_specialty_occupied:'Occupied overnight beds (quarterly)',ncc_service_index:'Cost index · 100 = expected',ncc_service_spend:'Service-line spend £m',medical_wte:'Doctors in post (WTE)'};
+async function openFactDrill(domain,orgId,specCode,metric){let f=await ensure(domain);
+  if(metric==='beds_specialty_occupied'&&!f.some(x=>x.metric_code===metric&&x.organisation_id===orgId))f=f.concat(await fetchBedsSpec());
+  const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';
+  document.getElementById('modalroot').innerHTML=`<div class="overlay" onclick="closeDrill()"><div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()"><button class="x" onclick="closeDrill()" aria-label="Close dialog">×</button><h2>${esc(specName(specCode))}</h2><div class="ms">${esc(o?o.name:'')} · ${esc(FD_LABELS[metric]||metric)}</div><div class="chartbox" style="height:200px"><canvas id="fd"></canvas></div><div class="kv"><span class="k">Latest</span><b>${ser.length?fmt(Number(ser[ser.length-1].value),unit):'—'}</b></div><div class="prov">Source: ${esc(ser.length&&ser[ser.length-1].source?ser[ser.length-1].source:'modelled pending ingestion')} · confidence: <b style="color:${ser.length&&ser[ser.length-1].confidence==='actual'?'#166f4d':'#7a6200'}">${esc(ser.length?(ser[ser.length-1].confidence||'modelled'):'modelled')}</b> · ${ser.length} months</div></div></div>`;
   lineChart('fd',ser.map(x=>fmtPeriod(x.period)),[{data:ser.map(x=>Number(x.value)),borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]);
 }
 window.openFactDrill=openFactDrill;
