@@ -395,16 +395,41 @@ async function initMap(){
     if(!m.getLayer('icb-fill'))m.addLayer({id:'icb-fill',type:'fill',source:'icbs',paint:{'fill-color':icbFillExpr(),'fill-opacity':mapState.basis==='distress'?0.55:0.28}});
     if(!m.getLayer('icb-line'))m.addLayer({id:'icb-line',type:'line',source:'icbs',paint:{'line-color':'#6a7183','line-width':0.7}});
     if(!m.getLayer('icb-sel'))m.addLayer({id:'icb-sel',type:'line',source:'icbs',filter:['==',['get','slug'],mapEngland?'__none__':sysSlug],paint:{'line-color':'#191f2b','line-width':2.2}});
-    m.on('click','icb-fill',e=>{const p=e.features[0].properties;
-      if(mapEngland){enterSystem(p.slug,'drivers');return;}
-      if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}});
-    m.on('mousemove','icb-fill',e=>{ml.getCanvas().style.cursor='pointer';});
+    /* Single unified click handler: exactly one popup ever, resolved by layer priority
+       (point features before area fills), so overlapping features never stack popups. */
+    m.on('click',e=>{
+      const pop=mapPop();
+      const layers=MAP_POP_LAYERS.filter(l=>m.getLayer(l)&&m.getLayoutProperty(l,'visibility')!=='none');
+      let chosen=null;
+      if(layers.length){const feats=m.queryRenderedFeatures(e.point,{layers});for(const l of MAP_POP_LAYERS){const f=feats.find(x=>x.layer.id===l);if(f){chosen=f;break;}}}
+      if(chosen){const c=chosen.geometry.type==='Point'?chosen.geometry.coordinates.slice():[e.lngLat.lng,e.lngLat.lat];
+        pop.setLngLat(c).setHTML(mapPopupHTML(chosen.layer.id,chosen.properties)).addTo(m);return;}
+      pop.remove();
+      const icb=m.getLayer('icb-fill')?m.queryRenderedFeatures(e.point,{layers:['icb-fill']}):[];
+      if(icb.length){const p=icb[0].properties;
+        if(mapEngland){enterSystem(p.slug,'drivers');return;}
+        if(p.slug!==sysSlug){document.getElementById('syssel').value=p.slug;setSystem(p.slug);}}
+    });
+    m.on('mousemove',e=>{const layers=MAP_POP_LAYERS.concat('icb-fill').filter(l=>m.getLayer(l)&&m.getLayoutProperty(l,'visibility')!=='none');
+      m.getCanvas().style.cursor=(layers.length&&m.queryRenderedFeatures(e.point,{layers}).length)?'pointer':'';});
     m.on('mouseleave','icb-fill',()=>{ml.getCanvas().style.cursor='';});
     if(mapEngland){/* E2 · national view: no per-system layers, no zoom — the map IS the system picker */
       const lg=document.getElementById('mlegend');if(lg)lg.innerHTML=`<div class="ttl2">Composite need score · every ICB</div>`+[0,20,40,60,80,100].map((v,i)=>`<div class="lgrow"><span class="sw" style="background:${RAMP[i]};${i===0?'border:1px solid #dcd9d0':''}"></span>${v}${i===5?' · highest':''}</div>`).join('')+`<div class="lgrow" style="margin-top:6px;color:#5a6172">Click a system to open its opportunity view</div>`;}
     else{await refreshSystemLayers();renderChips();}
   }catch(e){console.error('map init failed',e);}};
   m.on('style.load',boot);setTimeout(boot,120);
+}
+/* One reusable popup for the whole map — never more than one on screen at a time. */
+let mapPopup=null;
+function mapPop(){if(!mapPopup)mapPopup=new maplibregl.Popup({closeButton:true,closeOnClick:false,maxWidth:'280px',offset:9});return mapPopup;}
+const MAP_POP_LAYERS=['sites-c','gp-c','poi-c','lsoa-fill'];
+function mapPopupHTML(layer,p){
+  if(layer==='sites-c')return `<b>${esc(p.name)}</b><div class="r"><span>Trust</span><span>${esc(trustShort(p.trust))}</span></div><div class="r"><span>Type</span><span>${esc(p.stype||'—')}</span></div><div class="r"><span>CQC overall</span><span>${esc(p.cqc||'Not rated')}</span></div><div class="r"><span>PFI</span><span>${p.pfi==1?'Yes':'No'}</span></div><div style="margin-top:7px"><a href="#" onclick="selectCode('${p.trust}');return false">Open trust view →</a></div>`;
+  if(layer==='gp-c'){const prev=JSON.parse(p.prev||'{}');const rows2=Object.entries(prev).slice(0,6).map(([k,v])=>`<div class="r"><span>${esc(k.replace(/_/g,' '))}</span><span>${v}%</span></div>`).join('');
+    return `<b>${esc(p.name)}</b><div class="r"><span>List size</span><span>${Number(p.list).toLocaleString()}</span></div><div class="r"><span>GP FTE</span><span>${Number(p.fte).toFixed(1)}</span></div><div class="r"><span>CQC</span><span>${esc(p.rating||'—')}</span></div><div style="margin-top:6px;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#6a7183">Condition prevalence</div>${rows2}`;}
+  if(layer==='poi-c')return `<b>${esc(p.name)}</b><div class="r"><span>Kind</span><span>${esc((p.kind||'').replace(/_/g,' '))}</span></div><div class="r"><span>CQC</span><span>${esc(p.rating||'Not rated')}</span></div>`;
+  if(layer==='lsoa-fill')return `<b>Neighbourhood ${esc(p.c)}</b><div class="r"><span>Population</span><span>${Number(p.pop).toLocaleString()}</span></div><div class="r"><span>Composite need</span><span>${p.need}</span></div><div class="r"><span>IMD decile</span><span>${p.imd}</span></div><div class="r"><span>Core20</span><span>${p.c20?'Yes':'No'}</span></div><div class="r"><span>Deprivation</span><span>${p.n1}</span></div><div class="r"><span>Health dep</span><span>${p.n2}</span></div><div class="r"><span>Disease</span><span>${p.n3}</span></div><div class="r"><span>Access</span><span>${p.n4}</span></div><div class="r"><span>Outcomes</span><span>${p.n5}</span></div>`;
+  return '';
 }
 async function refreshSystemLayers(){
   if(!ml)return;
@@ -413,7 +438,6 @@ async function refreshSystemLayers(){
   else if(lsoa){
     ml.addSource('lsoa',{type:'geojson',data:lsoa});
     ml.addLayer({id:'lsoa-fill',type:'fill',source:'lsoa',paint:{'fill-color':needExpr(),'fill-opacity':0.66,'fill-outline-color':'rgba(255,255,255,.25)'}},ml.getLayer('icb-line')?'icb-line':undefined);
-    ml.on('click','lsoa-fill',e=>{const p=e.features[0].properties;new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>Neighbourhood ${esc(p.c)}</b><div class="r"><span>Population</span><span>${Number(p.pop).toLocaleString()}</span></div><div class="r"><span>Composite need</span><span>${p.need}</span></div><div class="r"><span>IMD decile</span><span>${p.imd}</span></div><div class="r"><span>Core20</span><span>${p.c20?'Yes':'No'}</span></div><div class="r"><span>Deprivation</span><span>${p.n1}</span></div><div class="r"><span>Health dep</span><span>${p.n2}</span></div><div class="r"><span>Disease</span><span>${p.n3}</span></div><div class="r"><span>Access</span><span>${p.n4}</span></div><div class="r"><span>Outcomes</span><span>${p.n5}</span></div>`).addTo(ml);});
   }
   // sites for this system's trusts
   const sfc={type:'FeatureCollection',features:SITES.filter(s=>TRUSTS.includes(s[0])).map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s[3],s[2]]},properties:{trust:s[0],code:s[1],name:s[4],stype:s[5],pfi:s[6],cqc:(CQC[s[0]]||[])[0]||''}}))};
@@ -421,9 +445,6 @@ async function refreshSystemLayers(){
   else{
     ml.addSource('sites',{type:'geojson',data:sfc});
     ml.addLayer({id:'sites-c',type:'circle',source:'sites',paint:{'circle-radius':['case',['in','Hospital',['get','stype']],7,4.5],'circle-color':['match',['get','cqc'],'Outstanding','#166f4d','Good','#4d8a6a','Requires improvement','#b45309','Inadequate','#b3261e','#6a7183'],'circle-stroke-color':'#fffefb','circle-stroke-width':1.4,'circle-opacity':0.94}});
-    ml.on('click','sites-c',e=>{const p=e.features[0].properties;new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>${esc(p.name)}</b><div class="r"><span>Trust</span><span>${esc(trustShort(p.trust))}</span></div><div class="r"><span>Type</span><span>${esc(p.stype||'—')}</span></div><div class="r"><span>CQC overall</span><span>${esc(p.cqc||'Not rated')}</span></div><div class="r"><span>PFI</span><span>${p.pfi==1?'Yes':'No'}</span></div><div style="margin-top:7px"><a href="#" onclick="selectCode('${p.trust}');return false">Open trust view →</a></div>`).addTo(ml);});
-    ml.on('mousemove','sites-c',()=>{ml.getCanvas().style.cursor='pointer';});
-    ml.on('mouseleave','sites-c',()=>{ml.getCanvas().style.cursor='';});
   }
   // E4 · lazy layers: the CQC-care and GP-practice files are only fetched once their toggle
   // has first been switched on (or the source already exists from an earlier system).
@@ -443,7 +464,6 @@ async function loadPoiLayer(){if(!ml)return;
   else{
     ml.addSource('poi',{type:'geojson',data:pfc});
     ml.addLayer({id:'poi-c',type:'circle',source:'poi',paint:{'circle-radius':2.6,'circle-color':['match',['get','rating'],'Outstanding','#166f4d','Good','#4d8a6a','Requires improvement','#b45309','Inadequate','#b3261e','#9aa0af'],'circle-opacity':0.85}});
-    ml.on('click','poi-c',e=>{const p=e.features[0].properties;new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>${esc(p.name)}</b><div class="r"><span>Kind</span><span>${esc(p.kind.replace(/_/g,' '))}</span></div><div class="r"><span>CQC</span><span>${esc(p.rating||'Not rated')}</span></div>`).addTo(ml);});
   }
 }
 /* E4 · GP practices with prevalence — fetched lazily on first toggle */
@@ -455,7 +475,6 @@ async function loadGpLayer(){if(!ml)return;
   else{
     ml.addSource('gp',{type:'geojson',data:gfc});
     ml.addLayer({id:'gp-c',type:'circle',source:'gp',paint:{'circle-radius':['interpolate',['linear'],['coalesce',['get','list'],4000],2000,2.5,20000,7],'circle-color':'#44639f','circle-stroke-color':'#fffefb','circle-stroke-width':0.8,'circle-opacity':0.85}});
-    ml.on('click','gp-c',e=>{const p=e.features[0].properties;const prev=JSON.parse(p.prev||'{}');const rows2=Object.entries(prev).slice(0,6).map(([k,v])=>`<div class="r"><span>${esc(k.replace(/_/g,' '))}</span><span>${v}%</span></div>`).join('');new maplibregl.Popup({closeButton:false}).setLngLat(e.lngLat).setHTML(`<b>${esc(p.name)}</b><div class="r"><span>List size</span><span>${Number(p.list).toLocaleString()}</span></div><div class="r"><span>GP FTE</span><span>${Number(p.fte).toFixed(1)}</span></div><div class="r"><span>CQC</span><span>${esc(p.rating||'—')}</span></div><div style="margin-top:6px;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#6a7183">Condition prevalence</div>${rows2}`).addTo(ml);});
   }
 }
 function applyMapState(){if(!ml)return;

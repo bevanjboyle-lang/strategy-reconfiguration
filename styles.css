@@ -1,9 +1,8 @@
 
 /* Briefing-room design language. Warm paper ground, near-black ink, hairline
    rules, serif display, colour spent almost exclusively on data. Red is a
-   verdict, never decoration. KPMG blue is the wordmark only. */
+   verdict, never decoration. */
 :root{color-scheme:light;
---kpmg-blue:#00338d;
 --paper:#f7f6f2;--card:#fffefb;--surface2:#f2f0e9;--line:#dcd9d0;--line2:#e8e5dc;
 --ink:#191f2b;--ink2:#3c4354;--muted:#6a7183;--faint:#9aa0af;
 --accent:#1d4ed8;--accent-soft:#e9edf7;
@@ -20,8 +19,7 @@ button{font-family:inherit}
 .shell{display:flex;min-height:100vh}
 .side{width:232px;flex:none;background:var(--card);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 14px 14px;overflow-y:auto}
 .brand{padding:0 8px 16px;border-bottom:1px solid var(--line2);margin-bottom:6px}
-.brand .kpmg{height:26px;width:67px;display:block;margin-bottom:12px}
-.brand .prod{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:16.5px;color:var(--ink);line-height:1.25}
+.brand .prod{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:18.5px;color:var(--ink);line-height:1.2;letter-spacing:-.01em}
 .brand small{display:block;font-weight:400;font-size:10.5px;color:var(--muted);margin-top:3px;font-family:"Open Sans",Arial,sans-serif}
 .navgrp{margin-top:16px}
 .navgrp .lab{font-size:9.5px;font-weight:700;letter-spacing:1.1px;color:var(--faint);text-transform:uppercase;padding:0 9px;margin-bottom:4px}
@@ -112,6 +110,7 @@ input[type=range]{width:100%;accent-color:var(--ink);cursor:pointer}
 .maplibregl-popup-content b{font-family:"Source Serif 4",Georgia,serif;font-size:13px}
 .maplibregl-popup-content .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px;color:var(--muted)}
 .maplibregl-popup-content .r span:last-child{color:var(--ink);font-weight:600;font-family:"IBM Plex Mono",monospace;font-size:11px}
+.maplibregl-popup-content{padding-right:22px}.maplibregl-popup-close-button{font-size:17px;color:var(--faint);padding:2px 7px;line-height:1;border-radius:3px}.maplibregl-popup-close-button:hover{background:var(--surface2);color:var(--ink)}
 .maplibregl-ctrl-attrib{font-size:9px!important}
 /* U10 · accessibility: visible keyboard focus */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
