@@ -480,3 +480,38 @@ turns out it didn't do any of it." Asked me to do the open-MHS rip via the publi
   49,044 (watch vs 60k boot cap — raise if it climbs). Freshness 41 families; QA 86 checks 0 fail.
 - Gate 30 passed + 2 retry-flaky (known pair). Note: mhs_rip2.js + mhs_compartments.json in
   /tmp/wp2 are the reproducible harvester; re-run needs the Playwright browser + open portal.
+
+## Run record — 10 Jul 2026 (night): severity scoring audit after Bevan's St George's challenge (migration df_span_normalised_scoring, 8a37cf4)
+Bevan caught RJ7 diagnostics (5.6% waiting 6+ weeks vs national median 17.9%) flagged
+'serious'. His read was right; the audit found FOUR defect classes:
+- [x] SEVERITY FORMULA (the RJ7 bug): position normalised the gap-to-standard by
+  abs(standard), so small standards exploded — dm01 standard 1 meant nearly every trust
+  in England scored distress 100 (zero discrimination); large standards (85-96) were
+  muted. REWRITTEN: position = gap / span where span = greatest(|median − standard|,
+  IQR/2), fallbacks |standard| then |median|; nm-only metrics score gap-from-median /
+  (IQR/2); position capped at 2. The view now computes LIVE national medians and
+  quartiles per metric (acute-first, all-provider fallback, n>=10) so nm_value is
+  populated for every metric (48,713 of 48,800 rows), not just the 37 with benchmark rows.
+- [x] POLARITY INVERSIONS: 22 mhso catalogue metrics (length-of-stay family, days-to-
+  procedure, harassment, felt-unwell, incomplete RTT pathway counts, follow-up ratio,
+  Crohn's emergency admissions, readmission-after-fracture) were higher_is_better=true
+  from the loader's positiveUp-null default; of_of0061 + of_of0084 raw survey sub-scores
+  (0-10, high good) were false. All fixed. of_of1xxx 'OF score 1-4' confirmed CORRECT as
+  false (OF convention inverts name semantics). Loader default note: mhso meta positiveUp
+  null must not default true.
+- [x] VOLUME/CONTEXT SCORING: pure volumes (count/wte/gbp/gbp_m/m2) and casemix shares
+  were being distress-scored vs median (small trust = 'worse'). New unit class 'share'
+  added (org-output shares, PFI share, WL demographic shares, casemix %s reclassified);
+  view scores position 0 for standard-less context units.
+- [x] dm01_6wk standard 1 → 5 (the 2025/26 operational planning standard the drill copy
+  already stated). RESULT: RJ7 5.6% → position 0.05, distress 3, STABLE; RD1 at the median
+  17.0% → 71 serious-with-worsening; RA9 39.4% → 100 serious; per-metric distribution now
+  33 stable / 32 watch / 69 serious. Whole-estate severity pyramid: 76% stable / 8% watch /
+  15% serious / 1.2% near-failure (was heavily distorted both directions).
+- [x] QA polarity guard added (qa_checks.py 'polarity:name_vs_direction'): name-keyword vs
+  higher_is_better sweep on all 445 defs, OF-score/segment and context units excluded;
+  currently 0 suspects. QA 87 checks 0 fail.
+- [x] Client sweep: all direction-sensitive UI (natWorsePct, goodCol, spc, heatmap
+  colourers, drill arrows) reads higher_is_better from data — no app changes needed.
+  Test 01 updated (asserted the removed KPMG mark; now asserts wordmark + KPMG absence).
+  Suite 32/32.
