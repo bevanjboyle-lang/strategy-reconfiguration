@@ -62,7 +62,8 @@ function adjustedOverride(mvId){return mvId?overrides.find(x=>x.metric_value_id=
 function orgRows(){return rows.filter(r=>r.organisation_id===sel);}
 function killCharts(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
 function orgName(){return (orgById[sel]||{}).name||'';}
-function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:c;}
+const SPEC_X={X01:'Total (all specialties)',X02:'Other · medical services',X03:'Other · mental health',X04:'Other · surgical services',X05:'Other · other services',X06:'Other · paediatric services',C_999:'Other'};
+function specName(c){const s=specs.find(x=>x.code===c);return s?s.name:(SPEC_X[c]||c);}
 /* ===== Generic trust × row heatmap (the RTT-by-specialty pattern, reusable) ===== */
 function hmGrid(rowsArr,cellFn,colFn,fmFn,clickFn){
   let t=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th title="${escAttr(trustShort(tc))}">${tc}</th>`).join('')+`</tr></thead><tbody>`;
@@ -77,7 +78,9 @@ function hmPerfCol(vals,redLow){const nz=vals.filter(v=>v!=null);const mn=nz.len
   return v=>{if(v==null)return{bg:'#e7ecf2',fg:'#9aa0af'};let t=(v-mn)/((mx-mn)||1);if(redLow)t=1-t;return{bg:d3.interpolateRgb('#166f4d','#b3261e')(t),fg:'#fff'};};}
 const kfmt=v=>v==null?'':Math.abs(v)>=10000?(Math.round(v/1000)+'k'):Math.abs(v)>=1000?((Math.round(v/100)/10)+'k'):Math.round(v).toLocaleString();
 const pctfmt=v=>v==null?'':(v>0?'+':'')+(Math.round(v*10)/10)+'%';
-function prettySlug(s){return String(s).replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());}
+function prettySlug(s){let t=String(s).replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());
+  if(/^Emergency departments are a consultant/.test(t))t='Emergency department (consultant led)';
+  return t;}
 
 const BSW_SLUG='nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
 let SYSTEMS=[],TRUSTMETA={},SITES=[],CQC={};
@@ -753,7 +756,7 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
   h+=`<div class="card"><div class="h3">Theatre, outpatient & diagnostic assets</div><div class="cap">Latest position by site</div><table class="dt"><thead><tr><th>Site</th><th class="num">Theatres</th><th class="num">OP rooms</th><th class="num">CT</th><th class="num">MRI</th><th class="num">Endo</th></tr></thead><tbody>`;
   sites.forEach(s=>{const g=m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code===m);return r?Math.round(r.value):0;};h+=`<tr><td>${esc(s.name)}</td><td class="num">${g('theatres')}</td><td class="num">${g('op_rooms')}</td><td class="num">${g('ct_scanners')}</td><td class="num">${g('mri_scanners')}</td><td class="num">${g('endoscopy_rooms')}</td></tr>`;});
   h+=`</tbody></table></div></div>`;
-  }else{h+=covNote('Per-site bed, occupancy and theatre/diagnostic asset detail is loaded for the flagship system; national site-level ingestion is scheduled (WP2).');}
+  }else{h+=covNote('Per-site bed, occupancy and theatre/diagnostic asset detail carries local data for the flagship system. National publications report beds and performance at trust level; ERIC (Estate page) is the site-grain national source.');}
   v.innerHTML=h;
   const cols={};bedSites.forEach((s,i)=>cols[s.id]=['#1f3a78','#44639f','#7c93c4','#b45309'][i%4]);
   const months=[...new Set(f.filter(x=>x.metric_code==='occupancy_pct').map(x=>x.period))].sort();
@@ -893,7 +896,9 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
           nccRows.forEach(r=>{const wp=natWorsePct(r);const dv=Number(r.value)-100;h+=`<tr${r.metric_code==='ncc_index_total'?' style="font-weight:700"':''}><td>${esc(r.metric_name.replace('Cost index: ','').replace(' (NCCI, 100 = expected)',''))}</td><td class="num" style="color:${dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${fmt(r.value,'score')}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
           h+=`</tbody></table></div>`;}
         if(bmRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Financial ratios vs England</div><div class="cap" style="padding:2px 14px 0">Latest audited year · every English trust benchmarked</div><table class="dt"><thead><tr><th>Ratio</th><th class="num">This trust</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
-          bmRows.forEach(r=>{const wp=natWorsePct(r);h+=`<tr onclick="openDrill('${sel}','${r.metric_code}')" style="cursor:pointer"><td>${esc(r.metric_name)}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+          bmRows.forEach(r=>{const wp=natWorsePct(r);let med=r.nm_value;
+            if(med==null){const all=rows.filter(x=>x.metric_code===r.metric_code&&x.org_type==='acute_trust'&&!x.service_id&&x.value!=null).map(x=>Number(x.value)).sort((a,b)=>a-b);if(all.length>=10)med=all[Math.floor(all.length/2)];}
+            h+=`<tr onclick="openDrill('${sel}','${r.metric_code}')" style="cursor:pointer"><td>${esc(r.metric_name)}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${med!=null?fmt(med,r.unit):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
           h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Open any row for the full drill: trend, distribution and provenance.</div></div>`;}
         h+=`</div>`;}
     }
@@ -1008,7 +1013,9 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
   const svOrg=grp?focusTrust():sel;const svRows=NSS.map(n=>{const r=rows.find(x=>x.organisation_id===svOrg&&x.metric_code===n[0]&&!x.service_id);return r?{lab:n[1],r}:null;}).filter(Boolean);
   if(svRows.length){
     h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Staff survey · ${esc((orgById[svOrg]||{}).code||'')}${grp?' (one trust shown — switch organisation above for others)':''}</div><div class="cap" style="padding:2px 14px 0">NHS Staff Survey 2025 · People Promise elements, 0-10 · national benchmark</div><table class="dt"><thead><tr><th>Theme</th><th class="num">Score</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
-    svRows.forEach(x=>{const wp=natWorsePct(x.r);h+=`<tr onclick="openDrill('${svOrg}','${x.r.metric_code}')" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="num" style="font-weight:600;color:${color(x.r.distress)}">${fmt(x.r.value,'score')}</td><td class="num muted">${x.r.nm_value!=null?fmt(x.r.nm_value,'score'):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+    svRows.forEach(x=>{const wp=natWorsePct(x.r);let med=x.r.nm_value;
+      if(med==null){const all=rows.filter(r2=>r2.metric_code===x.r.metric_code&&r2.org_type==='acute_trust'&&!r2.service_id&&r2.value!=null).map(r2=>Number(r2.value)).sort((a,b)=>a-b);if(all.length>=10)med=all[Math.floor(all.length/2)];}
+      h+=`<tr onclick="openDrill('${svOrg}','${x.r.metric_code}')" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="num" style="font-weight:600;color:${color(x.r.distress)}">${fmt(x.r.value,'score')}</td><td class="num muted">${med!=null?fmt(med,'score'):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
     h+=`</tbody></table></div><div class="card"><div class="h3">Survey vs national median</div><div class="cap">0-10 theme scores</div><div class="chartbox tall"><canvas id="wfsvy"></canvas></div></div></div>`;}
   v.innerHTML=h;countUps();
   const wfBars=wfRows.filter(sg=>gv(sg.code,'wte')!=null);
