@@ -448,3 +448,35 @@ the WAU?"). Findings, verified against lake + serving:
   DARS decision if competing with MH specialty compartments commercially, terms check
   before any national re-serving of MH-only values.
 - Gate 30 passed + 2 retry-flaky (known load-sensitive pair); live verified with screenshot.
+
+## Run record — 10 Jul 2026 (evening): the open Model Health System rip Codex faked (9a6290a)
+Bevan: Codex "took me through a whole process of telling me it was ripping all the data...
+turns out it didn't do any of it." Asked me to do the open-MHS rip via the public API.
+- CONFIRMED the open portal open.model.nhs.uk is PUBLIC, no auth: a disclaimer page with an
+  anonymous "Continue" sets an mh_auth cookie for a public session. Codex never touched it
+  (its lake entry = one landing.html).
+- Reverse-engineered the API (bundle /bundles/react-app): /data/metric/headline per
+  compartment gives metric ids + rich definitions; /data/chart/getchartdataforpolarandstack
+  with those ids returns EVERY provider's value per metric. In-page fetch with the app's own
+  header set (modelhospitalenvironment etc, mirrored from a captured request) works; bare
+  curl/fetch gets 500 (needs those headers) and adding them cross-context preflights — so the
+  harvester runs fetches inside the Playwright page context.
+- RIP (mhs_rip2.js): walked all 40 compartments (2 Prevention, 27 acute specialties, 3 People,
+  2 Care Settings, 2 Policy Priorities, 3 Clinical Support, 1 Corporate) → 40,748 national
+  data points, 338 distinct metrics, 118 acute trusts (233 orgs incl MH/community), latest
+  FY24/25 + recent months. Cost per WAU across 22 specialties for every trust — the crown jewel.
+- LOAD (load_mhso_open.py, tag #mhso-v1): specialty-structured measures (cost per WAU,
+  expenditure, WAU output, staff cost, staff FTE) → sr_fact 12,131 rows / 5 metric_codes /
+  114 trusts / 52 specialties, provider matched by normalised name. Everything else →
+  sr_metric_values 19,954 rows across 188 catalogue metrics, subdomain mhs_open_<compartment>,
+  surfaces automatically in the Explorer. RD1 cardiology £4,096/WAU verified == authorised
+  extract. 0 dupes.
+- APP (9a6290a): Finance page now leads with "Productivity · cost per WAU by specialty · open
+  Model Health System" — a trust×specialty heatmap (diverging around ~£3-5.5k) that works for
+  EVERY system (Devon verified: RA9/RH8/RK9 × 22 specialties). The old BSW-only extract
+  specialty heatmap removed; the authorised extract now contributes only its deeper resource
+  split (drugs/CNST/blood/devices/depreciation/support non-pay per WAU) as flagship bonus.
+- Serving: 445 defs (429 populated, was 252), 222,443 obs, 449,699 fact rows, matview status
+  49,044 (watch vs 60k boot cap — raise if it climbs). Freshness 41 families; QA 86 checks 0 fail.
+- Gate 30 passed + 2 retry-flaky (known pair). Note: mhs_rip2.js + mhs_compartments.json in
+  /tmp/wp2 are the reproducible harvester; re-run needs the Playwright browser + open portal.
