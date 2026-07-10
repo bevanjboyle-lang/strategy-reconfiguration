@@ -904,14 +904,34 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
         h+=`</div>`;}
     }
   }else{h+=covNote('Audited annual accounts (TAC) have not been published for this organisation.');}
-  /* --- Model Hospital authorised extract · WAU productivity (trusts holding the extract) --- */
+  /* --- Open Model Health System · national WAU productivity by specialty (every system) --- */
+  const wauF=f.filter(x=>x.metric_code==='mhso_cost_per_wau'&&x.specialty_code);
+  if(wauF.length){
+    const wlp=latestPeriod(wauF);
+    const sysCodesW=sysTrusts().map(t=>t.code);
+    const wIdx={},wTot={};
+    wauF.forEach(x=>{if(x.period!==wlp)return;const o=orgById[x.organisation_id];if(!o)return;wIdx[o.code+'|'+x.specialty_code]=Number(x.value);
+      if(sysCodesW.includes(o.code))wTot[x.specialty_code]=(wTot[x.specialty_code]||0)+Number(x.value);});
+    const wSpecs=Object.keys(wTot).map(k=>({code:k,name:prettySlug(k),tot:wTot[k]})).sort((a,b)=>b.tot-a.tot);
+    if(wSpecs.length){
+      const cellCW=(tc,sc)=>{const val=wIdx[tc+'|'+sc];return val==null?null:val;};
+      // national mean per specialty for the diverging colour centre
+      const natMean={};wSpecs.forEach(s=>{const vs=[];Object.keys(wIdx).forEach(k=>{if(k.endsWith('|'+s.code))vs.push(wIdx[k]);});natMean[s.code]=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null;});
+      const colCW=v=>{if(v==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const allv=Object.values(wIdx);const lo=Math.min(...allv),hi=Math.max(...allv);const t=Math.max(0,Math.min(1,(v-3000)/(5500-3000)));return{bg:d3.interpolateRgb('#166f4d','#b3261e')(t),fg:'#fff'};};
+      h+=`<div class="eyebrow" style="margin-top:16px">Productivity · cost per weighted activity unit (WAU) by specialty · open Model Health System</div>`;
+      h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Cost per WAU by ${sysCodesW.length>1?'trust × ':''}specialty</div><div class="cap">£ per weighted activity unit, MFF adjusted · NHS England Open Model Health System, FY${finFY(wlp)} · every English acute trust · red = costlier per unit of casemix-weighted output</div>`;
+      h+=hmGrid(wSpecs,cellCW,colCW,v2=>v2==null?'':(v2>=1000?((Math.round(v2/100)/10)+'k'):Math.round(v2)),(oid,sc)=>`openFactDrill('finance','${oid}','${sc}','mhso_cost_per_wau')`,sysCodesW);
+      h+=`<div class="note" style="margin-top:8px">The Model Hospital productivity view, now national from the open data portal: what each casemix-weighted unit of activity costs, by specialty, for every trust. A red cell is a specialty where this provider spends more per weighted unit than most — the sharpest productivity and consolidation signal in the tool. Any cell opens the trust's series.</div></div>`;
+    }
+  }
+  /* --- Model Hospital authorised extract · trust-level resource split (flagship, deeper) --- */
   const mhsTrusts=sysTrusts().filter(t=>rows.some(r=>r.organisation_id===t.id&&r.metric_code==='cost_per_wau'&&r.confidence==='official'));
   if(mhsTrusts.length){
     const mval=(oid,code)=>{const r=rows.find(x=>x.organisation_id===oid&&x.metric_code===code&&!x.service_id);return r?Number(r.value):null;};
     const WAU_LINES=[['cost_per_wau','Cost per WAU (MFF adjusted)',1],['mhs_resource_cost_per_wau','Resource split cost per WAU',0],['mhs_drugs_cost_per_wau','Drugs per WAU',0],['mhs_cnst_cost_per_wau','Clinical negligence per WAU',0],['mhs_blood_products_cost_per_wau','Blood products per WAU',0],['mhs_medical_devices_cost_per_wau','Medical devices per WAU',0],['mhs_depreciation_per_wau','Depreciation per WAU',0],['mhs_support_nonpay_cost_per_wau','Support non-pay per WAU',0]];
     const CTX_LINES=[['mhs_wau_output','Cost-weighted output (WAUs)','count'],['mhs_acute_plics_expenditure','Expenditure in acute PLICS','gbp'],['mhs_acute_plics_share_of_opex','PLICS share of operating expenditure','pct'],['mhs_market_forces_factor','Market forces factor','ratio']];
-    h+=`<div class="eyebrow" style="margin-top:16px">Productivity · Model Hospital authorised extract</div>`;
-    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Cost per weighted activity unit · FY2024/25</div><div class="cap" style="padding:2px 14px 0">£ per WAU, MFF adjusted · authorised Model Hospital extract, flagship trusts · the open NCC cost index above is the published national benchmark for the same collection</div><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhsTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    h+=`<div class="eyebrow" style="margin-top:16px">Resource split per WAU · Model Hospital authorised extract (flagship depth)</div>`;
+    h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Cost per weighted activity unit, resource breakdown · FY2024/25</div><div class="cap" style="padding:2px 14px 0">£ per WAU, MFF adjusted · authorised Model Hospital extract · the specialty view above is national from the open portal; this adds the resource split held for the flagship trusts</div><table class="dt"><thead><tr><th style="min-width:220px"></th>`+mhsTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
     WAU_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
       h+=`<tr${l[2]?' style="font-weight:700"':''}><td>${l[1]}</td>`+mhsTrusts.map(t=>{const val=mval(t.id,l[0]);return `<td class="num">${val==null?'—':'£'+Math.round(val).toLocaleString()}</td>`;}).join('')+`</tr>`;});
     CTX_LINES.forEach(l=>{if(!mhsTrusts.some(t=>mval(t.id,l[0])!=null))return;
@@ -919,31 +939,6 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
         if(val!=null)s=l[2]==='gbp'?fmt(val/1e6,'gbp_m'):l[2]==='pct'?fmt(val,'pct'):l[2]==='ratio'?(Math.round(val*1000)/1000)+'':Math.round(val).toLocaleString();
         return `<td class="num" style="color:#5a6172">${s}</td>`;}).join('')+`</tr>`;});
     h+=`</tbody></table></div>`;
-    /* specialty cost per WAU heatmap (service-keyed extract rows) */
-    try{
-      if(!window.mhsSvcCache){
-        const mid=(rows.find(r=>r.metric_code==='mhs_specialty_cost_per_wau')||{}).metric_id;
-        let mid2=mid;
-        if(!mid2){const{data:md}=await sb.from('sr_metrics').select('id').eq('code','mhs_specialty_cost_per_wau').limit(1);mid2=md&&md[0]&&md[0].id;}
-        if(mid2){const[{data:sv},{data:svc}]=await Promise.all([
-          sb.from('sr_metric_values').select('organisation_id,service_id,value,period').eq('metric_id',mid2).not('service_id','is',null).limit(2000),
-          sb.from('sr_services').select('id,name')]);
-          const nm={};(svc||[]).forEach(s2=>{nm[s2.id]=s2.name;});
-          window.mhsSvcCache=(sv||[]).map(x=>({oid:x.organisation_id,svc:nm[x.service_id]||'Service',value:Number(x.value),period:x.period}));}
-        else window.mhsSvcCache=[];}
-      const msv=window.mhsSvcCache.filter(x=>mhsTrusts.some(t=>t.id===x.oid));
-      if(msv.length){
-        const latestBy={};msv.forEach(x=>{const k=x.oid+'|'+x.svc;if(!latestBy[k]||x.period>latestBy[k].period)latestBy[k]=x;});
-        const svcTot={};Object.values(latestBy).forEach(x=>{svcTot[x.svc]=(svcTot[x.svc]||0)+x.value;});
-        const rowsHm=Object.keys(svcTot).map(k=>({code:k,name:k,tot:svcTot[k]})).sort((a,b)=>b.tot-a.tot);
-        const mhsCodes=mhsTrusts.map(t=>t.code);
-        const cellW=(tc,svcName)=>{const t=mhsTrusts.find(x=>x.code===tc);const e=t&&latestBy[t.id+'|'+svcName];return e?e.value:null;};
-        const wVals=[];rowsHm.forEach(s=>mhsCodes.forEach(tc=>{const c=cellW(tc,s.code);if(c!=null)wVals.push(c);}));
-        h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Specialty cost per WAU by trust</div><div class="cap">£ per WAU, MFF adjusted · Model Hospital authorised extract · darker = costlier per weighted unit</div>`;
-        h+=hmGrid(rowsHm,cellW,hmSeq(wVals),v2=>v2==null?'':(v2>=1000?((Math.round(v2/100)/10)+'k'):Math.round(v2)),null,mhsCodes);
-        h+=`<div class="note" style="margin-top:8px">This is the Model Hospital specialty productivity view, held for the flagship trusts from the authorised extract. Extending it to more systems needs a further authorised extract; the national cost picture by service line comes from the open NCC data above.</div></div>`;
-      }
-    }catch(e){console.warn('mhs specialty wau failed',e);}
   }
   /* --- flagship in-year model (BSW demo), retained below the audited accounts --- */
   const hasFin=f.some(x=>x.organisation_id===sel&&x.line_code!=null);
