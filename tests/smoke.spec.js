@@ -23,7 +23,7 @@ async function nav(page, label) {
 
 test.describe('System Intelligence — smoke (E1)', () => {
 
-  test('01 loads: title, KPMG mark, no console errors', async ({ page }) => {
+  test('01 loads: title, wordmark, no console errors', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => {
@@ -31,7 +31,9 @@ test.describe('System Intelligence — smoke (E1)', () => {
     });
     await boot(page);
     await expect(page).toHaveTitle(/System Intelligence/);
-    await expect(page.locator('aside.side svg.kpmg')).toBeVisible();
+    await expect(page.locator('aside.side .brand .prod')).toContainText('System Intelligence');
+    await expect(page.locator('aside.side svg.kpmg')).toHaveCount(0); // KPMG mark removed by request
+    expect(await page.title()).not.toMatch(/KPMG/);
     await page.waitForTimeout(3000); // let map/charts settle so late errors surface
     const real = errors.filter((t) => !NOISE.test(t));
     expect(real, 'unexpected console errors:\n' + real.join('\n')).toEqual([]);
