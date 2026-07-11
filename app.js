@@ -5,14 +5,14 @@ const sb=window.supabase.createClient(SB_URL,SB_KEY);
 const TOPO_URL="https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/gbr.topo.json";
 const NAV=[["START",[["home","Start"],["england","England overview"]]],
 ["SYSTEM",[["overview","Overview"],["drivers","Priority drivers"]]],
-["DOMAINS",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
+["DOMAINS",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["value","Cost & value"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
 ["DATA EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
 ["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
 ["DECIDE",[["decide","Decision journey"]]]];
 /* E1 · entry-flow state: nothing is system-committed until the user chooses (door B, resume chip,
    in-app picker or a ?system= deep link). Neutral surfaces (England overview + data explorer) never commit. */
-const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','workforce','population','access','modelling','options','assurance','decide'];
+const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','value','workforce','population','access','modelling','options','assurance','decide'];
 const NEUTRAL_STAGES=['england','xentity','xmetric','xgrid'];
 let appReady=false,sysCommitted=false,mapEngland=false,pendingOrg=null;
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
@@ -193,7 +193,7 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey'};
+const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey',value:'Cost & value'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.body.classList.toggle('home',stage==='home');document.body.classList.toggle('neutral',!sysCommitted&&stage!=='home');
   const scope=stage==='home'?'Choose how to begin':(!sysCommitted?'England · every acute trust':`${sysLabel()} · ${o.type==='acute_trust'?trustShort(o.code):'Whole system'}`);
@@ -201,7 +201,7 @@ function render(){killCharts();const o=orgById[sel]||{};
   const ph=document.getElementById('printhead');if(ph)ph.innerHTML=`System Intelligence — ${esc(system()?system().name:'')}<small>${esc(TITLES[stage]||'')} · ${esc(o.name||'')} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · source-tagged data — modelled and estimated figures are labelled</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
+  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,value:renderValue,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
   mapEngland=(stage==='england');
   fn(v);
 }
@@ -969,6 +969,142 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
   }
 }
 
+/* ===== COST & VALUE · opportunity to the national median, quantified ===== */
+let wauNat=null;
+async function fetchWauNat(){if(wauNat)return wauNat;
+  try{const{data,error}=await sb.from('sr_fact').select('organisation_id,metric_code,specialty_code,period,value').in('metric_code',['mhso_cost_per_wau','mhso_specialty_wau','mhso_specialty_expenditure']).not('specialty_code','is',null).order('period',{ascending:false}).limit(12000);if(error)throw error;wauNat=data||[];}
+  catch(e){console.warn('wau national fetch failed',e);wauNat=[];}return wauNat;}
+async function renderValue(v){v.innerHTML='<div class="loading">Sizing the opportunity…</div>';
+  const[f,wn]=await Promise.all([ensure('finance'),fetchWauNat()]);
+  const selO=orgById[sel]||{};const tIds=selO.type==='acute_trust'?[sel]:sysTrusts().map(t=>t.id);const grp=tIds.length>1;
+  const idByCode=tacIdByCode();
+  const serOf=(oid,code)=>{const mid=idByCode[code];return mid?(series[oid+'|'+mid]||[]):[];};
+  const stRow=(oid,code)=>rows.find(r=>r.organisation_id===oid&&r.metric_code===code&&!r.service_id&&r.value!=null);
+  const fys=[...new Set(tIds.flatMap(o=>serOf(o,'tac_income_total').map(x=>x.period)))].sort();const lastFy=fys[fys.length-1];
+  const atO=(oid,code,p)=>{const e=serOf(oid,code).find(x=>x.period===p);return e&&e.value!=null?Number(e.value):null;};
+  const grossPay=oid=>{const s=atO(oid,'tac_pay_salaries',lastFy),b=atO(oid,'tac_pay_bank',lastFy),a=atO(oid,'tac_pay_agency',lastFy);return (s!=null||b!=null||a!=null)?(s||0)+(b||0)+(a||0):null;};
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  let h=`<h1 class="serif">Cost &amp; value</h1><div class="lead">Every lens on this page sizes the same question in pounds: if each service ran at the national mid-point, what would be released? Sized from live published data, specialty by specialty.</div>`;
+  /* KPI strip */
+  const cpwRows=tIds.map(o=>stRow(o,'mhso_cost_per_wau_mff_adjusted')).filter(Boolean);
+  const cpwV=avg(cpwRows.map(r=>Number(r.value))),cpwNm=cpwRows.length?avg(cpwRows.map(r=>Number(r.nm_value))):null;
+  const nciRows=tIds.map(o=>stRow(o,'ncc_index_total')).filter(Boolean);const nciV=avg(nciRows.map(r=>Number(r.value)));
+  const pgRows=tIds.map(o=>stRow(o,'mhso_productivity_growth_estimate_year_to_date_co')).filter(Boolean);const pgV=avg(pgRows.map(r=>Number(r.value)));
+  const agTot=tIds.reduce((s,o)=>s+(atO(o,'tac_pay_agency',lastFy)||0),0),gpTot=tIds.reduce((s,o)=>s+(grossPay(o)||0),0);
+  const agSh=gpTot?100*agTot/gpTot:null;
+  const agNmR=tIds.map(o=>stRow(o,'tac_agency_share_pay')).filter(Boolean)[0];const agNm=agNmR&&agNmR.nm_value!=null?Number(agNmR.nm_value):null;
+  h+=`<div class="grid kpis">`+
+    kpi('Cost per WAU',cpwV!=null?'£'+Math.round(cpwV).toLocaleString():'—','',cpwNm!=null?'national median £'+Math.round(cpwNm).toLocaleString()+(grp?' · avg of '+cpwRows.length+' trusts':''):'MFF adjusted, open MHS',cpwV!=null&&cpwNm!=null&&cpwV>cpwNm?'#b45309':'#1f3a78')+
+    kpi('Cost index, all services',nciV!=null?fmt(nciV,'score'):'—','','NCC: 100 = expected for the case mix',nciV>102?'#b45309':'#166f4d')+
+    kpi('Productivity growth',pgV!=null?(pgV>0?'+':'')+(Math.round(pgV*10)/10)+'%':'—','','year to date vs previous year, MHS estimate',pgV<0?'#b3261e':'#166f4d')+
+    kpi('Agency share of pay',agSh!=null?fmt(agSh,'pct'):'—','',agNm!=null?'national median '+fmt(agNm,'pct')+' · audited accounts':'audited accounts',agSh!=null&&agSh>(agNm!=null?agNm:3)?'#b45309':'#166f4d')+
+  `</div>`;
+  /* Lens A · specialty productivity (open MHS WAU) */
+  const lpW=latestPeriod(wn.filter(x=>x.metric_code==='mhso_cost_per_wau'));
+  const cpw={},wauO={},expd={};
+  wn.forEach(x=>{if(x.period!==lpW||!x.specialty_code||/_as_a_of_/.test(x.specialty_code))return;const k=x.organisation_id+'|'+x.specialty_code;const val=Number(x.value);
+    if(x.metric_code==='mhso_cost_per_wau'){if(val>0)cpw[k]=val;}else if(x.metric_code==='mhso_specialty_wau'){if(val>0)wauO[k]=val;}else if(val>0)expd[k]=val;});
+  const bySpec={};Object.keys(cpw).forEach(k=>{const s=k.slice(k.indexOf('|')+1);(bySpec[s]=bySpec[s]||[]).push(cpw[k]);});
+  const medSpec={};Object.keys(bySpec).forEach(s=>{const a=bySpec[s].slice().sort((x,y)=>x-y);medSpec[s]=a.length>=10?a[Math.floor(a.length/2)]:null;});
+  const wEff=k=>wauO[k]!=null?wauO[k]:(expd[k]!=null&&cpw[k]>0?expd[k]*1e6/cpw[k]:null);
+  const specAgg={},oppByCell={};let wauOppTot=0,wauSpendTot=0;
+  Object.keys(cpw).forEach(k=>{const i=k.indexOf('|');const o=k.slice(0,i),s=k.slice(i+1);
+    if(!tIds.includes(o)||medSpec[s]==null)return;const w=wEff(k);if(w==null)return;
+    const spend=expd[k]!=null?expd[k]:cpw[k]*w/1e6;
+    const opp=Math.max(0,(cpw[k]-medSpec[s])*w/1e6);
+    const e=specAgg[s]=specAgg[s]||{w:0,cw:0,opp:0,spend:0};e.w+=w;e.cw+=cpw[k]*w;e.opp+=opp;e.spend+=spend;
+    oppByCell[o+'|'+s]=opp;wauOppTot+=opp;wauSpendTot+=spend;});
+  const wauRows=Object.keys(specAgg).map(s=>({code:s,name:prettySlug(s),...specAgg[s],cpwAvg:specAgg[s].w?specAgg[s].cw/specAgg[s].w:null,med:medSpec[s]})).sort((a,b)=>b.opp-a.opp);
+  /* Lens B · NCC service-line excess vs expected cost */
+  const lpN=latestPeriod(f.filter(x=>x.metric_code==='ncc_service_index'));
+  const nIdx={},nSp={};
+  f.forEach(x=>{if(!x.specialty_code||x.period!==lpN||!tIds.includes(x.organisation_id))return;
+    if(x.metric_code==='ncc_service_index')nIdx[x.organisation_id+'|'+x.specialty_code]=Number(x.value);
+    if(x.metric_code==='ncc_service_spend')nSp[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
+  const svcAgg={};let nccOppTot=0;
+  Object.keys(nSp).forEach(k=>{const s=k.slice(k.indexOf('|')+1);const idx=nIdx[k],sp=nSp[k];if(!(sp>0))return;
+    const ex=(idx!=null&&idx>100)?sp*(1-100/idx):0;
+    const e=svcAgg[s]=svcAgg[s]||{spend:0,exc:0,iw:0,ww:0};e.spend+=sp;e.exc+=ex;if(idx!=null){e.iw+=idx*sp;e.ww+=sp;}nccOppTot+=ex;});
+  const svcRows=Object.keys(svcAgg).map(s=>({code:s,name:prettySlug(s),...svcAgg[s],idx:svcAgg[s].ww?svcAgg[s].iw/svcAgg[s].ww:null})).sort((a,b)=>b.exc-a.exc);
+  /* Lens C · agency above the national median share */
+  const agRows=tIds.map(oid=>{const g=grossPay(oid),a=atO(oid,'tac_pay_agency',lastFy);if(g==null||a==null||!g)return null;
+    const sh=100*a/g;const r=stRow(oid,'tac_agency_share_pay');const nm=r&&r.nm_value!=null?Number(r.nm_value):agNm;
+    return nm==null?null:{oid,name:trustShort((orgById[oid]||{}).code),sh,nm,g,a,ex:Math.max(0,(sh-nm)/100*g)};}).filter(Boolean);
+  const agOppTot=agRows.reduce((s,x)=>s+x.ex,0);
+  /* Lens D · sickness above the national median */
+  const skRows=tIds.map(oid=>{const r=stRow(oid,'sickness_rate');const g=grossPay(oid);if(!r||g==null)return null;
+    const vv=Number(r.value),nm=r.nm_value!=null?Number(r.nm_value):null;if(nm==null)return null;
+    return {oid,name:trustShort((orgById[oid]||{}).code),v:vv,nm,g,ex:Math.max(0,(vv-nm)/100*g)};}).filter(Boolean);
+  const skOppTot=skRows.reduce((s,x)=>s+x.ex,0);
+  /* Lens E · estates energy cost above the national median per m² */
+  const em={};rows.forEach(r=>{if(r.org_type!=='acute_trust'||r.service_id||r.value==null)return;
+    if(r.metric_code==='estate_energy_cost')(em[r.organisation_id]=em[r.organisation_id]||{}).e=Number(r.value);
+    if(r.metric_code==='estate_gia')(em[r.organisation_id]=em[r.organisation_id]||{}).g=Number(r.value);});
+  const enAll=Object.values(em).filter(x=>x.e!=null&&x.g>0).map(x=>x.e*1e6/x.g).sort((a,b)=>a-b);
+  const medEn=enAll.length>=10?enAll[Math.floor(enAll.length/2)]:null;
+  const enRows=tIds.map(oid=>{const x=em[oid];if(!x||x.e==null||!(x.g>0)||medEn==null)return null;
+    const per=x.e*1e6/x.g;return {oid,name:trustShort((orgById[oid]||{}).code),per,g:x.g,e:x.e,ex:Math.max(0,(per-medEn)*x.g/1e6)};}).filter(Boolean);
+  const enOppTot=enRows.reduce((s,x)=>s+x.ex,0);
+  /* summary: the prize, sized */
+  const anyLens=wauRows.length||svcRows.length||agRows.length||skRows.length||enRows.length;
+  if(!anyLens){h+=covNote('Cost and value lenses need the published costing, accounts and estates returns for this organisation; none are held yet.');v.innerHTML=h;return;}
+  const tile=(label,val,basis)=>`<div class="card" style="padding:12px 14px"><div class="l" style="font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:#6a7183">${label}</div><div style="font-family:Georgia,serif;font-size:23px;font-weight:700;color:${val>0.05?'#b3261e':'#166f4d'};margin:2px 0 3px">${val!=null?fmt(val,'gbp_m'):'—'}</div><div class="s" style="font-size:10.5px;color:#6a7183;line-height:1.45">${basis}</div></div>`;
+  h+=`<div class="eyebrow" style="margin-top:16px">The prize, sized · gap to the national median by lens</div>`;
+  h+=`<div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">`+
+    (wauRows.length?tile('Specialty productivity',wauOppTot,'excess over median £/WAU × output, '+wauRows.length+' specialties'):'')+
+    (svcRows.length?tile('Service-line costs',nccOppTot,'actual minus expected cost where index &gt; 100, NCC'):'')+
+    (agRows.length?tile('Agency premium',agOppTot,'agency share above the national median × pay bill'):'')+
+    (skRows.length?tile('Sickness absence',skOppTot,'absence above the national median × pay bill'):'')+
+    (enRows.length?tile('Estates energy',enOppTot,'energy £/m² above the national median × floor area'):'')+
+  `</div>`;
+  h+=`<div class="note" style="margin:2px 2px 14px"><b>These lenses overlap and must not be added together.</b> The WAU and service-line lenses price much of the same activity two ways; agency and sickness sit inside the pay costs that both cost lenses already count. Each is an indicative size of prize at national mid-table, not a deliverable savings target.</div>`;
+  /* Lens A card */
+  if(wauRows.length){
+    const shown=wauRows.slice(0,15);
+    h+=`<div class="eyebrow">Lens 1 · Specialty productivity · open Model Health System, FY${finFY(lpW)}</div>`;
+    h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Opportunity to the median £/WAU by specialty${wauRows.length>15?' · top 15 of '+wauRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Cost per weighted activity unit vs the median of every reporting English trust, MFF adjusted${grp?' · system trusts combined':''} · opportunity = excess £/WAU × WAU output</div><table class="dt"><thead><tr><th>Specialty</th><th class="num">Spend £m</th><th class="num">£/WAU</th><th class="num">National median</th><th class="num">Gap</th><th class="num">Opportunity</th></tr></thead><tbody>`;
+    shown.forEach(x=>{const gapP=x.cpwAvg&&x.med?100*(x.cpwAvg/x.med-1):null;
+      h+=`<tr${grp?'':` onclick="openFactDrill('finance','${tIds[0]}','${x.code}','mhso_cost_per_wau')" style="cursor:pointer"`}><td>${esc(x.name)}</td><td class="num muted">${fmt(x.spend,'gbp_m')}</td><td class="num" style="font-weight:600">£${Math.round(x.cpwAvg).toLocaleString()}</td><td class="num muted">£${Math.round(x.med).toLocaleString()}</td><td class="num" style="color:${gapP>10?'#b3261e':gapP>0?'#b45309':'#166f4d'}">${gapP!=null?(gapP>0?'+':'')+(Math.round(gapP*10)/10)+'%':'—'}</td><td class="num" style="font-weight:700;color:${x.opp>0.05?'#b3261e':'#166f4d'}">${fmt(x.opp,'gbp_m')}</td></tr>`;});
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Reads on acute PLICS costed activity for the ${Object.keys(bySpec).length} specialties Model Hospital publishes. Case-mix weighting removes most, not all, of the fair reasons costs differ; treat each line as a question to open, not a verdict.</div></div>`;
+    if(grp){
+      const hmRows=wauRows.filter(x=>x.opp>0.05).slice(0,14);
+      if(hmRows.length){
+        const oppMax=Math.max(...hmRows.map(x=>x.opp),0.1);
+        const colOp=vv=>{if(vv==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.sqrt(Math.min(1,vv/oppMax));return{bg:d3.interpolateRgb('#fdf3f1','#b3261e')(t),fg:t>0.55?'#fff':'#7a1712'};};
+        const cellOp=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const val=oppByCell[oid+'|'+sc];return val==null?null:val;};
+        h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Where the opportunity sits, trust by specialty</div><div class="cap">£m to the national median £/WAU · darker red = more of the prize · blank = at or better than median, or not published</div>`;
+        h+=hmGrid(hmRows,cellOp,colOp,v2=>v2==null?'':v2<0.05?'·':(Math.round(v2*10)/10),(oid,sc)=>`openFactDrill('finance','${oid}','${sc}','mhso_cost_per_wau')`);
+        h+=`<div class="note" style="margin-top:8px">Any cell opens that trust's cost per WAU series. Concentration in one column is a trust conversation; a red row across trusts is a specialty conversation, and often the stronger reconfiguration signal.</div></div>`;}}
+  }else h+=covNote('Specialty cost per WAU is not published for this organisation on the open Model Health System.');
+  /* Lens B card */
+  if(svcRows.length){
+    const shown=svcRows.filter(x=>x.exc>0.05).slice(0,12);
+    h+=`<div class="eyebrow">Lens 2 · Service-line costs · National Cost Collection ${finFY(lpN)}</div>`;
+    h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Actual cost above expected, by service line${shown.length<svcRows.filter(x=>x.exc>0.05).length?' · top 12':''}</div><div class="cap" style="padding:2px 14px 0">Excess = spend × (1 − 100/index) where the MFF-adjusted cost index runs above 100${grp?' · system trusts combined':''}</div><table class="dt"><thead><tr><th>Service line</th><th class="num">Spend £m</th><th class="num">Cost index</th><th class="num">Excess vs expected</th></tr></thead><tbody>`;
+    shown.forEach(x=>{h+=`<tr${grp?'':` onclick="openFactDrill('finance','${tIds[0]}','${x.code}','ncc_service_index')" style="cursor:pointer"`}><td>${esc(x.name)}</td><td class="num muted">${fmt(x.spend,'gbp_m')}</td><td class="num" style="font-weight:600;color:${x.idx>105?'#b3261e':'#191f2b'}">${x.idx!=null?fmt(x.idx,'score'):'—'}</td><td class="num" style="font-weight:700;color:#b3261e">${fmt(x.exc,'gbp_m')}</td></tr>`;});
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">The National Cost Collection prices every trust's activity against the national average cost for the same work. This lens counts only the services running above expected cost, so it is a different cut of much of the same money as Lens 1.</div></div>`;
+  }
+  /* Lens C + D cards */
+  if(agRows.length||skRows.length){
+    h+=`<div class="eyebrow">Lens 3 · Pay: agency premium and sickness absence</div><div class="two" style="margin-bottom:14px">`;
+    if(agRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Agency above the median share</div><div class="cap" style="padding:2px 14px 0">Audited accounts FY${lastFy?finFY(lastFy):''} · national median ${agNm!=null?fmt(agNm,'pct'):'—'} of gross pay</div><table class="dt"><thead><tr><th>Trust</th><th class="num">Agency £m</th><th class="num">Share</th><th class="num">Above median</th></tr></thead><tbody>`;
+      agRows.forEach(x=>{h+=`<tr><td>${esc(x.name)}</td><td class="num muted">${fmt(x.a,'gbp_m')}</td><td class="num" style="font-weight:600;color:${x.sh>x.nm?'#b45309':'#166f4d'}">${fmt(x.sh,'pct')}</td><td class="num" style="font-weight:700;color:${x.ex>0.05?'#b3261e':'#166f4d'}">${fmt(x.ex,'gbp_m')}</td></tr>`;});
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Premium over substantive cost is typically 40 to 100%, so roughly half of any excess agency spend is recoverable premium rather than workload.</div></div>`;}
+    if(skRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Sickness above the median</div><div class="cap" style="padding:2px 14px 0">NHS sickness absence statistics · national median ${skRows[0].nm!=null?fmt(skRows[0].nm,'pct'):'—'} · valued at the pay bill</div><table class="dt"><thead><tr><th>Trust</th><th class="num">Rate</th><th class="num">Median</th><th class="num">Cost of gap</th></tr></thead><tbody>`;
+      skRows.forEach(x=>{h+=`<tr><td>${esc(x.name)}</td><td class="num" style="font-weight:600;color:${x.v>x.nm?'#b45309':'#166f4d'}">${fmt(x.v,'pct')}</td><td class="num muted">${fmt(x.nm,'pct')}</td><td class="num" style="font-weight:700;color:${x.ex>0.05?'#b3261e':'#166f4d'}">${fmt(x.ex,'gbp_m')}</td></tr>`;});
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">A modelled value: each percentage point of absence above the median is priced at 1% of the pay bill, the cost of paid time not worked before any backfill.</div></div>`;}
+    h+=`</div>`;}
+  /* Lens E card */
+  if(enRows.length){
+    h+=`<div class="eyebrow">Lens 4 · Estates running costs · ERIC</div>`;
+    h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Energy cost above the median per square metre</div><div class="cap" style="padding:2px 14px 0">All utilities vs the national median £${medEn!=null?Math.round(medEn):'—'}/m² across ${enAll.length} trusts</div><table class="dt"><thead><tr><th>Trust</th><th class="num">Energy £m</th><th class="num">£/m²</th><th class="num">Above median</th></tr></thead><tbody>`;
+    enRows.forEach(x=>{h+=`<tr><td>${esc(x.name)}</td><td class="num muted">${fmt(x.e,'gbp_m')}</td><td class="num" style="font-weight:600;color:${x.per>medEn?'#b45309':'#166f4d'}">£${Math.round(x.per)}</td><td class="num" style="font-weight:700;color:${x.ex>0.05?'#b3261e':'#166f4d'}">${fmt(x.ex,'gbp_m')}</td></tr>`;});
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Old, poorly configured estate burns money as well as constraining care models, which makes this lens double as reconfiguration evidence. Tariffs and estate age vary; treat as directional.</div></div>`;}
+  /* method */
+  h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How to read this page</div><div class="note" style="margin-top:6px">Every lens uses the same convention: value the gap to the national median, count nothing for services already at or better than it. That is deliberately conservative on ambition (top-quartile would be larger) and deliberately generous on deliverability (no trust closes every gap). All figures are derived first-time here from official published sources: the open Model Health System, the National Cost Collection, audited accounts, sickness statistics and ERIC. Nothing on this page is a plan; it is where the money says to look first.</div></div>`;
+  v.innerHTML=h;
+}
+
 /* ===== WORKFORCE ===== */
 async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
   const selOrg=orgById[sel]||{};
@@ -1611,7 +1747,7 @@ function openIssue(code){const i=issues.find(x=>x.code===code);if(!i)return;cons
     el.innerHTML=linked.map(o=>{const cs2=criteria.map(c=>({c,v:optCrit(o,c.code)})).filter(x=>x.v!=null);const hi=cs2.length?cs2.reduce((a,b)=>b.v>a.v?b:a):null,lo=cs2.length?cs2.reduce((a,b)=>b.v<a.v?b:a):null;const ts=(OC.tests||[]).filter(t=>t.option_id===o.id);const met=ts.filter(t=>['met','passed'].includes(t.status)).length,red=ts.filter(t=>['high_risk','unmet'].includes(t.status)).length;
       return `<div style="padding:5px 0;border-bottom:1px solid var(--line2)"><a href="#" style="font-weight:600" onclick="openOption('${o.id}');return false">${esc(optShort(o.title))}</a><div class="muted" style="font-size:11px">registered link (promoted AI draft carries this issue) → strongest ${hi?esc(hi.c.name)+' ('+hi.v+')':'—'} · weakest ${lo?esc(lo.c.name)+' ('+lo.v+')':'—'} → statutory tests ${met}/${ts.length} met${red?' · '+red+' high-risk':''}</div></div>`;}).join('');});}
 window.openIssue=openIssue;
-const FD_LABELS={rtt_18wk:'RTT 18-week %',rtt_incomplete:'Waiting list',rtt_52wk:'52-week breaches',rtt_completed_pathways:'Completed RTT pathways / month',beds_specialty_occupied:'Occupied overnight beds (quarterly)',ncc_service_index:'Cost index · 100 = expected',ncc_service_spend:'Service-line spend £m',medical_wte:'Doctors in post (WTE)'};
+const FD_LABELS={rtt_18wk:'RTT 18-week %',rtt_incomplete:'Waiting list',rtt_52wk:'52-week breaches',rtt_completed_pathways:'Completed RTT pathways / month',beds_specialty_occupied:'Occupied overnight beds (quarterly)',ncc_service_index:'Cost index · 100 = expected',ncc_service_spend:'Service-line spend £m',medical_wte:'Doctors in post (WTE)',mhso_cost_per_wau:'Cost per WAU £ (open MHS)'};
 async function openFactDrill(domain,orgId,specCode,metric){let f=await ensure(domain);
   if(metric==='beds_specialty_occupied'&&!f.some(x=>x.metric_code===metric&&x.organisation_id===orgId))f=f.concat(await fetchBedsSpec());
   const ser=f.filter(x=>x.organisation_id===orgId&&x.specialty_code===specCode&&x.metric_code===metric).sort((a,b)=>a.period<b.period?-1:1);const o=orgById[orgId];const unit=ser[0]?ser[0].unit:'';

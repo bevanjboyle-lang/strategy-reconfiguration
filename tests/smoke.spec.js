@@ -442,4 +442,19 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('.view')).toContainText(/mental health/);
   });
 
+  test('33 cost & value · lenses quantify the gap to national median', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=value');
+    await expect(page.locator('.view h1'), 'page lands via deep link').toContainText('Cost & value', { timeout: 35000 });
+    await expect(page.locator('.view .grid.kpis .card.kpi').first(), 'KPI strip renders').toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.view')).toContainText('The prize, sized', { timeout: 30000 });
+    await expect(page.locator('.view')).toContainText('Specialty productivity');
+    await expect(page.locator('.view')).toContainText('must not be added together'); // non-additivity warning is a contract
+    await expect(page.locator('.view table.dt').first()).toBeVisible();
+    await expect(page.locator('.view .hm').first(), 'trust x specialty opportunity heatmap (multi-trust system)').toBeVisible();
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();
+    await expect(page.locator('#nav button', { hasText: 'Cost & value' })).toBeVisible();
+  });
+
 });
