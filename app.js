@@ -1432,7 +1432,7 @@ async function renderAccess(v){
     <div class="mapui"><div class="chips" id="accmodes"></div><div class="chips" id="accacts"></div></div>
     <div class="maplegend" id="acclegend"></div></div>`;
   h+=`<div id="accKpis" style="margin-top:14px"></div>`;
-  h+=`<div class="two" style="margin-top:2px"><div class="card"><div class="h3">Sites in this configuration</div><div class="cap">This system's General Acute sites — untick here or click the pin on the map (community and cross-border sites stay available as candidates)</div><div id="accList"></div></div>`;
+  h+=`<div class="two" style="margin-top:2px"><div class="card"><div class="h3">Sites in this configuration</div><div class="cap">This system's General Acute sites — untick here or click the pin on the map (cross-border acute sites stay available as candidates)</div><div id="accList"></div></div>`;
   h+=`<div class="card"><div class="h3">Equity strip · mean minutes by deprivation decile</div><div class="cap">IMD decile 1 = most deprived · population-weighted</div><div class="chartbox"><canvas id="accEquity"></canvas></div></div></div>`;
   h+=`<div id="accTables"></div>`;
   h+=`<details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Method — ${routed?'routed':'estimated'} drive time</summary><div style="font-size:12.5px;color:var(--ink2);margin-top:10px;max-width:860px">${esc(A.method||'')}</div><div class="note">${routed?'Times are routed on the OpenStreetMap road network (OSRM).':'Estimated, not routed — the OSRM routed upgrade drops into this same file format.'} A hypothetical added site is always scored with the estimation model. The blue-light view scales displayed minutes by 0.75 as an indicative planning heuristic, map only, and is no substitute for a routed emergency profile.${A.generated?' · matrix generated '+esc((''+A.generated).slice(0,10)):''}</div></details>`;
@@ -1461,7 +1461,7 @@ function accInitMap(A,LF){
       'circle-stroke-width':1.6,'circle-stroke-color':'#fff'}});
     const pop=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10,maxWidth:'260px'});
     m.on('mouseenter','asites-c',e=>{m.getCanvas().style.cursor='pointer';const f=e.features[0];
-      pop.setLngLat(f.geometry.coordinates).setHTML(`<div style="font:600 12px/1.4 'IBM Plex Sans',sans-serif">${esc(f.properties.name)}</div><div style="font-size:10.5px;color:#6a7183">${f.properties.ga?'General Acute · click to close/restore':'candidate site (always available)'}</div>`).addTo(m);});
+      pop.setLngLat(f.geometry.coordinates).setHTML(`<div style="font:600 12px/1.4 'IBM Plex Sans',sans-serif">${esc(f.properties.name)}</div><div style="font-size:10.5px;color:#6a7183">${f.properties.ga?'General Acute · click to close/restore':'cross-border acute site (always available)'}</div>`).addTo(m);});
     m.on('mouseleave','asites-c',()=>{m.getCanvas().style.cursor=accAdding?'crosshair':'';pop.remove();});
     m.on('click','asites-c',e=>{const f=e.features[0];if(!f.properties.ga)return;e.preventDefault&&e.preventDefault();window.__accSiteClick=true;toggleAccessSite(f.properties.code);setTimeout(()=>{window.__accSiteClick=false;},50);});
     m.on('click',e=>{if(!accAdding||window.__accSiteClick)return;accSetPin(e.lngLat.lat,e.lngLat.lng);});
