@@ -796,9 +796,12 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
   bedSites.forEach(s=>{const beds=f.find(x=>x.site_id===s.id&&x.metric_code==='ga_beds'&&x.period===lp);const occ=f.find(x=>x.site_id===s.id&&x.metric_code==='occupancy_pct'&&x.period===lp);const ov=occ?Number(occ.value):0;h+=`<tr><td>${esc(s.name)}</td><td class="num">${beds?Math.round(beds.value):'—'}</td><td class="num" style="color:${ov>=95?'#b3261e':ov>=92?'#b45309':'#166f4d'};font-weight:600">${occ?fmt(occ.value,'pct'):'—'}</td></tr>`;});
   h+=`</tbody></table></div>`;
   h+=`<div class="two"><div class="card"><div class="h3">Bed occupancy trend</div><div class="cap">By main acute site</div><div class="chartbox"><canvas id="occ"></canvas></div></div>`;
-  h+=`<div class="card"><div class="h3">Theatre, outpatient & diagnostic assets</div><div class="cap">Latest position by site</div><table class="dt"><thead><tr><th>Site</th><th class="num">Theatres</th><th class="num">OP rooms</th><th class="num">CT</th><th class="num">MRI</th><th class="num">Endo</th></tr></thead><tbody>`;
-  sites.forEach(s=>{const g=m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code===m);return r?Math.round(r.value):0;};h+=`<tr><td>${esc(s.name)}</td><td class="num">${g('theatres')}</td><td class="num">${g('op_rooms')}</td><td class="num">${g('ct_scanners')}</td><td class="num">${g('mri_scanners')}</td><td class="num">${g('endoscopy_rooms')}</td></tr>`;});
-  h+=`</tbody></table></div></div>`;
+  const assetSites=sites.filter(s=>['theatres','op_rooms','ct_scanners','mri_scanners','endoscopy_rooms'].some(m=>f.some(x=>x.site_id===s.id&&x.metric_code===m&&x.value!=null)));
+  h+=`<div class="card"><div class="h3">Theatre, outpatient & diagnostic assets</div><div class="cap">Latest position by site · local return</div>`;
+  if(assetSites.length){h+=`<table class="dt"><thead><tr><th>Site</th><th class="num">Theatres</th><th class="num">OP rooms</th><th class="num">CT</th><th class="num">MRI</th><th class="num">Endo</th></tr></thead><tbody>`;
+  assetSites.forEach(s=>{const g=m=>{const r=f.find(x=>x.site_id===s.id&&x.metric_code===m);return r?Math.round(r.value):0;};h+=`<tr><td>${esc(s.name)}</td><td class="num">${g('theatres')}</td><td class="num">${g('op_rooms')}</td><td class="num">${g('ct_scanners')}</td><td class="num">${g('mri_scanners')}</td><td class="num">${g('endoscopy_rooms')}</td></tr>`;});
+  h+=`</tbody></table>`;}else h+=`<div class="note" style="margin:6px 0 4px">Site-level asset counts come from a local trust return; none is held for this system.</div>`;
+  h+=`</div></div>`;
   }else{h+=covNote('Per-site bed, occupancy and theatre and diagnostic asset detail is not published nationally — national publications report beds and performance at trust level. ERIC (on the Estate page) is the site-grain national source.');}
   /* --- item 4 · theatres: published throughput signals + a stated-assumption requirement model --- */
   h+=`<div class="eyebrow" style="margin-top:16px">Theatres &amp; surgical throughput</div>`;
@@ -934,7 +937,7 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
     if(svcRows.length){
       const shown=svcRows.slice(0,20);const svcTot=svcRows.reduce((s,x)=>s+x.spend,0);
       h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Spend and cost by service line${svcRows.length>20?' · top 20 of '+svcRows.length:''}</div><div class="cap" style="padding:2px 14px 0">National Cost Collection 2024/25 by service, MFF adjusted${grp?' · system trusts combined':''} · index 100 = costs as expected</div><table class="dt"><thead><tr><th>Service line</th><th class="num">Spend £m</th><th class="num">Share</th><th class="num">Cost index</th></tr></thead><tbody>`;
-      shown.forEach(x=>{const nm=x.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());const dv=x.idx!=null?x.idx-100:null;
+      shown.forEach(x=>{const nm=x.code==='unknown'?'Unclassified services':prettySlug(x.code);const dv=x.idx!=null?x.idx-100:null;
         h+=`<tr><td>${esc(nm)}</td><td class="num" style="font-weight:600">${fmt(x.spend,'gbp_m')}</td><td class="num muted">${svcTot?fmt(100*x.spend/svcTot,'pct'):'—'}</td><td class="num" style="color:${dv==null?'#9aa0af':dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${x.idx!=null?fmt(x.idx,'score'):'—'}</td></tr>`;});
       h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Index per service = actual vs expected cost, aggregated across inpatient, day case, outpatient and other departments${grp?'; simple average across trusts when the whole system is selected':''}.</div></div>`;
       /* trust × service cost-index heatmap across the system */
@@ -1518,7 +1521,7 @@ async function renderModelling(v){
       const a=sum(l12),b=sum(p12);if(b>60)parts.push([15,15*clamp01(-(a/b-1)*100/25)]);}
     const mslug=Object.keys(cpwMed).find(s=>s===slug||s.startsWith(slug)||slug.startsWith(s));
     if(mslug&&cpwF[oid+'|'+mslug]!=null)parts.push([15,15*clamp01((cpwF[oid+'|'+mslug]/cpwMed[mslug]-1)*100/30)]);
-    if(!parts.length)return null;
+    if(parts.length<2)return null; /* one plane is a hint, not an index — require corroboration */
     const maxSum=parts.reduce((s,p)=>s+p[0],0),ptSum=parts.reduce((s,p)=>s+p[1],0);
     return {score:Math.round(100*ptSum/maxSum),n:parts.length,wte};};
   const rttSpecsM=specs.filter(s=>s.is_rtt&&!/^X/.test(s.code));
