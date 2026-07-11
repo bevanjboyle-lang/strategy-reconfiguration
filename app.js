@@ -972,8 +972,10 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
 /* ===== COST & VALUE · opportunity to the national median, quantified ===== */
 let wauNat=null;
 async function fetchWauNat(){if(wauNat)return wauNat;
-  try{const{data,error}=await sb.from('sr_fact').select('organisation_id,metric_code,specialty_code,period,value').in('metric_code',['mhso_cost_per_wau','mhso_specialty_wau','mhso_specialty_expenditure']).not('specialty_code','is',null).order('period',{ascending:false}).limit(12000);if(error)throw error;wauNat=data||[];}
-  catch(e){console.warn('wau national fetch failed',e);wauNat=[];}return wauNat;}
+  for(let a=0;a<2;a++){
+    try{const{data,error}=await sb.from('sr_fact').select('organisation_id,metric_code,specialty_code,period,value').in('metric_code',['mhso_cost_per_wau','mhso_specialty_wau','mhso_specialty_expenditure']).not('specialty_code','is',null).order('period',{ascending:false}).limit(12000);if(error)throw error;wauNat=data||[];return wauNat;}
+    catch(e){console.warn('wau national fetch failed'+(a?'':' · retrying'),e);if(!a)await new Promise(r=>setTimeout(r,1200));}}
+  return [];}
 async function renderValue(v){v.innerHTML='<div class="loading">Sizing the opportunity…</div>';
   const[f,wn]=await Promise.all([ensure('finance'),fetchWauNat()]);
   const selO=orgById[sel]||{};const tIds=selO.type==='acute_trust'?[sel]:sysTrusts().map(t=>t.id);const grp=tIds.length>1;
@@ -1026,7 +1028,7 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
   Object.keys(nSp).forEach(k=>{const s=k.slice(k.indexOf('|')+1);const idx=nIdx[k],sp=nSp[k];if(!(sp>0))return;
     const ex=(idx!=null&&idx>100)?sp*(1-100/idx):0;
     const e=svcAgg[s]=svcAgg[s]||{spend:0,exc:0,iw:0,ww:0};e.spend+=sp;e.exc+=ex;if(idx!=null){e.iw+=idx*sp;e.ww+=sp;}nccOppTot+=ex;});
-  const svcRows=Object.keys(svcAgg).map(s=>({code:s,name:prettySlug(s),...svcAgg[s],idx:svcAgg[s].ww?svcAgg[s].iw/svcAgg[s].ww:null})).sort((a,b)=>b.exc-a.exc);
+  const svcRows=Object.keys(svcAgg).map(s=>({code:s,name:s==='unknown'?'Unclassified services':prettySlug(s),...svcAgg[s],idx:svcAgg[s].ww?svcAgg[s].iw/svcAgg[s].ww:null})).sort((a,b)=>b.exc-a.exc);
   /* Lens C · agency above the national median share */
   const agRows=tIds.map(oid=>{const g=grossPay(oid),a=atO(oid,'tac_pay_agency',lastFy);if(g==null||a==null||!g)return null;
     const sh=100*a/g;const r=stRow(oid,'tac_agency_share_pay');const nm=r&&r.nm_value!=null?Number(r.nm_value):agNm;
