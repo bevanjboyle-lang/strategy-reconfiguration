@@ -457,4 +457,35 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('#nav button', { hasText: 'Cost & value' })).toBeVisible();
   });
 
+  test('34 capacity · theatres section with stated-assumption requirement model', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=capacity');
+    await expect(page.locator('.view')).toContainText('Theatres & surgical throughput', { timeout: 35000 });
+    await expect(page.locator('.view')).toContainText('Implied theatre requirement');
+    await expect(page.locator('.view')).toContainText('stated-assumption model');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('35 modelling · specialty demand outlook + fragility index with methodology', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=modelling');
+    await expect(page.locator('.view')).toContainText('Specialty demand outlook', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('Specialty fragility index');
+    await expect(page.locator('.view')).toContainText('How the fragility score is built');
+    await expect(page.locator('.view')).toContainText('rota scale 30');
+    await expect(page.locator('.view .hm').first()).toBeVisible();
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('36 performance · board view table and national strips', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=performance');
+    await expect(page.locator('.view')).toContainText('The board view', { timeout: 35000 });
+    await expect(page.locator('.view')).toContainText('Where these trusts sit nationally');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
 });
