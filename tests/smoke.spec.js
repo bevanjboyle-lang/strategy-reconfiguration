@@ -510,6 +510,7 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('.view')).toContainText('The prize, sized', { timeout: 45000 });
     await expect(page.locator('.view')).toContainText('Opportunity dossiers', { timeout: 30000 });
     await expect(page.locator('.view')).toContainText('Thresholds, printed so they can be challenged');
+    await expect(page.locator('.view')).toContainText('How to read a dossier');
     await expect(page.locator('.view')).toContainText('First action:');
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();

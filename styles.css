@@ -45,7 +45,7 @@ h1{font-size:26px;margin:0 0 6px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 18px}
 .kpi .l{font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.2px}
 .kpi .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1}.kpi .v small{font-size:12px;color:var(--faint);font-weight:500;font-family:"Open Sans",Arial,sans-serif}
-.kpi .s{font-size:11px;color:#5a6172;margin-top:7px}.kpi .spark{margin-top:10px;height:26px}
+.kpi .s{font-size:11px;color:#5a6172;margin-top:7px;line-height:1.5}.kpi .spark{margin-top:10px;height:26px}
 .h3{font-size:15px;font-weight:600;margin:0 0 2px;font-family:"Source Serif 4",Georgia,serif}
 .cap{font-size:11.5px;color:var(--muted);margin-bottom:12px}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}@media(max-width:920px){.two{grid-template-columns:1fr}}
@@ -104,7 +104,15 @@ input[type=range]{width:100%;accent-color:var(--ink);cursor:pointer}
 /* MapLibre */
 .mapwrap{position:relative;height:540px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
 .mapwrap.eng{height:56vh;max-height:470px;min-height:320px}
-.mapwrap.ovr{height:min(540px,60vh);min-height:320px}
+.mapwrap.mapov{height:min(540px,60vh);min-height:320px}
+/* key lines under KPI tiles: breathing room above, clear separation below */
+.keyline{font-size:10.5px;color:#6a7183;margin:10px 2px 20px;line-height:1.65}
+/* evenly distributed table columns: first column fixed share, the rest split equally */
+table.dt.ev{table-layout:fixed}
+table.dt.ev th:first-child,table.dt.ev td:first-child{width:30%}
+table.dt.ev th,table.dt.ev td{overflow-wrap:break-word}
+table.dt.st{table-layout:fixed}
+table.dt.st th:first-child,table.dt.st td:first-child{width:28%}
 .scrollcue{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(25,31,43,.86);color:#fff;border:none;border-radius:999px;padding:7px 16px;font-size:11.5px;font-weight:600;letter-spacing:.2px;cursor:pointer;box-shadow:var(--shadow);transition:opacity .5s}
 .scrollcue.fade{opacity:0;pointer-events:none}
 #mlmap,#accmap{position:absolute;inset:0}
