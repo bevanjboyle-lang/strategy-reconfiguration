@@ -340,8 +340,8 @@ function renderOverview(v){
   const tlist=tnames.length>1?tnames.slice(0,-1).join(', ')+' and '+tnames[tnames.length-1]:(tnames[0]||'');
   const closest=rows.filter(r=>r.org_type==='acute_trust'&&TRUSTS.includes(r.org_code)&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,7);
   let h=`<h1 class="serif">System overview</h1><div class="lead">The map is the front door: recolour it by population need or live service distress with the chips top-left, toggle hospital sites, GP practices and community assets, then click any area or dot to drill in. Everything below benchmarks ${esc(tlist)} against every English trust — scroll for the system position, drivers and what is closest to failure.</div>`;
-  h+=`<div class="mapwrap"><div id="mlmap"></div><div class="mapui"><div class="chips" id="basischips"></div><div class="chips" id="needchips"></div><div class="chips" id="layerchips"></div></div><div class="maplegend" id="mlegend"></div></div>`;
-  h+=`<div class="eyebrow">System position</div><div class="grid kpis">`+
+  h+=`<div class="mapwrap ovr"><div id="mlmap"></div><div class="mapui"><div class="chips" id="basischips"></div><div class="chips" id="needchips"></div><div class="chips" id="layerchips"></div></div><div class="maplegend" id="mlegend"></div><button class="scrollcue" id="scue" onclick="const t=document.getElementById('scueTarget');if(t)t.scrollIntoView({behavior:'smooth'})">▾ System position and drivers below</button></div>`;
+  h+=`<div class="eyebrow" id="scueTarget">System position</div><div class="grid kpis">`+
    kpi('System distress',od?od.distress_index:'—','/100',esc(o.name||''),null,color(od&&od.distress_index))+
    kpi('Near-failure flags',od?od.near_failure_count:'—','','breaching · deteriorating',null,od&&od.near_failure_count?'#b3261e':'#191f2b')+
    (ae?kpi('A&E 4-hour',fmt(ae.value,'pct'),'','vs national median '+(ae.nm_value!=null?fmt(ae.nm_value,'pct'):'—'),seriesFor(sel,ae.metric_id),color(ae.distress)):'')+
@@ -362,6 +362,7 @@ function renderOverview(v){
    <div class="h3" style="margin-top:14px">Trusts in this system</div><table class="dt"><thead><tr><th>Trust</th><th>CQC</th><th class="num">Distress</th></tr></thead><tbody>`+
    TRUSTS.map(tc=>{const t=orgs.find(x=>x.code===tc);const d=t?distByOrg[t.id]:null;const cq=(CQC[tc]||[])[0]||'—';return `<tr style="cursor:pointer" onclick="selectCode('${tc}')"><td>${esc(trustShort(tc))}</td><td>${esc(cq)}</td><td class="num" style="font-weight:600;color:${color(d&&d.distress_index)}">${d?d.distress_index:'—'}</td></tr>`;}).join('')+`</tbody></table></div></div>`;
   v.innerHTML=h;initMap();drawRadar();countUps();
+  window.addEventListener('scroll',()=>{const s=document.getElementById('scue');if(s)s.classList.add('fade');},{once:true,passive:true});
 }
 /* ===== MAPLIBRE STRATEGIC MAP ===== */
 let ml=null,geoCache={},mapState={metric:'need',basis:'need',sites:true,poi:false,practices:false};
@@ -1021,7 +1022,8 @@ async function fetchWauNat(){if(wauNat)return wauNat;
     catch(e){console.warn('wau national fetch failed'+(a?'':' · retrying'),e);if(!a)await new Promise(r=>setTimeout(r,1200));}}
   return [];}
 async function renderValue(v){v.innerHTML='<div class="loading">Sizing the opportunity…</div>';
-  const[f,wn]=await Promise.all([ensure('finance'),fetchWauNat()]);
+  const[f,wn,WFd,PFd,AFd,RNd,NSd]=await Promise.all([ensure('finance'),fetchWauNat(),ensure('workforce'),ensure('performance'),ensure('activity'),fetchRttNat(),fetchNatSpec()]);
+  if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){popProjCache[sysSlug]=[];}}
   const selO=orgById[sel]||{};const tIds=selO.type==='acute_trust'?[sel]:sysTrusts().map(t=>t.id);const grp=tIds.length>1;
   const idByCode=tacIdByCode();
   const serOf=(oid,code)=>{const mid=idByCode[code];return mid?(series[oid+'|'+mid]||[]):[];};
@@ -1149,8 +1151,74 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
     h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Energy cost above the median per square metre</div><div class="cap" style="padding:2px 14px 0">All utilities vs the national median £${medEn!=null?Math.round(medEn):'—'}/m² across ${enAll.length} trusts</div><table class="dt"><thead><tr><th>Trust</th><th class="num">Energy £m</th><th class="num">£/m²</th><th class="num">Above median</th></tr></thead><tbody>`;
     enRows.forEach(x=>{h+=`<tr><td>${esc(x.name)}</td><td class="num muted">${fmt(x.e,'gbp_m')}</td><td class="num" style="font-weight:600;color:${x.per>medEn?'#b45309':'#166f4d'}">£${Math.round(x.per)}</td><td class="num" style="font-weight:700;color:${x.ex>0.05?'#b3261e':'#166f4d'}">${fmt(x.ex,'gbp_m')}</td></tr>`;});
     h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Old, poorly configured estate burns money as well as constraining care models, which makes this lens double as reconfiguration evidence. Tariffs and estate age vary; treat as directional.</div></div>`;}
+  /* --- item 18 phase 1 · opportunity dossiers: four planes triangulated per trust × specialty --- */
+  const TH={WTE_FRAGILE:8,COST_HI:15,COST_XHI:25,RTT_BAND:5,S52:2,VOL_DROP:0,GROW:15,OCC:94};
+  const dossiers=[];
+  (()=>{
+    const rttSpecsD=specs.filter(s=>s.is_rtt&&!/^X/.test(s.code));if(!rttSpecsD.length)return;
+    /* national per-spec RTT medians */
+    const m18={},agg18={};RNd.forEach(x=>{if(x.metric_code==='rtt_18wk')(agg18[x.specialty_code]=agg18[x.specialty_code]||[]).push(Number(x.value));});
+    Object.keys(agg18).forEach(sc=>{const a=agg18[sc].sort((x,y)=>x-y);if(a.length>=10)m18[sc]=a[Math.floor(a.length/2)];});
+    const pfLpD=latestPeriod(PFd.filter(x=>x.metric_code==='rtt_18wk'));
+    const pfI={};PFd.forEach(x=>{if(x.period===pfLpD&&x.specialty_code)pfI[x.organisation_id+'|'+x.specialty_code+'|'+x.metric_code]=Number(x.value);});
+    /* workforce WTE latest per slug */
+    const wteD={};WFd.forEach(x=>{if(x.metric_code!=='medical_wte'||!x.specialty_code)return;const kk=x.organisation_id+'|'+x.specialty_code;if(!wteD[kk]||x.period>wteD[kk].p)wteD[kk]={p:x.period,v:Number(x.value)};});
+    /* activity volumes + trend per TFC */
+    const cpD=AFd.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
+    const cpsD=[...new Set(cpD.map(x=>x.period))].sort();const l12=new Set(cpsD.slice(-12)),p12=new Set(cpsD.slice(-24,-12));
+    const volD={},volPrev={};cpD.forEach(x=>{const kk=x.organisation_id+'|'+x.specialty_code;if(l12.has(x.period))volD[kk]=(volD[kk]||0)+Number(x.value||0);if(p12.has(x.period))volPrev[kk]=(volPrev[kk]||0)+Number(x.value||0);});
+    const OUTd=specOutlook(NSd);const DCd=demoCAGR(2036);
+    const occD={};tIds.forEach(o=>{const r=stRow(o,'bed_occupancy');occD[o]=r?Number(r.value):null;});
+    /* TFC ↔ mhso slug map via name */
+    const tfcSlug={};rttSpecsD.forEach(s=>{const sl=slugName(s.name);const hit=Object.keys(medSpec).find(k=>k===sl||k.startsWith(sl)||sl.startsWith(k));if(hit)tfcSlug[s.code]=hit;});
+    tIds.forEach(oid=>{const org=orgById[oid]||{};
+      rttSpecsD.forEach(s=>{
+        const sl=tfcSlug[s.code];const kk=oid+'|'+s.code;
+        const gap=(sl&&cpw[oid+'|'+sl]!=null&&medSpec[sl]!=null)?100*(cpw[oid+'|'+sl]/medSpec[sl]-1):null;
+        const opp=(sl&&oppByCell[oid+'|'+sl]!=null)?oppByCell[oid+'|'+sl]:null;
+        const wsl=WTE_ALIAS[slugName(s.name)]||slugName(s.name);
+        const wk=Object.keys(wteD).find(x=>x.slice(0,36)===String(oid).slice(0,36)&&(x.slice(37)===wsl||x.slice(37).startsWith(wsl)||wsl.startsWith(x.slice(37))));
+        const wte=wk?wteD[wk].v:null;
+        const v18=pfI[kk+'|rtt_18wk'],d18=(v18!=null&&m18[s.code]!=null)?v18-m18[s.code]:null;
+        const v52=pfI[kk+'|rtt_52wk'],vin=pfI[kk+'|rtt_incomplete'];const s52=(v52!=null&&vin>0)?100*v52/vin:null;
+        const vt=(volD[kk]!=null&&volPrev[kk]>60)?100*(volD[kk]/volPrev[kk]-1):null;
+        const g10=(OUTd.agg[s.code]&&DCd)?100*(Math.pow((1+DCd.cagr)*OUTd.agg[s.code].mix,10)-1):null;
+        const planes=[gap!=null,wte!=null,(d18!=null||s52!=null),(vt!=null||g10!=null)].filter(Boolean).length;
+        if(planes<2)return;
+        let arch=null;
+        if(wte!=null&&wte<TH.WTE_FRAGILE&&gap!=null&&gap>TH.COST_HI&&(vt==null||vt<=TH.VOL_DROP))arch='consolidation';
+        else if(g10!=null&&g10>TH.GROW&&((occD[oid]!=null&&occD[oid]>=TH.OCC)||(s52!=null&&s52>TH.S52)))arch='collision';
+        else if(gap!=null&&gap>TH.COST_HI&&(wte==null||wte>=TH.WTE_FRAGILE)&&d18!=null&&d18<-TH.RTT_BAND)arch='productivity';
+        else if(gap!=null&&gap>TH.COST_XHI&&(d18==null||d18>=0)&&(wte==null||wte>=TH.WTE_FRAGILE))arch='costing';
+        else if(wte!=null&&wte<TH.WTE_FRAGILE&&(gap==null||gap<=TH.COST_HI)&&(d18==null||d18>=-TH.RTT_BAND))arch='workforce';
+        if(!arch)return;
+        const peer=(arch==='consolidation'&&sl)?tIds.some(o2=>o2!==oid&&cpw[o2+'|'+sl]!=null&&medSpec[sl]!=null&&cpw[o2+'|'+sl]<medSpec[sl]):false;
+        const score=arch==='collision'?(volD[kk]||0)*(g10||0)/100/1200:(opp||0);
+        dossiers.push({oid,org:trustShort(org.code||''),tfc:s.code,spec:s.name,sl,arch,gap,opp,wte,d18,s52,vt,g10,vol:volD[kk]||null,peer,score});});});
+    dossiers.sort((a,b)=>b.score-a.score);
+  })();
+  if(dossiers.length){
+    const ACT2={consolidation:['Consolidation candidate','#8f1d17','Joint rota and site options appraisal for this specialty across the system.'],
+      collision:['Demand collision','#1f3a78','Capacity and pathway plan before the growth lands; this is not an efficiency drive.'],
+      productivity:['Productivity recovery','#b45309','Procedure-level deep dive: theatre scheduling, day-case pathways, list utilisation.'],
+      costing:['Outlier cost, sound operations','#7a6200','PLICS costing and allocation review before any service change.'],
+      workforce:['Workforce-led risk','#44639f','Resilience and network plan now, while performance and cost still hold.']};
+    h+=`<div class="eyebrow" style="margin-top:16px">Opportunity dossiers · four planes triangulated, specialty by specialty</div>`;
+    h+=`<div class="note" style="margin:0 2px 12px">A dossier is emitted only where at least two independent published planes corroborate and a named archetype's conditions are met. Thresholds, printed so they can be challenged: fragile rota under ${TH.WTE_FRAGILE} WTE · high cost +${TH.COST_HI}% over the national specialty median (+${TH.COST_XHI}% for the costing-review rule) · access signal ${TH.RTT_BAND}pp adrift of the specialty median · long-wait severity ${TH.S52}% of list at 52 weeks · demand collision +${TH.GROW}% projected ten-year growth meeting ${TH.OCC}%+ occupancy.</div>`;
+    dossiers.slice(0,8).forEach((d,di)=>{const [label,col,action]=ACT2[d.arch];
+      const ev=[];
+      if(d.gap!=null)ev.push([`Cost: £${Math.round(cpw[d.oid+'|'+d.sl]).toLocaleString()}/WAU vs £${Math.round(medSpec[d.sl]).toLocaleString()} median (${d.gap>0?'+':''}${Math.round(d.gap)}%)${d.opp!=null?` · £${(Math.round(d.opp*10)/10)}m to median`:''}`,'open Model Health System',`openFactDrill('finance','${d.oid}','${d.sl}','mhso_cost_per_wau')`]);
+      if(d.wte!=null)ev.push([`Workforce: ${Math.round(d.wte*10)/10} WTE doctors in post${d.wte<TH.WTE_FRAGILE?' · below sustainable rota scale':''}`,'NHS workforce statistics',`openFactDrill('workforce','${d.oid}','${WTE_ALIAS[slugName(d.spec)]||slugName(d.spec)}','medical_wte')`]);
+      if(d.d18!=null||d.s52!=null)ev.push([`Performance: ${d.d18!=null?`RTT 18wk ${d.d18>0?'+':''}${Math.round(d.d18*10)/10}pp vs specialty median`:''}${d.d18!=null&&d.s52!=null?' · ':''}${d.s52!=null?`${Math.round(d.s52*10)/10}% of list at 52wk`:''}`,'NHSE RTT by specialty',`openFactDrill('performance','${d.oid}','${d.tfc}','rtt_18wk')`]);
+      if(d.vt!=null||d.g10!=null)ev.push([`Activity: ${d.vol!=null?Math.round(d.vol).toLocaleString()+' pathways/yr':''}${d.vt!=null?` · trend ${d.vt>0?'+':''}${Math.round(d.vt)}%`:''}${d.g10!=null?` · projected ${d.g10>0?'+':''}${Math.round(d.g10)}% by 2036`:''}`,'NHSE RTT + HES + ONS SNPP',`openFactDrill('activity','${d.oid}','${d.tfc}','rtt_completed_pathways')`]);
+      h+=`<div class="card" style="margin-bottom:11px;border-left:3px solid ${col}"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px"><div class="h3" style="margin:0">${esc(d.spec)} · ${esc(d.org)}</div><span class="pill" style="background:${col}">${label}</span></div>`;
+      h+=`<div class="cap" style="margin:3px 0 7px">${d.arch==='collision'?`~${Math.round((d.vol||0)*(d.g10||0)/100).toLocaleString()} extra pathways a year by 2036 on current share`:d.opp!=null?`£${(Math.round(d.opp*10)/10)}m a year to the national median${d.arch==='consolidation'&&d.peer?' · a system partner already runs this specialty below the national median':''}`:'sized in the evidence below'}</div>`;
+      ev.forEach(e2=>{h+=`<div class="kv" style="cursor:pointer" onclick="${e2[2]}"><span class="k">${e2[0]}</span><b class="muted" style="font-size:10.5px;font-weight:600">${e2[1]} ↗</b></div>`;});
+      h+=`<div class="note" style="margin-top:8px"><b>First action:</b> ${action}</div></div>`;});
+    if(dossiers.length>8)h+=`<div class="note" style="margin:0 2px 12px">${dossiers.length-8} further dossiers below the display threshold are visible through the lenses above.</div>`;
+  }
   /* method */
-  h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How to read this page</div><div class="note" style="margin-top:6px">Every lens uses the same convention: value the gap to the national median, count nothing for services already at or better than it. That is deliberately conservative on ambition (top-quartile would be larger) and deliberately generous on deliverability (no trust closes every gap). All figures are derived first-time here from official published sources: the open Model Health System, the National Cost Collection, audited accounts, sickness statistics and ERIC. Nothing on this page is a plan; it is where the money says to look first.</div></div>`;
+  h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How to read this page</div><div class="note" style="margin-top:6px">Every lens uses the same convention: value the gap to the national median, count nothing for services already at or better than it. That is deliberately conservative on ambition (top-quartile would be larger) and deliberately generous on deliverability (no trust closes every gap). All figures are derived first-time here from official published sources: the open Model Health System, the National Cost Collection, audited accounts, sickness statistics and ERIC. Dossiers are deterministic rules over at least two corroborating planes, never a model verdict; every evidence line opens its published source. Nothing on this page is a plan; it is where the money says to look first.</div></div>`;
   v.innerHTML=h;
 }
 
@@ -1322,11 +1390,18 @@ async function renderPopulation(v){
    candidates are excluded the LSOA is scored 4th-nearest + 10 min and flagged 'beyond stored range'. */
 let accessExcl={}; /* sysSlug → Set of excluded site codes (session only) */
 async function accessFile(){try{return await geo('access/'+sysSlug+'.json');}catch(e){console.warn('access matrix failed',e);return null;}}
-function accessCompute(A,exIdx){
+/* Estimation model, identical to the matrix builder: minutes = km × 1.3 windiness ÷ banded speed × 60. */
+function accHavKm(la1,lo1,la2,lo2){const p1=la1*Math.PI/180,p2=la2*Math.PI/180;const a=Math.sin((p2-p1)/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin((lo2-lo1)*Math.PI/180/2)**2;return 2*6371.0088*Math.asin(Math.sqrt(a));}
+function accEstMins(km){const sp=km>20?55:km>8?40:28;return km*1.3/sp*60;}
+function accessCompute(A,exIdx,pin,cent){
   let tp=0,tw=0,o45=0,cp=0,cw=0,rp=0,rw=0,beyond=0;const per=[],decP={},decW={};
   A.lsoa.forEach(L=>{const pop=Number(L[1])||0,imd=L[2],c20=L[3],opts=L[4]||[];if(!opts.length)return;
     let mins=null;for(let i=0;i<opts.length;i++){if(!exIdx.has(opts[i][0])){mins=opts[i][1];break;}}
-    let fb=false;if(mins==null){mins=opts[opts.length-1][1]+10;fb=true;beyond++;}
+    let fb=false;
+    let pm=null;if(pin&&cent&&cent[L[0]]){pm=accEstMins(accHavKm(cent[L[0]][0],cent[L[0]][1],pin.lat,pin.lng));}
+    if(mins==null&&pm==null){mins=opts[opts.length-1][1]+10;fb=true;beyond++;}
+    else if(mins==null)mins=pm;
+    else if(pm!=null&&pm<mins)mins=pm;
     tp+=pop;tw+=pop*mins;if(mins>45)o45+=pop;
     if(c20){cp+=pop;cw+=pop*mins;}else{rp+=pop;rw+=pop*mins;}
     if(imd!=null){decP[imd]=(decP[imd]||0)+pop;decW[imd]=(decW[imd]||0)+pop*mins;}
@@ -1334,40 +1409,145 @@ function accessCompute(A,exIdx){
   const mean=tp?tw/tp:0,c20m=cp?cw/cp:null,restm=rp?rw/rp:null;
   return{mean,over45:tp?100*o45/tp:0,c20m,gap:(c20m!=null&&restm!=null)?c20m-restm:null,beyond,per,
     byDecile:Object.keys(decP).map(Number).sort((a,b)=>a-b).map(d=>({d,mean:decW[d]/decP[d]}))};}
+/* Travel-time mapper (items 6 A+C): the matrix drawn live on its own map, click-to-toggle sites,
+   an add-a-site sandbox pin, change-vs-baseline and Core20 views, indicative blue-light profile. */
+let accPin={},accMode='time',accBlue=false,accAdding=false,accMap=null,accMarker=null,accCentCache={};
+function accCentroids(fc){const key=sysSlug;if(accCentCache[key])return accCentCache[key];
+  const ringArea=r=>{let a=0;for(let i=0;i<r.length-1;i++)a+=r[i][0]*r[i+1][1]-r[i+1][0]*r[i][1];return Math.abs(a/2);};
+  const ringMean=r=>{let x=0,y=0;const n=r.length-1||r.length;for(let i=0;i<n;i++){x+=r[i][0];y+=r[i][1];}return [y/n,x/n];};
+  const m={};fc.features.forEach(f=>{const g=f.geometry;if(!g)return;const c=f.properties&&f.properties.c;if(!c)return;
+    if(g.type==='Polygon')m[c]=ringMean(g.coordinates[0]);
+    else if(g.type==='MultiPolygon'){let best=null,ba=-1;g.coordinates.forEach(p=>{const a=ringArea(p[0]);if(a>ba){ba=a;best=p[0];}});if(best)m[c]=ringMean(best);}});
+  accCentCache[key]=m;return m;}
+function accScenarioOn(){const ex=accessExcl[sysSlug];return (ex&&ex.size>0)||!!accPin[sysSlug];}
 async function renderAccess(v){
-  v.innerHTML='<div class="loading">Loading access &amp; travel…</div>';
+  v.innerHTML='<div class="loading">Loading the travel-time mapper…</div>';
   const A=await accessFile();if(stage!=='access')return;
   if(!A||!A.lsoa||!A.lsoa.length){v.innerHTML=`<h1 class="serif">Access &amp; travel</h1><div class="banner">No access matrix is available for this system yet.</div>`;return;}
+  let LF=null;try{LF=await geo('lsoa/'+sysSlug+'.json');}catch(e){}
+  if(stage!=='access')return;
+  const routed=/routed/i.test(A.method||'');
+  let h=`<h1 class="serif">Access &amp; travel</h1><div class="lead">${routed?'Routed':'Estimated'} drive time from every neighbourhood to its nearest acute site, drawn live. Click a hospital pin to close or restore it, drop a hypothetical new site anywhere, and watch every neighbourhood re-route; the change view shows exactly who wins and loses.</div>`;
+  h+=`<div class="mapwrap" style="height:min(560px,64vh)"><div id="accmap"></div>
+    <div class="mapui"><div class="chips" id="accmodes"></div><div class="chips" id="accacts"></div></div>
+    <div class="maplegend" id="acclegend"></div></div>`;
+  h+=`<div id="accKpis" style="margin-top:14px"></div>`;
+  h+=`<div class="two" style="margin-top:2px"><div class="card"><div class="h3">Sites in this configuration</div><div class="cap">This system's General Acute sites — untick here or click the pin on the map (community and cross-border sites stay available as candidates)</div><div id="accList"></div></div>`;
+  h+=`<div class="card"><div class="h3">Equity strip · mean minutes by deprivation decile</div><div class="cap">IMD decile 1 = most deprived · population-weighted</div><div class="chartbox"><canvas id="accEquity"></canvas></div></div></div>`;
+  h+=`<div id="accTables"></div>`;
+  h+=`<details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Method — ${routed?'routed':'estimated'} drive time</summary><div style="font-size:12.5px;color:var(--ink2);margin-top:10px;max-width:860px">${esc(A.method||'')}</div><div class="note">${routed?'Times are routed on the OpenStreetMap road network (OSRM).':'Estimated, not routed — the OSRM routed upgrade drops into this same file format.'} A hypothetical added site is always scored with the estimation model. The blue-light view scales displayed minutes by 0.75 as an indicative planning heuristic, map only, and is no substitute for a routed emergency profile.${A.generated?' · matrix generated '+esc((''+A.generated).slice(0,10)):''}</div></details>`;
+  v.innerHTML=h;
+  accInitMap(A,LF);accUpdate(A,LF);
+}
+function accInitMap(A,LF){
+  try{if(accMap){accMap.remove();accMap=null;}}catch(e){}
+  accMarker=null;accAdding=false;
+  const el=document.getElementById('accmap');if(!el||!window.maplibregl)return;
+  let mnx=180,mny=90,mxx=-180,mxy=-90;
+  A.sites.forEach(s=>{if(TRUSTS.includes(s[1])){mnx=Math.min(mnx,s[4]);mxx=Math.max(mxx,s[4]);mny=Math.min(mny,s[3]);mxy=Math.max(mxy,s[3]);}});
+  if(mnx>mxx){A.sites.forEach(s=>{mnx=Math.min(mnx,s[4]);mxx=Math.max(mxx,s[4]);mny=Math.min(mny,s[3]);mxy=Math.max(mxy,s[3]);});}
+  const m=new maplibregl.Map({container:'accmap',style:'https://tiles.openfreemap.org/styles/positron',bounds:[[mnx-0.28,mny-0.2],[mxx+0.28,mxy+0.2]],fitBoundsOptions:{padding:30},maxBounds:[[-13.5,48.6],[5.5,61.5]],minZoom:5,attributionControl:{compact:true}});
+  accMap=m;
+  m.on('load',()=>{
+    if(LF)m.addSource('alsoa',{type:'geojson',data:LF,promoteId:'c'});
+    if(LF)m.addLayer({id:'alsoa-fill',type:'fill',source:'alsoa',paint:{'fill-color':'#efece1','fill-opacity':0.72}});
+    if(LF)m.addLayer({id:'alsoa-line',type:'line',source:'alsoa',paint:{'line-color':'#fff','line-width':0.4,'line-opacity':0.55}});
+    const sf={type:'FeatureCollection',features:A.sites.map((s,i)=>({type:'Feature',id:i,geometry:{type:'Point',coordinates:[s[4],s[3]]},properties:{code:s[0],name:s[2],trust:s[1],ga:(TRUSTS.includes(s[1])&&String(s[5]||'').indexOf('General Acute')>=0)?1:0}}))};
+    m.addSource('asites',{type:'geojson',data:sf});
+    m.addLayer({id:'asites-c',type:'circle',source:'asites',paint:{
+      'circle-radius':['case',['==',['get','ga'],1],7,4],
+      'circle-color':['case',['boolean',['feature-state','off'],false],'#9aa0af',['==',['get','ga'],1],'#1f3a78','#7c93c4'],
+      'circle-opacity':['case',['boolean',['feature-state','off'],false],0.55,0.95],
+      'circle-stroke-width':1.6,'circle-stroke-color':'#fff'}});
+    const pop=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10,maxWidth:'260px'});
+    m.on('mouseenter','asites-c',e=>{m.getCanvas().style.cursor='pointer';const f=e.features[0];
+      pop.setLngLat(f.geometry.coordinates).setHTML(`<div style="font:600 12px/1.4 'IBM Plex Sans',sans-serif">${esc(f.properties.name)}</div><div style="font-size:10.5px;color:#6a7183">${f.properties.ga?'General Acute · click to close/restore':'candidate site (always available)'}</div>`).addTo(m);});
+    m.on('mouseleave','asites-c',()=>{m.getCanvas().style.cursor=accAdding?'crosshair':'';pop.remove();});
+    m.on('click','asites-c',e=>{const f=e.features[0];if(!f.properties.ga)return;e.preventDefault&&e.preventDefault();window.__accSiteClick=true;toggleAccessSite(f.properties.code);setTimeout(()=>{window.__accSiteClick=false;},50);});
+    m.on('click',e=>{if(!accAdding||window.__accSiteClick)return;accSetPin(e.lngLat.lat,e.lngLat.lng);});
+    const A2=A,LF2=LF;accUpdate(A2,LF2);
+    if(accPin[sysSlug])accPlaceMarker(accPin[sysSlug].lat,accPin[sysSlug].lng,A,LF);
+  });
+}
+function accPlaceMarker(lat,lng,A,LF){
+  if(accMarker){try{accMarker.remove()}catch(e){}}
+  accMarker=new maplibregl.Marker({draggable:true,color:'#8f1d17'}).setLngLat([lng,lat]).addTo(accMap);
+  accMarker.on('dragend',()=>{const p=accMarker.getLngLat();accPin[sysSlug]={lat:p.lat,lng:p.lng};accUpdateFromState();});
+}
+function accSetPin(lat,lng){accPin[sysSlug]={lat,lng};accAdding=false;if(accMap)accMap.getCanvas().style.cursor='';
+  accPlaceMarker(lat,lng);accUpdateFromState();}
+async function accUpdateFromState(){const A=await accessFile();let LF=null;try{LF=await geo('lsoa/'+sysSlug+'.json');}catch(e){}accUpdate(A,LF);}
+function accUpdate(A,LF){
+  if(stage!=='access'||!A)return;
   const exCodes=accessExcl[sysSlug]||(accessExcl[sysSlug]=new Set());
-  const gaSites=A.sites.map((s,i)=>({i,code:s[0],trust:s[1],name:s[2],stype:s[5]||''})).filter(s=>TRUSTS.includes(s.trust)&&s.stype.indexOf('General Acute')>=0);
   const toIdx=codes=>{const st=new Set();A.sites.forEach((s,i)=>{if(codes.has(s[0]))st.add(i);});return st;};
-  const base=accessCompute(A,new Set());
-  const on=exCodes.size>0;const cur=on?accessCompute(A,toIdx(exCodes)):base;
+  const cent=LF?accCentroids(LF):null;
+  const pin=accPin[sysSlug]||null;
+  const base=accessCompute(A,new Set(),null,null);
+  const on=accScenarioOn();
+  const cur=on?accessCompute(A,toIdx(exCodes),pin,cent):base;
+  /* KPI strip */
   const accK=(label,val,base2,suf,worseIfUp,sub)=>{if(val==null)return '';const d=val-(base2==null?val:base2);const col=!on||Math.abs(d)<0.05?'#191f2b':((d>0)===worseIfUp?'#b3261e':'#166f4d');
     return `<div class="card kpi"><div class="l">${label}</div><div class="v" style="color:${col}">${val.toFixed(1)}<small>${suf}</small></div><div class="s">${esc(sub||'')}${on?` · baseline ${base2.toFixed(1)}${suf} · Δ ${d>=0?'+':'−'}${Math.abs(d).toFixed(1)}`:''}</div></div>`;};
-  let h=`<h1 class="serif">Access &amp; travel</h1><div class="lead">How long this population travels to acute care — estimated drive time from every neighbourhood (LSOA) to its nearest hospital site, population-weighted, with a Core20 equity cut. Untick a site below to test a reconfiguration.</div>`;
-  h+=`<div class="grid kpis">`+
-    accK('Mean travel time (est.)',cur.mean,base.mean,' min',true,'population-weighted · all neighbourhoods')+
+  const k=document.getElementById('accKpis');
+  if(k)k.innerHTML=`<div class="grid kpis">`+
+    accK('Mean travel time',cur.mean,base.mean,' min',true,'population-weighted · all neighbourhoods')+
     accK('Population beyond 45 min',cur.over45,base.over45,'%',true,'of resident population')+
-    accK('Core20 mean (est.)',cur.c20m,base.c20m,' min',true,'most deprived 20% of neighbourhoods')+
-    accK('Core20 vs rest gap',cur.gap,base.gap,' min',true,'negative = deprived communities closer')+`</div>`;
-  h+=`<div class="cap" style="margin:-6px 2px 14px">Tile colour on this page reads against your scenario: <b style="color:#191f2b">ink</b> = the current configuration, <b style="color:#b3261e">red</b> = worse than today when you untick a site, <b style="color:#166f4d">green</b> = better.</div>`;
-  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">What if a site changed?</div><div class="cap">This system's General Acute sites — untick to remove one and re-route every neighbourhood to its next-nearest remaining site (community and cross-border sites stay available)</div>`
-   +(gaSites.length?gaSites.map(s=>`<label style="display:flex;gap:9px;align-items:center;font-size:12.5px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--line2)"><input type="checkbox" ${exCodes.has(s.code)?'':'checked'} onchange="toggleAccessSite('${esc(s.code)}')"><span>${esc(s.name)} <span class="muted" style="font-size:11px">· ${esc(trustShort(s.trust))}</span></span></label>`).join(''):'<div class="note">No General Acute sites listed for this system’s trusts in the access matrix.</div>')
-   +(cur.beyond?`<div class="note" style="margin-top:9px">${cur.beyond} neighbourhood${cur.beyond>1?'s':''} exhausted all four stored candidate sites — scored as 4th-nearest time + 10 min and flagged “beyond stored range”.</div>`:'')+`</div>`;
-  h+=`<div class="card"><div class="h3">Equity strip · mean minutes by deprivation decile</div><div class="cap">IMD decile 1 = most deprived · population-weighted estimated drive time${on?' · baseline vs scenario':''}</div><div class="chartbox"><canvas id="accEquity"></canvas></div></div></div>`;
-  if(on){const worst=cur.per.filter(p=>p.after>p.before).sort((a,b)=>(b.after-b.before)-(a.after-a.before)).slice(0,10);
-    h+=`<div class="eyebrow">Ten worst-affected neighbourhoods</div><div class="card" style="padding:4px 0;overflow-x:auto"><table class="dt"><thead><tr><th>LSOA</th><th class="num">Population</th><th class="num">IMD decile</th><th>Core20</th><th class="num">Before → after (est. min)</th></tr></thead><tbody>`+
-    (worst.length?worst.map(p=>`<tr><td class="mono" style="font-size:11px">${esc(p.code)}</td><td class="num">${p.pop.toLocaleString()}</td><td class="num">${p.imd!=null?p.imd:'—'}</td><td>${p.c20?'Yes':'—'}</td><td class="num" style="font-weight:600;color:#b3261e">${p.before.toFixed(1)} → ${p.after.toFixed(1)}${p.fb?' <span class="muted" style="font-size:10px">beyond stored range</span>':''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted" style="padding:10px 14px">No neighbourhood is worse off under this scenario.</td></tr>')+`</tbody></table></div>`;}
-  h+=`<details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Method — estimated drive time</summary><div style="font-size:12.5px;color:var(--ink2);margin-top:10px;max-width:860px">${esc(A.method||'')}</div><div class="note">Estimated, not routed — OSRM-grade routing is scheduled. Scenario re-routing uses each neighbourhood's four stored nearest sites${A.generated?` · matrix generated ${esc((''+A.generated).slice(0,10))}`:''}.</div></details>`;
-  v.innerHTML=h;
+    accK('Core20 mean',cur.c20m,base.c20m,' min',true,'most deprived 20% of neighbourhoods')+
+    accK('Core20 vs rest gap',cur.gap,base.gap,' min',true,'negative = deprived communities closer')+`</div>`+
+    `<div class="cap" style="margin:-6px 2px 12px">Tile colour reads against your scenario: <b style="color:#191f2b">ink</b> = current configuration, <b style="color:#b3261e">red</b> = worse than today, <b style="color:#166f4d">green</b> = better${pin?' · hypothetical site scored with the estimation model':''}${cur.beyond?` · ${cur.beyond} neighbourhood${cur.beyond>1?'s':''} beyond stored range (4th-nearest + 10 min)`:''}.</div>`;
+  /* site list */
+  const gaSites=A.sites.map((s,i)=>({i,code:s[0],trust:s[1],name:s[2],stype:s[5]||''})).filter(s=>TRUSTS.includes(s.trust)&&s.stype.indexOf('General Acute')>=0);
+  const lst=document.getElementById('accList');
+  if(lst)lst.innerHTML=(gaSites.length?gaSites.map(s=>`<label style="display:flex;gap:9px;align-items:center;font-size:12.5px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--line2)"><input type="checkbox" ${exCodes.has(s.code)?'':'checked'} onchange="toggleAccessSite('${esc(s.code)}')"><span>${esc(s.name)} <span class="muted" style="font-size:11px">· ${esc(trustShort(s.trust))}</span></span></label>`).join(''):'<div class="note">No General Acute sites listed for this system’s trusts in the access matrix.</div>')+
+    (pin?`<div class="note" style="margin-top:9px">Hypothetical site at ${pin.lat.toFixed(3)}, ${pin.lng.toFixed(3)} — drag the red pin to move it.</div>`:'');
+  /* mode + action chips */
+  const modes=[['time','Time to care'],['diff','Change vs baseline'],['c20','Core20 focus']];
+  const mc=document.getElementById('accmodes');
+  if(mc)mc.innerHTML=modes.map(md=>`<button class="chip ${accMode===md[0]?'on':''}" onclick="accSetMode('${md[0]}')">${md[1]}</button>`).join('');
+  const ac=document.getElementById('accacts');
+  if(ac)ac.innerHTML=`<button class="chip ${accAdding?'on':''}" onclick="accArmPin()">${pin?'Move site pin':'+ Add a site'}</button>`+
+    (pin?`<button class="chip" onclick="accClearPin()">Remove added site</button>`:'')+
+    `<button class="chip ${accBlue?'on':''}" onclick="accToggleBlue()" title="Indicative: displayed minutes ×0.75, map only">Blue-light view</button>`+
+    ((exCodes.size||pin)?`<button class="chip" onclick="accReset()">Reset scenario</button>`:'');
+  /* legend */
+  const lg=document.getElementById('acclegend');
+  if(lg){const bl=accBlue?' · blue-light ×0.75 (indicative)':'';
+    lg.innerHTML=accMode==='diff'?`<b>Change vs today (min)</b><div class="lgrow"><span class="sw" style="background:#1f3a78"></span> −15 better</div><div class="lgrow"><span class="sw" style="background:#efece1"></span> no change</div><div class="lgrow"><span class="sw" style="background:#8f1d17"></span> +15 worse</div><div class="lgrow" style="color:#6a7183">${on?'scenario active':'toggle a site or add one to see change'}</div>`:
+    `<b>${accMode==='c20'?'Core20 neighbourhoods · minutes':'Minutes to nearest acute site'}${bl}</b><div class="lgrow"><span class="sw" style="background:#1c7a52"></span> under 15</div><div class="lgrow"><span class="sw" style="background:#d9a13b"></span> 30</div><div class="lgrow"><span class="sw" style="background:#c25c1f"></span> 45</div><div class="lgrow"><span class="sw" style="background:#8f1d17"></span> 60+</div>${accMode==='c20'?'<div class="lgrow" style="color:#6a7183">other areas greyed</div>':''}`;}
+  /* map paint + states */
+  if(accMap&&accMap.getSource&&accMap.getSource('alsoa')){
+    const f=accBlue?0.75:1;
+    cur.per.forEach(p=>{accMap.setFeatureState({source:'alsoa',id:p.code},{m:p.after*f,d:p.after-p.before,c20:p.c20?1:0});});
+    const ramp=['interpolate',['linear'],['coalesce',['feature-state','m'],0],0,'#1c7a52',15,'#8faf5a',30,'#d9a13b',45,'#c25c1f',60,'#8f1d17'];
+    const paint=accMode==='diff'?['interpolate',['linear'],['coalesce',['feature-state','d'],0],-15,'#1f3a78',-3,'#b7c4de',-0.5,'#e9e6db',0.5,'#e9e6db',3,'#e5b8a0',15,'#8f1d17']:
+      accMode==='c20'?['case',['==',['coalesce',['feature-state','c20'],0],1],ramp,'#e9e6db']:ramp;
+    accMap.setPaintProperty('alsoa-fill','fill-color',paint);
+    accMap.setPaintProperty('alsoa-fill','fill-opacity',accMode==='c20'?0.8:0.72);
+    if(accMap.getSource('asites')){A.sites.forEach((s,i)=>{accMap.setFeatureState({source:'asites',id:i},{off:exCodes.has(s[0])});});}
+  }
+  /* equity chart */
+  if(charts.accEquity){try{charts.accEquity.destroy()}catch(e){}delete charts.accEquity;}
   const cv=document.getElementById('accEquity');
   if(cv&&window.Chart&&base.byDecile.length){const ds=[{label:'Baseline',data:base.byDecile.map(x=>+x.mean.toFixed(1)),backgroundColor:on?'#b7c4de':'#1f3a78',borderRadius:3,maxBarThickness:26}];
     if(on)ds.push({label:'Scenario',data:cur.byDecile.map(x=>+x.mean.toFixed(1)),backgroundColor:'#b45309',borderRadius:3,maxBarThickness:26});
     charts.accEquity=new Chart(cv.getContext('2d'),{type:'bar',data:{labels:base.byDecile.map(x=>'D'+x.d),datasets:ds},options:{plugins:{legend:{display:ds.length>1,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{x:{ticks:{font:{size:10},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false}});}
+  /* impact tables */
+  const tb=document.getElementById('accTables');
+  if(tb){if(!on)tb.innerHTML='';
+    else{const worst=cur.per.filter(p=>p.after>p.before+0.05).sort((a,b)=>(b.after-b.before)-(a.after-a.before)).slice(0,8);
+      const best=cur.per.filter(p=>p.after<p.before-0.05).sort((a,b)=>(a.after-a.before)-(b.after-b.before)).slice(0,8);
+      const row=(p,col)=>`<tr><td class="mono" style="font-size:11px">${esc(p.code)}</td><td class="num">${p.pop.toLocaleString()}</td><td class="num">${p.imd!=null?p.imd:'—'}</td><td>${p.c20?'Yes':'—'}</td><td class="num" style="font-weight:600;color:${col}">${p.before.toFixed(1)} → ${p.after.toFixed(1)}${p.fb?' <span class="muted" style="font-size:10px">beyond stored range</span>':''}</td></tr>`;
+      const tbl=(title,cap,rows2,col,empty)=>`<div class="card" style="padding:4px 0;overflow-x:auto"><div class="h3" style="padding:10px 14px 0">${title}</div><div class="cap" style="padding:2px 14px 0">${cap}</div><table class="dt"><thead><tr><th>LSOA</th><th class="num">Population</th><th class="num">IMD</th><th>Core20</th><th class="num">Before → after (min)</th></tr></thead><tbody>`+(rows2.length?rows2.map(p=>row(p,col)).join(''):`<tr><td colspan="5" class="muted" style="padding:10px 14px">${empty}</td></tr>`)+`</tbody></table></div>`;
+      tb.innerHTML=`<div class="two" style="margin-top:14px">`+tbl('Worst-affected neighbourhoods','longest added travel under this scenario',worst,'#b3261e','No neighbourhood is worse off.')+tbl('Most improved neighbourhoods','largest gains under this scenario',best,'#166f4d','No neighbourhood gains under this scenario.')+`</div>`;}}
 }
-function toggleAccessSite(code){const s=accessExcl[sysSlug]||(accessExcl[sysSlug]=new Set());if(s.has(code))s.delete(code);else s.add(code);render();}
-window.toggleAccessSite=toggleAccessSite;
+function toggleAccessSite(code){const s=accessExcl[sysSlug]||(accessExcl[sysSlug]=new Set());if(s.has(code))s.delete(code);else s.add(code);accUpdateFromState();}
+function accSetMode(mo){accMode=mo;accUpdateFromState();}
+function accArmPin(){accAdding=!accAdding;if(accMap)accMap.getCanvas().style.cursor=accAdding?'crosshair':'';accUpdateFromState();}
+function accClearPin(){delete accPin[sysSlug];if(accMarker){try{accMarker.remove()}catch(e){}accMarker=null;}accAdding=false;accUpdateFromState();}
+function accToggleBlue(){accBlue=!accBlue;accUpdateFromState();}
+function accReset(){if(accessExcl[sysSlug])accessExcl[sysSlug].clear();accClearPin();}
+window.toggleAccessSite=toggleAccessSite;window.accSetMode=accSetMode;window.accArmPin=accArmPin;window.accClearPin=accClearPin;window.accToggleBlue=accToggleBlue;window.accReset=accReset;
 
 /* ===== MODELLING · A1 v1 demand & capacity engine (2026-07-02) =====
    Replaces the illustrative hardcoded projection with a reproducible engine on live data.

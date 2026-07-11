@@ -488,4 +488,31 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
+  test('37 access · interactive travel mapper: modes, sandbox controls, live KPIs', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=access');
+    await expect(page.locator('.view h1'), 'page renders').toContainText('Access', { timeout: 35000 });
+    await expect(page.locator('#accKpis .card.kpi').first(), 'KPIs computed').toBeVisible({ timeout: 30000 });
+    await expect(page.locator('#accmodes .chip')).toHaveCount(3);
+    await expect(page.locator('#accacts')).toContainText('Add a site');
+    await expect(page.locator('#accList input[type=checkbox]').first()).toBeVisible();
+    // toggle a site from the list: KPI strip must show scenario deltas
+    await page.locator('#accList input[type=checkbox]').first().uncheck();
+    await expect(page.locator('#accKpis'), 'scenario deltas appear').toContainText('baseline', { timeout: 15000 });
+    await page.locator('#accList input[type=checkbox]').first().check();
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();
+  });
+
+  test('38 cost & value · opportunity dossiers triangulate with printed thresholds', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=value');
+    await expect(page.locator('.view')).toContainText('The prize, sized', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('Opportunity dossiers', { timeout: 30000 });
+    await expect(page.locator('.view')).toContainText('Thresholds, printed so they can be challenged');
+    await expect(page.locator('.view')).toContainText('First action:');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();
+  });
+
 });
