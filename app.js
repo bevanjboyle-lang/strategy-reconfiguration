@@ -1012,7 +1012,8 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
     if(!tIds.includes(o)||medSpec[s]==null)return;const w=wEff(k);if(w==null)return;
     const spend=expd[k]!=null?expd[k]:cpw[k]*w/1e6;
     const opp=Math.max(0,(cpw[k]-medSpec[s])*w/1e6);
-    const e=specAgg[s]=specAgg[s]||{w:0,cw:0,opp:0,spend:0};e.w+=w;e.cw+=cpw[k]*w;e.opp+=opp;e.spend+=spend;
+    const e=specAgg[s]=specAgg[s]||{w:0,cw:0,opp:0,spend:0,gmin:null,gmax:null};e.w+=w;e.cw+=cpw[k]*w;e.opp+=opp;e.spend+=spend;
+    const gp=100*(cpw[k]/medSpec[s]-1);if(e.gmin==null||gp<e.gmin)e.gmin=gp;if(e.gmax==null||gp>e.gmax)e.gmax=gp;
     oppByCell[o+'|'+s]=opp;wauOppTot+=opp;wauSpendTot+=spend;});
   const wauRows=Object.keys(specAgg).map(s=>({code:s,name:prettySlug(s),...specAgg[s],cpwAvg:specAgg[s].w?specAgg[s].cw/specAgg[s].w:null,med:medSpec[s]})).sort((a,b)=>b.opp-a.opp);
   /* Lens B · NCC service-line excess vs expected cost */
@@ -1063,9 +1064,11 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
     const shown=wauRows.slice(0,15);
     h+=`<div class="eyebrow">Lens 1 · Specialty productivity · open Model Health System, FY${finFY(lpW)}</div>`;
     h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Opportunity to the median £/WAU by specialty${wauRows.length>15?' · top 15 of '+wauRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Cost per weighted activity unit vs the median of every reporting English trust, MFF adjusted${grp?' · system trusts combined':''} · opportunity = excess £/WAU × WAU output</div><table class="dt"><thead><tr><th>Specialty</th><th class="num">Spend £m</th><th class="num">£/WAU</th><th class="num">National median</th><th class="num">Gap</th><th class="num">Opportunity</th></tr></thead><tbody>`;
+    const gfmt=g=>(g>0?'+':'')+Math.round(g)+'%';
     shown.forEach(x=>{const gapP=x.cpwAvg&&x.med?100*(x.cpwAvg/x.med-1):null;
-      h+=`<tr${grp?'':` onclick="openFactDrill('finance','${tIds[0]}','${x.code}','mhso_cost_per_wau')" style="cursor:pointer"`}><td>${esc(x.name)}</td><td class="num muted">${fmt(x.spend,'gbp_m')}</td><td class="num" style="font-weight:600">£${Math.round(x.cpwAvg).toLocaleString()}</td><td class="num muted">£${Math.round(x.med).toLocaleString()}</td><td class="num" style="color:${gapP>10?'#b3261e':gapP>0?'#b45309':'#166f4d'}">${gapP!=null?(gapP>0?'+':'')+(Math.round(gapP*10)/10)+'%':'—'}</td><td class="num" style="font-weight:700;color:${x.opp>0.05?'#b3261e':'#166f4d'}">${fmt(x.opp,'gbp_m')}</td></tr>`;});
-    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Reads on acute PLICS costed activity for the ${Object.keys(bySpec).length} specialties Model Hospital publishes. Case-mix weighting removes most, not all, of the fair reasons costs differ; treat each line as a question to open, not a verdict.</div></div>`;
+      const gapCell=grp&&x.gmin!=null&&Math.round(x.gmin)!==Math.round(x.gmax)?`${gfmt(x.gmin)} to ${gfmt(x.gmax)}`:(gapP!=null?(gapP>0?'+':'')+(Math.round(gapP*10)/10)+'%':'—');
+      h+=`<tr${grp?'':` onclick="openFactDrill('finance','${tIds[0]}','${x.code}','mhso_cost_per_wau')" style="cursor:pointer"`}><td>${esc(x.name)}</td><td class="num muted">${fmt(x.spend,'gbp_m')}</td><td class="num" style="font-weight:600">£${Math.round(x.cpwAvg).toLocaleString()}</td><td class="num muted">£${Math.round(x.med).toLocaleString()}</td><td class="num" style="color:${(grp?x.gmax:gapP)>10?'#b3261e':(grp?x.gmax:gapP)>0?'#b45309':'#166f4d'};white-space:nowrap">${gapCell}</td><td class="num" style="font-weight:700;color:${x.opp>0.05?'#b3261e':'#166f4d'}">${fmt(x.opp,'gbp_m')}</td></tr>`;});
+    h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Reads on acute PLICS costed activity for the ${Object.keys(bySpec).length} specialties Model Hospital publishes.${grp?' Trusts below the median never offset those above it, so a specialty can carry a large opportunity even when the trust gaps straddle the median; the heatmap below shows where it concentrates.':''} Case-mix weighting removes most, not all, of the fair reasons costs differ; treat each line as a question to open, not a verdict.</div></div>`;
     if(grp){
       const hmRows=wauRows.filter(x=>x.opp>0.05).slice(0,14);
       if(hmRows.length){
