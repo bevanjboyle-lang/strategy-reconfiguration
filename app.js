@@ -1803,7 +1803,9 @@ const GND_DEFAULT=0.5,GND_CAP=2.5,LEAD_YEARS=4;
 function wpodCopy(){const o={};MOD_PODS.forEach(pd=>{o[pd[0]]=Object.assign({},WPOD_DEF[pd[0]]);});return o;}
 /* MOD.w is the legacy global weight set: the specialty outlook on other pages reads it until the
    phase-3 rewiring. The studio itself runs on MOD.wpod (per-POD) + MOD.gndPod (fitted per POD). */
-let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},wpod:wpodCopy(),gndPod:null,fit:null,fitSys:null,band:0.5,gnd:0.5,shift:0,prod:0,ceil:92,runsCache:null,last:null,diff:{},amended:{}};
+let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},wpod:wpodCopy(),gndPod:null,fit:null,fitSys:null,band:0.5,gnd:0.5,shift:0,prod:0,ceil:92,runsCache:null,last:null,diff:{},amended:{},judgements:[],scn:[]};
+const SCN_COLS=['#1d4ed8','#166f4d','#7a1f8a'];
+function scnNew(i){return {name:'Scenario '+String.fromCharCode(65+i),dm:0,shift:0,prod:0,cap:0,capYr:2030,cons:''};}
 function sysTrusts(){return orgs.filter(x=>TRUSTS.includes(x.code));}
 function mrow(orgId,code){return rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);}
 function last12(orgId,code){const r=mrow(orgId,code);if(!r)return null;const s=officialSeries(orgId,r.metric_id);if(!s.length)return null;const a=s.slice(-12);return{sum:a.reduce((t,x)=>t+Number(x.value),0),months:a.length,to:a[a.length-1].period};}
@@ -1903,7 +1905,13 @@ function engineFit(){
   MOD.fit=F;MOD.fitSys=sysSlug;
   MOD.gndPod={};MOD_PODS.forEach(pd=>{MOD.gndPod[pd[0]]=F.pod[pd[0]].v;});
   return F;}
-function modMark(el){MOD.amended[el.id]=1;const map={mceilc:'mceilsel'};const cid='chip_'+(el.id.indexOf('wp_')===0?'wp_'+el.id.split('_')[1]:(map[el.id]||el.id));const c=document.getElementById(cid);if(c){c.textContent='amended';c.style.background='#b45309';}}
+function modMark(el){
+  if(!MOD.amended[el.id]){
+    let why='';try{why=window.prompt('Reason for amending this input (kept in the judgement log, saved with the run):','')||'';}catch(e){}
+    MOD.judgements.push({input:el.id,to:el.value,who:sessionEmail()||'anonymous',when:new Date().toISOString().slice(0,16),why:why.slice(0,200)});
+  }else{const j=MOD.judgements.find(x=>x.input===el.id);if(j)j.to=el.value;}
+  MOD.amended[el.id]=1;const map={mceilc:'mceilsel'};const cid='chip_'+(el.id.indexOf('wp_')===0?'wp_'+el.id.split('_')[1]:(map[el.id]||el.id));const c=document.getElementById(cid);
+  if(c){const j=MOD.judgements.find(x=>x.input===el.id);c.textContent='amended';c.style.background='#b45309';if(j&&j.why)c.title=j.why+' · '+j.who;}}
 window.modMark=modMark;
 function resetAssumptions(){MOD.wpod=wpodCopy();MOD.shift=0;MOD.prod=0;MOD.ceil=92;MOD.band=0.5;MOD.amended={};if(MOD.fit)MOD.gndPod=Object.fromEntries(MOD_PODS.map(pd=>[pd[0],MOD.fit.pod[pd[0]].v]));render();}
 window.resetAssumptions=resetAssumptions;
@@ -2066,29 +2074,28 @@ async function renderModelling(v){
         <div class="note" id="qsCal"></div></div>`;
     }
   }
-  /* ---- 4 · what bends the curve ---- */
-  h+=`<div class="eyebrow" id="sBend" style="margin-top:16px">What bends the curve · interim scenario surface</div>`;
-  h+=`<div class="note" style="margin-bottom:10px">The lever library (named interventions with evidence bounds: setting shift, length-of-stay convergence, day-case conversion, capacity additions, consolidation) arrives in phase 2 and replaces this surface. Until then: global shift and productivity layers live in the assumptions drawer below (default 0 = do nothing), and trust × POD differentials here.</div>`;
-  /* --- differential growth & mitigation · trust × point of delivery --- */
-  const PODS4=[['nel','Non-elective admissions','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatient attendances','op_attendances'],['ae','A&E attendances','ae_attendances']];
-  const dTrusts=sysTrusts();
-  const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
-  const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
-  const diffBase={};dTrusts.forEach(t=>PODS4.forEach(pd=>{diffBase[t.id+'|'+pd[0]]=base12(t.id,pd[2]);}));
-  if(dTrusts.length&&Object.values(diffBase).some(v2=>v2!=null)){
-    h+=`<div class="eyebrow" style="margin-top:16px">Differential growth &amp; mitigation · trust × point of delivery</div>`;
-    h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="cap">The engine above applies one demographic driver and one set of scenario layers to the whole system. Here you vary them: extra growth (demand drivers specific to a trust or POD) and mitigation (shift-left, prevention, productivity) in %/yr, on top of the fitted engine (system rate plus each trust's fitted deviation). Zero everywhere reproduces the fitted engine.</div>`;
-    h+=`<table class="dt" style="max-width:860px"><thead><tr><th>Point of delivery</th><th></th>`+dTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
-    PODS4.forEach(pd=>{
-      h+=`<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">${pd[1]}</td><td class="muted" style="font-size:10.5px">extra growth %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).g||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dg_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;
-      h+=`<tr><td class="muted" style="font-size:10.5px">mitigation %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).m||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dm_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;});
-    h+=`</tbody></table><div style="margin-top:10px"><button class="btn" onclick="diffApply()">Apply differentials</button> <span class="muted" style="font-size:11px">applied on top of the per-POD demographic index, the fitted rates and any drawer layers · saved with a scenario run</span></div>`;
-    h+=`<div id="diffout" style="margin-top:12px"></div></div>`;
-    h+=`<div class="note" style="margin:-4px 2px 14px">Specialty-grain growth lives in the outlook heatmap in section 2 (national specialty trend × this demography); PODs here, specialties there, one demographic engine underneath both.</div>`;
-  }
+  /* ---- 4 · what bends the curve · lever library + scenario composer (W1s2) ---- */
+  h+=`<div class="eyebrow" id="sBend" style="margin-top:16px">What bends the curve · levers and scenarios</div>`;
+  const fuBound=(()=>{const nat=rows.filter(r=>r.metric_code==='op_fu_first_ratio'&&r.org_type==='acute_trust'&&r.value!=null).map(r=>Number(r.value)).sort((x,y)=>x-y);
+    if(nat.length<10)return null;const q1=nat[Math.floor(nat.length*0.25)];
+    const mine=sysTrusts().map(t=>{const r=rows.find(x=>x.organisation_id===t.id&&x.metric_code==='op_fu_first_ratio');return r?Number(r.value):null;}).filter(x=>x!=null);
+    if(!mine.length)return null;const avg=mine.reduce((s2,x)=>s2+x,0)/mine.length;
+    return {avg,q1,gapPct:avg>0?Math.max(0,100*(avg-q1)/avg):0};})();
+  const consOpts=(fragWorst||[]).slice(0,8);
+  h+=`<div class="card" style="margin-bottom:14px"><div class="h3">Lever library</div>
+    <div class="cap">Named interventions with their evidence bounds, composed into scenarios and tested against do-nothing. Demand levers act on every POD; capacity levers act on beds; consolidation records the intent and its dependencies (matrix awaiting clinical sign-off).</div>
+    <table class="dt" style="max-width:880px"><thead><tr><th style="width:22%">Lever</th><th class="num" style="width:12%">Do nothing</th>`+MOD.scn.map((s2,k)=>`<th class="num" style="width:14%;color:${SCN_COLS[k]}">${esc(s2.name)}</th>`).join('')+`<th>Evidence bound</th></tr></thead><tbody>
+    <tr><td style="font-weight:600">Demand moderation %/yr</td><td class="num muted">0</td>`+MOD.scn.map((s2,k)=>`<td class="num"><input class="field" style="width:60px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="3" value="${s2.dm}" oninput="scnSet(${k},'dm',this.value)"></td>`).join('')+`<td class="muted" style="font-size:10.5px">admission avoidance and prevention · stated range 0 to ~1.5%/yr; sharpen with local UEC evidence</td></tr>
+    <tr><td style="font-weight:600">Setting shift %/yr</td><td class="num muted">0</td>`+MOD.scn.map((s2,k)=>`<td class="num"><input class="field" style="width:60px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="3" value="${s2.shift}" oninput="scnSet(${k},'shift',this.value)"></td>`).join('')+`<td class="muted" style="font-size:10.5px">${fuBound?`follow-up:first ratio ${fuBound.avg.toFixed(2)} vs national best quartile ${fuBound.q1.toFixed(2)}: ~${Math.round(fuBound.gapPct)}% of follow-ups is the defensible ceiling`:'PIFU / virtual / follow-up reduction'}</td></tr>
+    <tr><td style="font-weight:600">LoS / productivity %/yr</td><td class="num muted">0</td>`+MOD.scn.map((s2,k)=>`<td class="num"><input class="field" style="width:60px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="3" value="${s2.prod}" oninput="scnSet(${k},'prod',this.value)"></td>`).join('')+`<td class="muted" style="font-size:10.5px">beds only · ALOS and day-case gaps vs peers are printed on Cost &amp; value; convergence there sizes this</td></tr>
+    <tr><td style="font-weight:600">Capacity addition (G&amp;A beds)</td><td class="num muted">0</td>`+MOD.scn.map((s2,k)=>`<td class="num"><input class="field" style="width:60px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="5" min="0" value="${s2.cap}" oninput="scnSet(${k},'cap',this.value)"> <div class="muted" style="font-size:9.5px;margin-top:2px">opens <input class="field" style="width:56px;padding:2px 4px;font-size:10px;text-align:right" type="number" step="1" min="2026" max="2040" value="${s2.capYr}" oninput="scnSet(${k},'capYr',this.value)"></div></td>`).join('')+`<td class="muted" style="font-size:10.5px">a recorded plan, not a forecast · logged like any judgement</td></tr>
+    <tr><td style="font-weight:600">Consolidation intent</td><td class="num muted">—</td>`+MOD.scn.map((s2,k)=>`<td class="num"><select class="field" style="width:100%;padding:3px 4px;font-size:10.5px" onchange="scnSet(${k},'cons',this.value)"><option value="">none</option>${consOpts.map(w=>`<option value="${esc(w.name)}·${esc(w.tc)}" ${s2.cons===(w.name+'·'+w.tc)?'selected':''}>${esc(w.name)} · ${esc(trustShort(w.tc))}</option>`).join('')}</select></td>`).join('')+`<td class="muted" style="font-size:10.5px">records the service; dependencies from the co-location matrix below (awaiting clinical sign-off); travel consequence on Access</td></tr>
+    </tbody></table>
+    <div style="margin-top:10px"><button class="btn ghost" style="font-size:11px;padding:5px 12px" onclick="scnAdd()">Add scenario</button> <span class="muted" style="font-size:11px">up to three, compared against do-nothing on the timeline above and the queue simulator</span></div>
+    <div id="scnBelieve" style="margin-top:10px"></div></div>`;
   /* ---- 5 · commit and reuse ---- */
   h+=`<div class="eyebrow" id="sCommit" style="margin-top:16px">Commit &amp; reuse</div>`;
-  h+=`<div class="two" style="margin-bottom:2px"><div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists the full assumption set (weights, fitted rates, variants, differentials, amendments), the baseline and per-year outputs incl. low/central/high to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible. Marking a run as the system's planning basis arrives in phase 2.</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div></div>
+  h+=`<div class="two" style="margin-bottom:2px"><div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists the full assumption set (weights, fitted rates, variants, differentials, amendments), the baseline and per-year outputs incl. low/central/high to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible. Marking a run as the system's planning basis arrives in phase 2.</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><label style="display:block;font-size:11.5px;margin:0 0 8px"><input type="checkbox" id="mbasis" style="accent-color:#1d4ed8"> Mark as the planning basis for this system (downstream pages will read it)</label><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div></div>
    <div class="card"><div class="cap" style="margin-top:2px;margin-bottom:4px">Previous runs · this database</div><div id="mrunlist"><div class="note">Loading…</div></div></div></div>`;
   /* ---- assumptions drawer ---- */
   h+=`<details class="card" id="assumdrawer" style="margin-top:14px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Assumptions &amp; evidence · every engine input, its default and its source</summary>
@@ -2153,6 +2160,12 @@ function computeModel(){
   const bedNeedHi=yrs.map((y,k)=>Math.round(sumAt('needHi',k)));
   const bindOf=(arr,avail)=>{for(let k=0;k<arr.length;k++)if(arr[k]>avail)return yrs[k];return null;};
   const bindTriple=(nC,nLo,nHi,avail)=>({c:bindOf(nC,avail),early:bindOf(nHi,avail),late:bindOf(nLo,avail)});
+  const scnPaths=MOD.scn.map(s2=>{const need=yrs.map(y=>{const t2=y-y0;
+      return Object.keys(tb).filter(k2=>!tb[k2].nodata).reduce((s3,id)=>{const x=tb[id];
+        return s3+x.occ0*Wp('nel',y)/W0.nel*Math.pow(1+(MOD.gndPod.nel+(F.dev[id+'|nel']||0))/100,t2)*Math.pow(1-(MOD.shift+s2.dm+s2.shift)/100,t2)*Math.pow(1-(MOD.prod+s2.prod)/100,t2)/(MOD.ceil/100);},0);});
+    const avail=yrs.map(y=>availSum+(s2.cap>0&&y>=s2.capYr?s2.cap:0));
+    let by=null;for(let k2=0;k2<yrs.length;k2++){if(Math.round(need[k2])>avail[k2]){by=yrs[k2];break;}}
+    return {s:s2,need:need.map(Math.round),avail,bind:by};});
   const bind={sys:bindTriple(bedNeed,bedNeedLo,bedNeedHi,availSum)};
   withBeds.forEach(id=>{bind[id]=bindTriple(tb[id].need.map(Math.round),tb[id].needLo.map(Math.round),tb[id].needHi.map(Math.round),tb[id].avail);});
   const at=y=>{const k=yrs.indexOf(y);return k<0?null:k;};
@@ -2172,7 +2185,8 @@ function computeModel(){
     {label:'range',data:bedNeedLo,borderColor:'rgba(180,83,9,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:false},
     {label:'range ',data:bedNeedHi,borderColor:'rgba(180,83,9,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:'-1',backgroundColor:'rgba(180,83,9,.10)'},
     {label:'Beds required',data:bedNeed,borderColor:'#b45309',backgroundColor:'transparent',tension:.25,pointRadius:0,borderWidth:2},
-    {label:'Beds available today',data:yrs.map(()=>availSum),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],
+    {label:'Beds available today',data:yrs.map(()=>availSum),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5},
+    ...scnPaths.filter(p2=>p2.s.dm||p2.s.shift||p2.s.prod||p2.s.cap).map((p2,k2)=>({label:p2.s.name,data:p2.need,borderColor:SCN_COLS[MOD.scn.indexOf(p2.s)],pointRadius:0,borderWidth:1.8,tension:.25}))],
     {plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183',filter:i=>i.text.indexOf('range')<0}}}});
   /* decomposition to 2036 (NEL weights) */
   const popIdx=P(y36)/P0,demogIdx=Wp('nel',y36)/W0.nel,totPts=(idx[k36]-1)*100;
@@ -2192,6 +2206,10 @@ function computeModel(){
   else find+=` On current stock, projected occupied beds stay under the ${MOD.ceil}% ceiling out to ${yEnd}.`;
   if(MOD.shift>0||MOD.prod>0)find+=` <span class="muted">Includes drawer layers: shift ${MOD.shift}%/yr, productivity ${MOD.prod}%/yr.</span>`;
   const of=document.getElementById('outFind');if(of)of.innerHTML=find;
+  const bel=document.getElementById('scnBelieve');if(bel){let bh=scnBelieveHtml();
+    const active=scnPaths.filter(p2=>p2.s.dm||p2.s.shift||p2.s.prod||p2.s.cap);
+    if(active.length)bh+=`<div style="font-size:12px;margin-top:6px">`+active.map(p2=>`<b style="color:${SCN_COLS[MOD.scn.indexOf(p2.s)]}">${esc(p2.s.name)}</b>: beds ${p2.bind?`bind ~${p2.bind}`:`hold to ${yEnd}`}${bind.sys.c?` (do nothing: ${bind.sys.c===yrs[0]?'over the standard today':'~'+bind.sys.c})`:''}`).join(' · ')+`</div>`;
+    bel.innerHTML=bh;}
   const mc=document.getElementById('mdcap');if(mc)mc.textContent=`Annualised activity vs the ${y0} baseline · shaded band = ±${MOD.band}pp on the fitted non-demographic rate`;
   /* where it lands · trust × POD growth table */
   const lt=document.getElementById('landtable');
@@ -2323,11 +2341,24 @@ function qsRun(){
   const calEl=document.getElementById('qsCal');
   if(calEl)calEl.textContent=cal?`Calibration: replaying ${fmtPeriod(D.pp)} forward 52 weeks reproduces the ${fmtPeriod(D.lp)} band distribution within ${cal.pct}% of the list (best treatment-order mix f=${cal.f.toFixed(2)}, 1 = strictly longest-first). Arrivals estimated from completions plus observed list drift; a stated model, every input published.`:'Single-period bands held: calibration replay starts when a second year loads.';}
 window.qsRun=qsRun;
+function scnSet(k,key,v){const s2=MOD.scn[k];if(!s2)return;s2[key]=(key==='cons'||key==='name')?v:(parseFloat(v)||0);computeModel();}
+function scnAdd(){if(MOD.scn.length>=3)return;MOD.scn.push(scnNew(MOD.scn.length));render();}
+window.scnSet=scnSet;window.scnAdd=scnAdd;
+function scnBelieveHtml(){
+  if(!MOD.scn.length)return '';
+  const bits=MOD.scn.map((s2,k)=>{const b=[];
+    if(s2.dm>0)b.push(`demand moderation removes ${s2.dm}% of acute demand growth a year, every year`);
+    if(s2.shift>0)b.push(`${s2.shift}%/yr shifts setting (follow-up reduction, PIFU, virtual)`);
+    if(s2.prod>0)b.push(`wards release ${s2.prod}% bed-need a year through LoS and day-case work`);
+    if(s2.cap>0)b.push(`${s2.cap} additional staffed G&A beds open in ${s2.capYr} and stay staffed`);
+    if(s2.cons)b.push(`${s2.cons.split('·')[0]} consolidates (dependencies unvalidated until clinical sign-off)`);
+    return b.length?`<div style="font-size:12px;margin-top:4px"><b style="color:${SCN_COLS[k]}">${esc(s2.name)}</b> must believe: ${b.join('; ')}.</div>`:'';}).join('');
+  return bits?`<div class="cap" style="margin-bottom:2px">What each scenario must believe</div>`+bits:'';}
 async function saveModelRun(){const L=MOD.last;if(!L)return;const btn=document.getElementById('msave'),note=document.getElementById('msavenote');
   /* U3 · writes require a session (anon INSERT revoked in E2) */
   if(!session){if(note)note.textContent='Sign in to save (public data stays open to read).';return;}
   if(btn)btn.disabled=true;if(note)note.textContent='Saving…';
-  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),age_band_weights_pod:JSON.parse(JSON.stringify(MOD.wpod)),weights_sources:WPOD_SRC,non_demographic_growth_pct:MOD.gnd,non_demographic_growth_pct_pod:Object.assign({},MOD.gndPod),non_demographic_fit:MOD.fit?MOD.fit.pod:null,trust_pod_deviation_pct:MOD.fit?MOD.fit.dev:null,variant_band_pp:MOD.band,amended_inputs:Object.keys(MOD.amended||{}),shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,differential_trust_pod:Object.assign({},MOD.diff),
+  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),age_band_weights_pod:JSON.parse(JSON.stringify(MOD.wpod)),weights_sources:WPOD_SRC,non_demographic_growth_pct:MOD.gnd,non_demographic_growth_pct_pod:Object.assign({},MOD.gndPod),non_demographic_fit:MOD.fit?MOD.fit.pod:null,trust_pod_deviation_pct:MOD.fit?MOD.fit.dev:null,variant_band_pp:MOD.band,amended_inputs:Object.keys(MOD.amended||{}),judgements:(MOD.judgements||[]).slice(0,60),scenarios:JSON.parse(JSON.stringify(MOD.scn||[])),is_planning_basis:!!(document.getElementById('mbasis')||{}).checked,shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,differential_trust_pod:Object.assign({},MOD.diff),
     baseline:{year:L.y0,nel_annual:L.BL.nel.annual,el_annual:L.BL.el.annual,op_annual:L.BL.op.annual,ae_annual:L.BL.ae?L.BL.ae.annual:null,beds_available:L.BL.bedsAvail,beds_occupied:L.BL.bedsOcc,occupancy_pct:L.BL.occ,activity_to:L.BL.nel.to,beds_period:L.BL.bedsPeriod,trusts:TRUSTS.slice()}};
   try{
     const{data:sc,error:e1}=await sb.from('sr_scenarios').insert({name:runName(),params,version:1,notes:'v2 engine · saved from the modelling studio'}).select('id').single();if(e1)throw e1;
@@ -2354,7 +2385,7 @@ async function loadSavedRuns(){const el=document.getElementById('mrunlist');if(!
   const runs=MOD.runsCache.filter(r=>{const a=r.assumptions||{};return !a.system||a.system===sysSlug;});
   if(!runs.length){el.innerHTML='<div class="note">No saved runs yet for this system.</div>';return;}
   el.innerHTML=runs.map(r=>{const a=r.assumptions||{},s=(r.summary||{}).headline||{};const mine=a.engine===ENGINE_VERSION;const v1=/^v1-/.test(a.engine||'');
-    const key=mine?`beds req. 2040: ${fmt(s.beds_required_2040,'count')} (gap ${s.beds_gap_2040>=0?'+':''}${fmt(s.beds_gap_2040,'count')})${s.beds_bind_year?` · binds ${s.beds_bind_year}`:''}`:v1?'engine v1 run':'segmented planning-engine seed';
+    const key=(a.is_planning_basis?'<span class="pill" style="background:#1d4ed8;margin-right:6px">planning basis</span>':'')+(mine?`beds req. 2040: ${fmt(s.beds_required_2040,'count')} (gap ${s.beds_gap_2040>=0?'+':''}${fmt(s.beds_gap_2040,'count')})${s.beds_bind_year?` · binds ${s.beds_bind_year}`:''}`:v1?'engine v1 run':'segmented planning-engine seed');
     return `<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.name)}">${esc(r.name)}</div><div class="muted" style="font-size:11px">${r.created_at?new Date(r.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):''} · ${esc(r.scenario_type||'')} · ${key}</div></div>${mine||v1?`<button class="btn ghost" style="font-size:11px;padding:4px 10px;flex:none" onclick="loadModelRun('${r.id}')">${v1?'Load (map to v2)':'Load'}</button>`:''}</div></div>`;}).join('');}
 function loadModelRun(id){const r=(MOD.runsCache||[]).find(x=>x.id===id);if(!r||!r.assumptions)return;const a=r.assumptions;
   if(a.age_band_weights_pod)MOD_PODS.forEach(pd=>{MOD_BANDS.forEach(b=>{const v2=(a.age_band_weights_pod[pd[0]]||{})[b];if(v2!=null)MOD.wpod[pd[0]][b]=Number(v2);});});
@@ -2367,6 +2398,8 @@ function loadModelRun(id){const r=(MOD.runsCache||[]).find(x=>x.id===id);if(!r||
   if(a.productivity_pct!=null)MOD.prod=Number(a.productivity_pct);
   if(a.occupancy_ceiling_pct!=null)MOD.ceil=Number(a.occupancy_ceiling_pct);
   if(a.differential_trust_pod)MOD.diff=Object.assign({},a.differential_trust_pod);
+  if(a.scenarios)MOD.scn=JSON.parse(JSON.stringify(a.scenarios));
+  if(a.judgements)MOD.judgements=a.judgements.slice();
   MOD.amended={};['mg_nel','mg_el','mg_op','mg_ae','msh','mpr','mceilsel','mband'].forEach(k=>MOD.amended[k]=1);
   render();
   if(/^v1-/.test(a.engine||''))setTimeout(()=>{const n=document.getElementById('msavenote');if(n)n.textContent='Engine v1 run mapped onto v2 (its single weight set and growth rate applied to every POD): an approximate reproduction.';},900);}

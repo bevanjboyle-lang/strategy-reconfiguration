@@ -623,3 +623,16 @@ first lever (treatment capacity %) wired. Section 'The waiting list as a queue' 
 end of When-it-binds. Suite 47 specs (test 47), gate 46/46 + 47 solo green.
 NEXT (W1 slice 2): lever library replacing interim layers + diff grid (test 42 rewrite),
 scenario composer + compare, judgement log, planning basis; then W2 rewires per charter.
+
+## 12 Jul 2026 night · Ceiling sprint W1 slice 2: lever library + scenario composer
+S4 rebuilt: interim note + differential grid UI RETIRED (diffApply kept for old-run compat;
+test 42 rewritten). Lever library table: demand moderation, setting shift (evidence bound
+printed live: system follow-up:first ratio vs national best quartile), LoS/productivity,
+capacity addition (beds + opening year), consolidation intent (fragility-worst services;
+labelled 'matrix awaiting clinical sign-off'). Up to 3 scenarios vs do-nothing: overlays on
+the bed-requirement chart, per-scenario binding years, auto-generated 'what each scenario
+must believe' sentences. Judgement log: first amendment of any drawer input prompts for a
+reason; who/when/why stored and saved with runs (params.judgements). Planning-basis checkbox
+on save (params.is_planning_basis) + PLANNING BASIS pill in the runs list (W2 consumers read
+it). Save params gain scenarios[]; load restores them. Gate 43+3 flaky +1 env-fail; fail
+(test 01 boot class) + both new modelling tests passed solo in 15s — known throttle class.

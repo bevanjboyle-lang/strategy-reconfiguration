@@ -552,12 +552,14 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
-  test('42 modelling · differential growth grid projects trust × POD', async ({ page }) => {
+  test('42 modelling · lever library and scenario composer', async ({ page }) => {
     test.slow();
     await page.goto('/index.html?system=' + BSW_SLUG + '&view=modelling');
-    await expect(page.locator('.view')).toContainText('Differential growth', { timeout: 50000 });
-    await expect(page.locator('#diffout table')).toBeVisible({ timeout: 25000 });
-    await expect(page.locator('#diffout')).toContainText('Whole system');
+    await expect(page.locator('.view')).toContainText('Lever library', { timeout: 50000 });
+    await expect(page.locator('.view')).toContainText('What bends the curve');
+    await page.locator('button', { hasText: 'Add scenario' }).click();
+    await expect(page.locator('.view')).toContainText('Scenario A');
+    await expect(page.locator('.view')).toContainText('matrix awaiting clinical sign-off');
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
