@@ -543,3 +543,25 @@ Proposal approved by Bevan (doc in Projects folder); this run ships phase 1.
   approximately onto v2.
 - Tests: 08 rewritten for the spine, 44 added (engine self-consistency: variant ordering,
   binding-year correctness, fit ranges). Gate 44/44 green in 4.1m, zero retries.
+
+## 12 Jul 2026 pm · Full UI formatting sweep + design-system match to Estates Intelligence / Appraisal
+Audit-driven: automated Playwright sweep of all 20 views (screenshots + JS probes for header
+overlap, card clipping, horizontal overflow, gap rhythm) ran before and after; zero defects after.
+- Header smear killed globally: table.dt th now wraps (vertical-align bottom, hyphens), th.num no
+  longer nowrap; even-column .ev tables keep numbers nowrap. Fixes capacity benchmark + theatres &
+  surgical throughput, activity/performance/estate/finance/workforce/pack national tables.
+- Measure rows (overview failure list, decide starting point): right-hand value block restructured
+  (.sc.scw, 122px, wrapping small) so "N% of trusts do better · distress" no longer spills under
+  the card edge. Flow verdict cells wrap (postxt). Explorer slugs wrap (overflow-wrap anywhere).
+- Tile containment: grid/two/three/xgrid2 children get min-width:0; kpi value/subtext wrap.
+- Estate site table in a scroll container (min-width 600) so numbers never clip.
+- Bed occupancy trend chart: was dead (block-scoped months ReferenceError killed the tail call);
+  now draws 24 months × 4 sites, honest single-month note when history is thin.
+- Gap rhythm: sibling cards 14px everywhere (normalised 10/11/12/16px inline margins, reqcards
+  grid gap, details cards, export-log caption). Section gaps consistent via eyebrow rhythm.
+- Design system matched to the EI/Appraisal house language: cool #f4f6fa canvas, white cards with
+  #dfe3ea hairlines, navy ink #0c233c, IBM Plex Mono uppercase eyebrows/KPI labels/nav groups/
+  provenance lines, cobalt #1d4ed8 buttons/active nav/lens chips/exec accents, 8px card radius
+  (6px controls), softer shadows, chart hairlines #e6eaf1. Data palette and verdict colours were
+  already shared with EI and stay. (Appraisal app is login-gated; its visible tokens agree.)
+- Gate 44/44 green (5.0m, zero retries). Audit scripts kept in tests/ (ui-audit.js, gap-probe.js).
