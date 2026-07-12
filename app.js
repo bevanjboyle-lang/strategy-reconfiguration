@@ -9,10 +9,10 @@ const NAV=[["START",[["home","Start"],["england","England overview"]]],
 ["DATA EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
 ["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
-["DECIDE",[["decide","Decision journey"]]]];
+["DECIDE",[["decide","Decision journey"],["pack","Case-for-change pack"]]]];
 /* E1 · entry-flow state: nothing is system-committed until the user chooses (door B, resume chip,
    in-app picker or a ?system= deep link). Neutral surfaces (England overview + data explorer) never commit. */
-const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','value','workforce','population','access','modelling','options','assurance','decide'];
+const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','value','workforce','population','access','modelling','options','assurance','decide','pack'];
 const NEUTRAL_STAGES=['england','xentity','xmetric','xgrid'];
 let appReady=false,sysCommitted=false,mapEngland=false,pendingOrg=null;
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
@@ -196,7 +196,7 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey',value:'Cost & value'};
+const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey',value:'Cost & value',pack:'Case-for-change pack'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.body.classList.toggle('home',stage==='home');document.body.classList.toggle('neutral',!sysCommitted&&stage!=='home');
   const scope=stage==='home'?'Choose how to begin':(!sysCommitted?'England · every acute trust':`${sysLabel()} · ${o.type==='acute_trust'?trustShort(o.code):'Whole system'}`);
@@ -204,7 +204,7 @@ function render(){killCharts();const o=orgById[sel]||{};
   const ph=document.getElementById('printhead');if(ph)ph.innerHTML=`System Intelligence — ${esc(system()?system().name:'')}<small>${esc(TITLES[stage]||'')} · ${esc(o.name||'')} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · source-tagged data — modelled and estimated figures are labelled</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,value:renderValue,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide}[stage];
+  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,value:renderValue,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide,pack:renderPack}[stage];
   mapEngland=(stage==='england');
   fn(v);
 }
@@ -357,6 +357,16 @@ function renderOverview(v){
   const strips=['ae_4hr','rtt_18wk','bed_occupancy','cancer_62','fragility_index'].map(code=>{const any=rows.find(r=>r.metric_code===code);const st=distStrip(code,sysIds,null);if(!st)return '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line2)"><span style="width:190px;flex:none;font-size:11.5px;color:var(--ink2)">${esc(any?any.metric_name:code)}</span><div style="flex:1;min-width:0">${st}</div></div>`;}).filter(Boolean).join('');
   if(strips)h+=`<div class="eyebrow">System vs England</div><div class="card"><div class="cap" style="margin-bottom:6px">Every English acute trust's latest value (dots) · this system's trusts (diamonds) · dashed line = national median</div>${strips}</div>`;
+  /* --- build plan · movers since last period --- */
+  const mv=rows.filter(r=>TRUSTS.includes(r.org_code)&&!r.service_id&&r.value!=null&&r.prev_value!=null&&Number(r.prev_value)!==0&&['pct','ratio','score','index','days'].includes(r.unit))
+    .map(r=>{const ch=100*(Number(r.value)-Number(r.prev_value))/Math.abs(Number(r.prev_value));const adverse=(r.higher_is_better===false)?ch:-ch;return {r,ch,adverse};})
+    .filter(x=>Math.abs(x.ch)>=3&&Math.abs(x.ch)<400);
+  mv.sort((a,b)=>b.adverse-a.adverse);
+  const worse=mv.slice(0,5),better=mv.filter(x=>x.adverse<0).slice(-3).reverse();
+  if(worse.length){h+=`<div class="eyebrow">Moved since the last period</div><div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Measure</th><th>Trust</th><th class="num">Previous</th><th class="num">Latest</th><th class="num">Move</th></tr></thead><tbody>`+
+    worse.map(x=>`<tr style="cursor:pointer" onclick="openDrill('${x.r.organisation_id}','${x.r.metric_code}')"><td>${esc(x.r.metric_name)}</td><td>${esc(trustShort(x.r.org_code))}</td><td class="num muted">${fmt(x.r.prev_value,x.r.unit)}</td><td class="num" style="font-weight:600">${fmt(x.r.value,x.r.unit)}</td><td class="num" style="font-weight:700;color:#b3261e">${(x.ch>0?'+':'')+(Math.round(x.ch*10)/10)}%</td></tr>`).join('')+
+    better.map(x=>`<tr style="cursor:pointer" onclick="openDrill('${x.r.organisation_id}','${x.r.metric_code}')"><td>${esc(x.r.metric_name)}</td><td>${esc(trustShort(x.r.org_code))}</td><td class="num muted">${fmt(x.r.prev_value,x.r.unit)}</td><td class="num" style="font-weight:600">${fmt(x.r.value,x.r.unit)}</td><td class="num" style="font-weight:700;color:#166f4d">${(x.ch>0?'+':'')+(Math.round(x.ch*10)/10)}%</td></tr>`).join('')+
+    `</tbody></table><div class="note" style="padding:6px 14px 10px">Largest adverse moves first, biggest improvements beneath, latest published period against the one before; rate-like measures only, moves under 3% suppressed. Click any row for the full drill.</div></div>`;}
   h+=`<div class="eyebrow">Closest to failure</div><div class="two"><div class="list">`+(closest.length?closest.map(rrow).join(''):'<div class="row"><div class="m"><div class="t1">No serious or near-failure flags</div><div class="t2">across this system’s published headline measures</div></div></div>')+`</div>`;
   h+=`<div class="card"><div class="h3">Distress by domain</div><div class="cap">${esc(o.name||'')}</div><div class="chartbox sm"><canvas id="radar"></canvas></div>
    <div class="h3" style="margin-top:14px">Trusts in this system</div><table class="dt ev"><thead><tr><th>Trust</th><th>CQC</th><th class="num">Distress</th></tr></thead><tbody>`+
@@ -584,6 +594,10 @@ async function renderActivity(v){v.innerHTML='<div class="loading">Loading activ
   const o=orgById[sel];
   let h=sysNote()+ensureNote('activity')+`<h1 class="serif">Activity</h1><div class="lead">Admissions, day case and outpatient activity across the system's acute trusts, with elective throughput by specialty for every trust.</div>`;
   h+=nationalBlock(['ae_attendances','emerg_admissions','adm_elective','op_attendances'],['ae_attendances','adm_emergency','adm_elective','op_attendances','discharges_total','gp_referrals','cancelled_ops','rtt_total'],'');
+  /* build-plan item: outpatient efficiency from HES MAR trust cut (DNA, follow-up ratio, day-case share) */
+  h+=`<div class="eyebrow" style="margin-top:14px">Outpatients &amp; day-case efficiency · HES monthly, every trust</div>`;
+  h+=natTrustTable(['op_dna_rate','op_fu_first_ratio','daycase_share_electives']);
+  h+=`<div class="note" style="margin-top:8px">Three of the biggest productivity levers in one row: missed appointments (every DNA is a wasted slot), follow-ups per new patient (high ratios are where PIFU and discharge-to-referrer release capacity), and the share of electives done as day cases (higher is better for patients and beds alike). Monthly, from the HES activity publication, benchmarked against every English trust; click any figure for the trend.</div>`;
   /* --- national: elective throughput by specialty (completed RTT pathways, admitted + non-admitted) --- */
   const cp=f.filter(x=>x.metric_code==='rtt_completed_pathways');
   const cpPeriods=[...new Set(cp.map(x=>x.period))].sort();
@@ -745,7 +759,7 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
     h+=hmGrid(tums.map(t=>({code:t,name:prettySlug(t).replace(/ a$/,'')})),ccell,hmPerfCol(cvals,true),v2=>v2==null?'':Math.round(v2),(oid)=>`openTumourDrill('${oid}')`);
     h+=`<div class="note" style="margin-top:8px">Derived first-hand from the provider-published monthly tumour splits; any cell opens the trust's tumour drill.</div></div>`;}
   /* --- item 17 · the board view: the wider set an NHS trust board tracks, from published national data --- */
-  const BOARD=['mhso_12_hour_wait_type_1_2_a_e_monthly_ecds','cancelled_ops','shmi','fft_positive_pct','hcai_cdi_ho','hcai_ecoli_ho','mhso_percentage_of_emergency_readmissions_with_an','mhso_successfully_delivered_daycases_as_a_percent'];
+  const BOARD=['mhso_12_hour_wait_type_1_2_a_e_monthly_ecds','cancelled_ops','shmi','fft_positive_pct','hcai_cdi_ho','hcai_ecoli_ho','mhso_percentage_of_emergency_readmissions_with_an','op_dna_rate','op_fu_first_ratio','daycase_share_electives'];
   h+=`<div class="eyebrow" style="margin-top:16px">The board view · the wider performance set a trust board tracks</div>`;
   h+=natTrustTable(BOARD);
   const sysIdsP=TRUSTS.map(tc=>(orgs.find(x=>x.code===tc)||{}).id).filter(Boolean);
@@ -806,7 +820,9 @@ async function renderCapacity(v){v.innerHTML='<div class="loading">Loading capac
   }else{h+=covNote('Per-site bed, occupancy and theatre and diagnostic asset detail is not published nationally — national publications report beds and performance at trust level. ERIC (on the Estate page) is the site-grain national source.');}
   /* --- item 4 · theatres: published throughput signals + a stated-assumption requirement model --- */
   h+=`<div class="eyebrow" style="margin-top:16px">Theatres &amp; surgical throughput</div>`;
-  h+=natTrustTable(['cancelled_ops','mhso_successfully_delivered_daycases_as_a_percent','mhso_elective_admissions_with_0_day_length_of_sta','mhso_cancellation_in_t_o_for_non_clinical_reasons']);
+  const thCodes=['cancelled_ops','mhso_successfully_delivered_daycases_as_a_percent','mhso_elective_admissions_with_0_day_length_of_sta','mhso_cancellation_in_t_o_for_non_clinical_reasons'];
+  ['theatre_util_local','theatre_sessions_wk'].forEach(c=>{if(rows.some(r=>r.metric_code===c&&r.value!=null))thCodes.push(c);});
+  h+=natTrustTable(thCodes);
   const admElAny=rows.find(r=>r.metric_code==='adm_elective'&&r.metric_id);
   if(admElAny){
     const CASES_LOW=800,CASES_MID=950,CASES_HIGH=1100,THEATRE_SHARE=0.6;
@@ -1151,6 +1167,13 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
     h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><div class="h3" style="padding:10px 14px 0">Energy cost above the median per square metre</div><div class="cap" style="padding:2px 14px 0">All utilities vs the national median £${medEn!=null?Math.round(medEn):'—'}/m² across ${enAll.length} trusts</div><table class="dt ev"><thead><tr><th>Trust</th><th class="num">Energy £m</th><th class="num">£/m²</th><th class="num">Above median</th></tr></thead><tbody>`;
     enRows.forEach(x=>{h+=`<tr><td>${esc(x.name)}</td><td class="num muted">${fmt(x.e,'gbp_m')}</td><td class="num" style="font-weight:600;color:${x.per>medEn?'#b45309':'#166f4d'}">£${Math.round(x.per)}</td><td class="num" style="font-weight:700;color:${x.ex>0.05?'#b3261e':'#166f4d'}">${fmt(x.ex,'gbp_m')}</td></tr>`;});
     h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Old, poorly configured estate burns money as well as constraining care models, which makes this lens double as reconfiguration evidence. Tariffs and estate age vary; treat as directional.</div></div>`;}
+  /* --- local intake hooks: CIP delivery card when a trust return is loaded --- */
+  const hasCip=tIds.some(o=>stRow(o,'cip_target_m')||stRow(o,'cip_delivered_m'));
+  if(hasCip){
+    h+=`<div class="eyebrow" style="margin-top:16px">CIP delivery · local trust return</div><div class="card" style="padding:4px 0;margin-bottom:14px"><table class="dt ev"><thead><tr><th>Trust</th><th class="num">CIP target £m</th><th class="num">Delivered £m</th><th class="num">Delivery</th></tr></thead><tbody>`+
+      tIds.map(o=>{const t=stRow(o,'cip_target_m'),d2=stRow(o,'cip_delivered_m');if(!t&&!d2)return '';const tv=t?Number(t.value):null,dv=d2?Number(d2.value):null;const pc=(tv&&dv!=null)?100*dv/tv:null;
+        return `<tr><td>${esc(trustShort((orgById[o]||{}).code||''))}</td><td class="num muted">${tv!=null?fmt(tv,'gbp_m'):'—'}</td><td class="num" style="font-weight:600">${dv!=null?fmt(dv,'gbp_m'):'—'}</td><td class="num" style="font-weight:700;color:${pc==null?'#9aa0af':pc>=95?'#166f4d':pc>=80?'#b45309':'#b3261e'}">${pc!=null?Math.round(pc)+'%':'—'}</td></tr>`;}).join('')+
+      `</tbody></table><div class="note" style="padding:6px 14px 10px">Loaded from the local intake template (confidence: local); this is the delivery half the public collections cannot see.</div></div>`;}
   /* --- item 18 phase 1 · opportunity dossiers: four planes triangulated per trust × specialty --- */
   const TH={WTE_FRAGILE:8,COST_HI:15,COST_XHI:25,RTT_BAND:5,S52:2,VOL_DROP:0,GROW:15,OCC:94};
   const dossiers=[];
@@ -1324,6 +1347,11 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
       h+=`<tr><td>${l[1]}</td>`+mhwTrusts.map(t=>{const e=mwv(t.id,l[0]);return `<td class="num" style="font-weight:600">${e?fmt(e.v,'pct'):'—'}</td>`;}).join('')+`</tr>`;});
     const anyP=mwv(mhwTrusts[0].id,'mhs_staff_turnover_rate')||mwv(mhwTrusts[0].id,'mhs_registered_nurse_sickness_absence');
     h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Authorised Model Hospital extract, BSW trusts${anyP?' · as at '+fmtPeriod(anyP.p):''}. Trust-level turnover is not otherwise published nationally; extending this needs a further extract.</div></div>`;}
+  /* --- local intake hook: establishment and vacancy when a trust return is loaded --- */
+  if(rows.some(r=>r.metric_code==='vacancy_rate_local'&&r.value!=null)){
+    h+=`<div class="eyebrow" style="margin-top:14px">Vacancy &amp; establishment · local trust return</div>`;
+    h+=natTrustTable(['vacancy_rate_local','estab_wte']);
+    h+=`<div class="note" style="margin-top:8px">Loaded from the local intake template (confidence: local) — the vacancy picture no national publication carries at trust level.</div>`;}
   /* staff survey */
   const NSS=[['staff_engagement','Engagement'],['nss_morale','Morale'],['nss_pp1_compassionate','Compassionate and inclusive'],['nss_pp2_recognised','Recognised and rewarded'],['nss_pp3_voice','A voice that counts'],['nss_pp4_safe_healthy','Safe and healthy'],['nss_pp5_learning','Always learning'],['nss_pp6_flexible','Working flexibly'],['nss_pp7_team','We are a team']];
   const svOrg=grp?focusTrust():sel;const svRows=NSS.map(n=>{const r=rows.find(x=>x.organisation_id===svOrg&&x.metric_code===n[0]&&!x.service_id);return r?{lab:n[1],r}:null;}).filter(Boolean);
@@ -1557,6 +1585,74 @@ function accToggleBlue(){accBlue=!accBlue;accUpdateFromState();}
 function accReset(){if(accessExcl[sysSlug])accessExcl[sysSlug].clear();accClearPin();}
 window.toggleAccessSite=toggleAccessSite;window.accSetMode=accSetMode;window.accArmPin=accArmPin;window.accClearPin=accClearPin;window.accToggleBlue=accToggleBlue;window.accReset=accReset;
 
+/* ===== CASE-FOR-CHANGE PACK · composed print-ready chapter from live data ===== */
+async function renderPack(v){
+  v.innerHTML='<div class="loading">Composing the pack from live data…</div>';
+  if(deferredLoads)await deferredLoads;
+  const[NS,AF,WF]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('workforce')]);
+  if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){popProjCache[sysSlug]=[];}}
+  const A=await accessFile();
+  if(stage!=='pack')return;
+  const sys=system()||{};const today=new Date().toISOString().slice(0,10);
+  const secH=(n,t)=>`<div class="packsec"><div class="eyebrow" style="margin-top:26px">Section ${n}</div><h2 class="serif" style="font-size:22px;margin:2px 0 10px">${t}</h2>`;
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1 class="serif">Case for change · evidence pack</h1><button class="btn" onclick="window.print()">Print / save as PDF</button></div>`;
+  h+=`<div class="lead">${esc(sys.name||'')} · assembled ${today} from live published NHS data, benchmarked against every English trust. Every figure carries its source and confidence; nothing in this pack is typed in by hand.</div>`;
+  /* 1 · system position */
+  h+=secH(1,'The system position');
+  const od=distByOrg[sel];const gm=c=>orgRows().find(r=>r.metric_code===c);
+  const heads=[['ae_4hr','A&E 4-hour'],['rtt_18wk','RTT within 18 weeks'],['cancer_62','Cancer 62-day'],['bed_occupancy','Bed occupancy'],['dm01_6wk','Diagnostics 6wk+']];
+  h+=`<div class="grid kpis">`+(od?kpi('System distress',od.distress_index,'/100','composite of every scored measure',null,color(od.distress_index)):'')+
+    heads.map(cd=>{const r=gm(cd[0]);return r?kpi(cd[1],fmt(r.value,r.unit),'',r.nm_value!=null?'national median '+fmt(r.nm_value,r.unit):slab(r.status),null,color(r.distress)):'';}).join('')+`</div>`;
+  h+=`<div class="cap" style="margin:4px 0 8px">Trusts in scope</div>`+natTrustTable(['tac_surplus_year','ncc_index_total','tac_agency_share_pay','sickness_rate']);
+  /* 2 · pressure */
+  h+=`</div>`+secH(2,'Where pressure concentrates');
+  const closest=rows.filter(r=>r.org_type==='acute_trust'&&TRUSTS.includes(r.org_code)&&(r.status==='near_failure'||r.status==='serious')).sort((a,b)=>b.distress-a.distress).slice(0,10);
+  if(closest.length){h+=`<div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Measure</th><th>Trust</th><th class="num">Value</th><th class="num">National median</th><th>Status</th></tr></thead><tbody>`+
+    closest.map(r=>`<tr><td>${esc(r.metric_name)}</td><td>${esc(trustShort(r.org_code))}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${r.nm_value!=null?fmt(r.nm_value,r.unit):'—'}</td><td><span class="pill" style="background:${color(r.distress)}">${slab(r.status)}</span></td></tr>`).join('')+`</tbody></table></div>`;}
+  else h+=covNote('No serious or near-failure flags across this system\'s headline measures.');
+  const strips=['ae_4hr','rtt_18wk','bed_occupancy','cancer_62','fragility_index'].map(code=>{const any=rows.find(r=>r.metric_code===code);const st=distStrip(code,TRUSTS.map(tc=>(orgs.find(x=>x.code===tc)||{}).id).filter(Boolean),null);if(!st)return '';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line2)"><span style="width:190px;flex:none;font-size:11.5px;color:var(--ink2)">${esc(any?any.metric_name:code)}</span><div style="flex:1;min-width:0">${st}</div></div>`;}).filter(Boolean).join('');
+  if(strips)h+=`<div class="card" style="margin-top:10px"><div class="cap" style="margin-bottom:6px">This system's trusts (diamonds) against every English acute trust (dots) · dashed line = national median</div>${strips}</div>`;
+  /* 3 · demand ahead */
+  h+=`</div>`+secH(3,'The demand ahead');
+  const OUT=specOutlook(NS);const DC=demoCAGR(2036);
+  if(DC){h+=`<div class="grid kpis">`+kpi('Demographic growth',((DC.cagr*100).toFixed(1))+'%','/yr','ONS SNPP, age-weighted, to '+DC.yT,'#b45309')+kpi('85+ growth',(DC.g85>=0?'+':'')+Math.round(DC.g85)+'%','','by '+DC.yT+' · the urgent-care driver','#b45309')+`</div>`;
+    const cpP=AF.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
+    const cpsP=[...new Set(cpP.map(x=>x.period))].sort();const cp12P=new Set(cpsP.slice(-12));
+    const sysVolP={};cpP.forEach(x=>{if(cp12P.has(x.period))sysVolP[x.specialty_code]=(sysVolP[x.specialty_code]||0)+Number(x.value||0);});
+    const outRows=Object.keys(sysVolP).filter(sc=>OUT.agg[sc]&&OUT.agg[sc].cagr3!=null).map(sc=>{const o=OUT.agg[sc];const g=Math.pow((1+DC.cagr)*o.mix,10)-1;return {name:specName(sc),em:o.emShare,g:g*100,extra:sysVolP[sc]*g};}).sort((a,b)=>b.extra-a.extra).slice(0,8);
+    if(outRows.length){h+=`<div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Specialty</th><th class="num">Urgent share</th><th class="num">Projected +10yr</th><th class="num">Extra pathways /yr</th></tr></thead><tbody>`+
+      outRows.map(x=>`<tr><td>${esc(x.name)}</td><td class="num muted">${x.em!=null?Math.round(x.em*100)+'%':'—'}</td><td class="num" style="font-weight:600;color:${x.g>15?'#b3261e':'#191f2b'}">${(x.g>0?'+':'')+Math.round(x.g)}%</td><td class="num" style="font-weight:700">${Math.round(x.extra).toLocaleString()}</td></tr>`).join('')+`</tbody></table></div>`;}}
+  else h+=covNote('Population projections are not loaded for this system.');
+  /* 4 · fragility */
+  h+=`</div>`+secH(4,'Service fragility');
+  const wteRows=[];const seenW=new Set();
+  WF.forEach(x=>{if(x.metric_code!=='medical_wte'||!x.specialty_code||x.value==null)return;const k=x.organisation_id+'|'+x.specialty_code;if(seenW.has(k))return;
+    const later=WF.some(y=>y.metric_code==='medical_wte'&&y.organisation_id===x.organisation_id&&y.specialty_code===x.specialty_code&&y.period>x.period);
+    if(later)return;seenW.add(k);
+    if(Number(x.value)<5&&Number(x.value)>0){const o=orgById[x.organisation_id];if(o&&TRUSTS.includes(o.code))wteRows.push({sp:prettySlug(x.specialty_code),tc:o.code,v:Number(x.value)});}});
+  wteRows.sort((a,b)=>a.v-b.v);
+  if(wteRows.length){h+=`<div class="card" style="padding:4px 0"><div class="cap" style="padding:10px 14px 0">Rotas below five whole-time doctors · the services that cannot stand alone</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">WTE in post</th></tr></thead><tbody>`+
+    wteRows.slice(0,12).map(x=>`<tr><td>${esc(x.sp)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:#b3261e">${(Math.round(x.v*10)/10)}</td></tr>`).join('')+`</tbody></table></div>`;}
+  else h+=covNote('No sub-five-WTE medical rotas in the published workforce data for this system.');
+  h+=`<div class="note">The full five-component fragility index, its methodology and the specialty demand heatmaps live in the Modelling studio; the triangulated opportunity dossiers live on Cost &amp; value. Both print from their own pages.</div>`;
+  /* 5 · access */
+  h+=`</div>`+secH(5,'Access and equity');
+  if(A&&A.lsoa&&A.lsoa.length){const base=accessCompute(A,new Set(),null,null);const routed=/routed/i.test(A.method||'');
+    h+=`<div class="grid kpis">`+kpi('Mean travel time',base.mean.toFixed(1),' min',(routed?'routed drive time':'estimated drive time')+' · population-weighted','#191f2b')+
+      kpi('Beyond 45 minutes',base.over45.toFixed(1),'%','of resident population','#191f2b')+
+      (base.c20m!=null?kpi('Core20 mean',base.c20m.toFixed(1),' min','most deprived 20% of neighbourhoods','#191f2b'):'')+
+      (base.gap!=null?kpi('Core20 vs rest gap',base.gap.toFixed(1),' min','negative = deprived communities closer','#166f4d'):'')+`</div>`;
+    h+=`<div class="note">${routed?'Times are routed on the OpenStreetMap road network (OSRM).':'Times are estimated (haversine × windiness at banded speeds).'} The interactive mapper on Access &amp; travel tests any site closure or addition live, with winners and losers named.</div>`;}
+  else h+=covNote('No access matrix is loaded for this system.');
+  /* 6 · provenance */
+  h+=`</div>`+secH(6,'Provenance and freshness');
+  if(freshness&&freshness.length){h+=`<div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Source family</th><th class="num">Latest period</th><th class="num">Rows</th></tr></thead><tbody>`+
+    freshness.slice().sort((a,b)=>(a.source_key||'').localeCompare(b.source_key||'')).map(f2=>`<tr><td style="font-size:11px">${esc(f2.description||f2.source_key)}</td><td class="num">${f2.latest_period?fmtPeriod(f2.latest_period):'—'}</td><td class="num muted">${(f2.row_count||0).toLocaleString()}</td></tr>`).join('')+`</tbody></table></div>`;}
+  h+=`<div class="note">Every value in this pack is drawn live from the serving database at the moment of printing; sources and confidence tags are visible per figure throughout the product. Derived and modelled figures are labelled as such where they appear.</div></div>`;
+  v.innerHTML=h;countUps();
+}
+
 /* ===== MODELLING · A1 v1 demand & capacity engine (2026-07-02) =====
    Replaces the illustrative hardcoded projection with a reproducible engine on live data.
    METHOD (mirrored in the on-page 'Method & data' note):
@@ -1713,6 +1809,7 @@ async function renderModelling(v){
     const maxSum=parts.reduce((s,p)=>s+p[0],0),ptSum=parts.reduce((s,p)=>s+p[1],0);
     return {score:Math.round(100*ptSum/maxSum),n:parts.length,wte};};
   const rttSpecsM=specs.filter(s=>s.is_rtt&&!/^X/.test(s.code));
+  let fragWorst=[];
   const fragRows=rttSpecsM.map(s=>{let tot=0,n=0;TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=fragCell(oid,s.code,s.name);if(c){tot+=c.score;n++;}});return {code:s.code,name:s.name,avg:n?tot/n:null};}).filter(x=>x.avg!=null).sort((a,b)=>b.avg-a.avg);
   if(fragRows.length){
     const cellFr=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===sc);const c=fragCell(oid,sc,s2?s2.name:sc);return c?c.score:null;};
@@ -1720,11 +1817,39 @@ async function renderModelling(v){
     h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="h3">Fragility by trust × specialty · 0 (robust) to 100 (fragile)</div><div class="cap">Five weighted components per cell: rota scale 30 · access position 25 · long-wait severity 15 · falling volume 15 · cost outlier 15 · score renormalised when a component is not published for that specialty · click any cell for the RTT drill</div>`;
     h+=hmGrid(fragRows.slice(0,16),cellFr,v2=>{if(v2==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.min(1,v2/100);return{bg:d3.interpolateRgb('#f2f5f0','#8f1d17')(Math.sqrt(t)),fg:t>0.3?'#fff':'#3d4a3e'};},v2=>v2==null?'':Math.round(v2),(oid,sc)=>`openFactDrill('performance','${oid}','${sc}','rtt_18wk')`);
     h+=`</div>`;
-    const worst=[];fragRows.forEach(rw=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===rw.code);const c=fragCell(oid,rw.code,s2?s2.name:rw.code);if(c&&c.score>=55)worst.push({name:rw.name,tc,score:c.score,wte:c.wte});}));
+    const worst=fragWorst;fragRows.forEach(rw=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===rw.code);const c=fragCell(oid,rw.code,s2?s2.name:rw.code);if(c&&c.score>=55)worst.push({name:rw.name,tc,score:c.score,wte:c.wte});}));
     worst.sort((a,b)=>b.score-a.score);
     if(worst.length)h+=`<div class="card" style="margin-bottom:12px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Most fragile services</div><div class="cap" style="padding:2px 14px 0">Score 55+ · the consolidation and network conversation starts here</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">Fragility</th><th class="num">Doctors in post</th></tr></thead><tbody>`+
       worst.slice(0,10).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.score>=70?'#b3261e':'#b45309'}">${x.score}</td><td class="num muted">${x.wte!=null?(Math.round(x.wte*10)/10)+' WTE':'—'}</td></tr>`).join('')+`</tbody></table></div>`;
     h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the fragility score is built · full methodology</div><div class="note" style="margin-top:6px">Each trust-and-specialty cell starts from five questions, each answered from a published national source and each carrying a fixed weight. <b>Can it staff a rota? (30 points)</b> Doctors in post from NHS workforce statistics: under 3 WTE scores the full 30, under 5 scores 24, under 8 scores 16, under 12 scores 8 — below roughly 8 WTE a specialty cannot run a sustainable 1-in-8 on-call without locums. <b>Is access holding? (25 points)</b> The specialty's RTT 18-week position against the national median for the same specialty: 10 points better than median scores 0, sliding to the full 25 at 15 points worse. <b>How severe are the long waits? (15 points)</b> 52-week breaches as a share of that specialty's waiting list: 0% scores 0, 5%+ scores the full 15. <b>Is the service shrinking? (15 points)</b> Completed pathways, last 12 months against the previous 12: growth scores 0, a 25% decline scores the full 15 — falling throughput with a stable population is how services quietly wither before they fail. <b>Is it a cost outlier? (15 points)</b> Cost per weighted activity unit against the national specialty median (open Model Health System): at or below median scores 0, 30% above scores the full 15. The cell score is the points taken as a share of the points available — where a source does not publish that specialty (cost per WAU covers around 21 specialties, workforce around 60), the score is renormalised over what is published rather than pretending the gap is a zero. A score of 55 or more is flagged; nothing in this index is a verdict, every component opens to its published source, and the weights are stated so they can be challenged and re-run.</div></div>`;}
+  /* --- build plan · clinical co-location dependencies: starter matrix, requires clinical sign-off --- */
+  const IDEP={
+    names:{ed:'Emergency department (Type 1)',acmed:'Acute & general medicine',ccu:'Critical care (level 2/3)',emsurg:'Emergency general surgery',anaes:'Anaesthetics & theatres',imaging:'Imaging (CT 24/7)',path:'Pathology & blood sciences',obs:'Consultant-led obstetrics',neo:'Neonatal care',paeds:'Inpatient paediatrics',trauma:'Trauma & orthopaedics',stroke:'Hyperacute stroke',pci:'Primary PCI',ir:'Interventional radiology',elsurg:'Elective inpatient surgery'},
+    need:{
+      ed:[['acmed',1],['ccu',1],['anaes',1],['imaging',1],['path',1],['emsurg',2],['paeds',2],['ir',3]],
+      acmed:[['imaging',1],['path',1],['ccu',2]],
+      emsurg:[['anaes',1],['ccu',1],['imaging',1],['ed',2],['ir',2]],
+      obs:[['anaes',1],['neo',1],['path',1],['ccu',2],['imaging',2]],
+      neo:[['obs',1],['paeds',2]],
+      paeds:[['ed',2],['anaes',2],['imaging',2]],
+      trauma:[['ed',1],['anaes',1],['imaging',1],['ccu',2],['acmed',2]],
+      stroke:[['imaging',1],['acmed',1],['ccu',2],['ir',3]],
+      pci:[['imaging',1],['ccu',2],['ir',2]],
+      elsurg:[['anaes',1],['imaging',2],['ccu',2]],
+      ccu:[['acmed',1],['imaging',1],['path',1],['emsurg',2]]
+    }};
+  const lvlPill=l=>l===1?`<span class="pill" style="background:#8f1d17">must co-locate</span>`:l===2?`<span class="pill" style="background:#b45309">on site / rapid</span>`:`<span class="pill" style="background:#44639f">network ok</span>`;
+  h+=`<div class="eyebrow" style="margin-top:16px">Clinical co-location dependencies · starter matrix, for clinical sign-off</div>`;
+  h+=`<div class="card" style="padding:4px 0;margin-bottom:12px"><table class="dt ev"><thead><tr><th>Service</th><th>Depends on</th></tr></thead><tbody>`+
+    Object.keys(IDEP.need).map(k=>`<tr><td style="font-weight:600">${IDEP.names[k]}</td><td>`+IDEP.need[k].map(d=>`<span style="display:inline-block;margin:2px 8px 2px 0;font-size:11.5px">${IDEP.names[d[0]]} ${lvlPill(d[1])}</span>`).join('')+`</td></tr>`).join('')+`</tbody></table></div>`;
+  const DEPMAP={'General Surgery':'emsurg','Trauma and Orthopaedic':'trauma','General Medicine':'acmed','Elderly Medicine':'acmed','General Internal Medicine':'acmed','Cardiology':'pci'};
+  const coRisk=[];
+  if(fragWorst.length){fragWorst.forEach(w=>{const key=DEPMAP[w.name.replace(/ Service$/,'')];if(!key)return;
+    const dependants=Object.keys(IDEP.need).filter(s=>IDEP.need[s].some(d=>d[0]===key&&d[1]===1)).map(s=>IDEP.names[s]);
+    if(dependants.length)coRisk.push({w,key,dependants});});}
+  if(coRisk.length){h+=`<div class="card" style="margin-bottom:12px"><div class="h3">Co-location risk read</div><div class="cap">Where a fragile service is a level-1 dependency of other services on the same site</div>`+
+    coRisk.slice(0,5).map(c=>`<div class="kv"><span class="k">${esc(c.w.name)} at ${esc(trustShort(c.w.tc))} is fragile (score ${c.w.score}) — and ${esc(c.dependants.join(', '))} cannot run without ${esc(IDEP.names[c.key].toLowerCase())}</span></div>`).join('')+`</div>`;}
+  h+=`<div class="note" style="margin-bottom:14px">This grid is a curated starter following the published co-dependency frameworks used in acute service reviews (the Clinical Senate family of guidance): level 1 must be co-located around the clock, level 2 is needed on site or by rapid formal arrangement, level 3 can safely run as a network. It is a curation for challenge, not a local clinical decision — have your clinical leads validate and amend it before it informs any option, and treat the co-location read as trust-level until site-grain service data is loaded.</div>`;
   h+=methodHtml();
   v.innerHTML=h;computeModel();loadSavedRuns();
 }
@@ -1876,7 +2001,21 @@ async function renderOptions(v){v.innerHTML='<div class="loading">Loading option
     opts.map(o=>{const tot=optWsum(o);const ai=aiScore(o,'balanced')!=null?aiScore(o,'balanced'):aiScore(o,'quality_safety_first');
       return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,84))}</td>${criteria.map(c=>{const s=optCrit(o,c.code);return `<td class="num" style="font-weight:600;color:${scoreCol(s)}">${s==null?'—':s}</td>`;}).join('')}<td class="num" style="border-left:1px solid var(--line);font-weight:700;color:${scoreCol(tot)}">${tot==null?'—':Math.round(tot)}</td><td class="num" style="color:${scoreCol(ai)}">${ai==null?'—':ai}</td></tr>`;}).join('')+
     `</tbody></table><div class="note">Criterion cells are derived from qualitative impact ratings (positive 75 · mixed 50 · negative 25; impact domains mapped quality→quality &amp; safety, inequalities→equity, workforce→workforce, capacity→estates &amp; digital, finance→financial &amp; ROI, access→travel &amp; access) — no per-criterion option scores exist yet, so treat cells as indicative. Weighted = live ${esc(lensName)} lens weights over these cells. AI appraisal = stored balanced-lens option score (directional, asr-option-appraisal-v1).</div></div>`;
-  h+=`<div class="note" style="margin-top:10px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration.</div>`;
+  /* --- build plan · hurdle screen: pass/caution/fail per option from stored impacts and risks --- */
+  const HURDLES=[['Clinical safety','quality'],['Travel & access','access'],['Workforce viability','workforce'],['Affordability','finance'],['Deliverability',null]];
+  const hstat=(o,dom)=>{const imps=(OC.impacts||[]).filter(x=>x.option_id===o.id);
+    if(dom===null){const rk=(OC.risks||[]).filter(x=>x.option_id===o.id);if(!rk.length)return null;
+      if(rk.some(r=>r.rating==='significant'))return 'fail';if(rk.some(r=>r.rating==='high'))return 'caution';return 'pass';}
+    const im=imps.find(x=>(x.domain||'').indexOf(dom)>=0);if(!im)return null;
+    return im.rating==='negative'?'fail':im.rating==='mixed'?'caution':'pass';};
+  const hg=s=>s==null?'<span class="muted">—</span>':s==='pass'?'<b style="color:#166f4d">✓</b>':s==='caution'?'<b style="color:#b45309">!</b>':'<b style="color:#b3261e">✗</b>';
+  h+=`<div class="eyebrow">Hurdle screen · before any weighting</div>`;
+  h+=`<div class="card" style="overflow-x:auto;padding:4px 0"><table class="dt ev"><thead><tr><th>Option</th>${HURDLES.map(x=>`<th class="num">${x[0]}</th>`).join('')}<th class="num" style="border-left:1px solid var(--line)">Screen</th></tr></thead><tbody>`+
+    opts.map(o=>{const st=HURDLES.map(x=>hstat(o,x[1]));const fails=st.filter(s=>s==='fail').length,cauts=st.filter(s=>s==='caution').length;
+      const verdict=fails?['fails screen','#b3261e']:cauts>1?['conditional','#b45309']:['clears screen','#166f4d'];
+      return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,80))}</td>${st.map(s=>`<td class="num">${hg(s)}</td>`).join('')}<td class="num" style="border-left:1px solid var(--line)"><span class="pill" style="background:${verdict[1]}">${verdict[0]}</span></td></tr>`;}).join('')+
+    `</tbody></table><div class="note" style="padding:6px 14px 10px">A hurdle screen answers "may this option proceed at all" before any weighting: an option that fails clinical safety cannot buy its way back with a good finance score. Derived from each option's stored impact ratings (negative = fail, mixed = caution) and risk register (a significant risk fails deliverability); dashes are unassessed, and the screen is a facilitation aid to challenge, not a verdict.</div></div>`;
+  h+=`<div class="note" style="margin-top:10px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration. Each option's modal now carries a modelled economics sandbox.</div>`;
   v.innerHTML=h;}
 function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(x=>x.id===id);if(!o)return;hideTip();
   const comps=(optCache.components||[]).filter(x=>x.option_id===id);
@@ -1899,8 +2038,22 @@ function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(
   if(risks.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Top risks (${risks.length} on register · severity-sorted)</div>`+risks.slice(0,6).map(r=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--line2)"><span class="pill" style="background:${riskCol(r.rating)};margin-right:6px">${esc(r.rating||'unknown')} · ${esc((r.risk_type||'').replace(/_/g,' '))}</span>${esc((r.description||'').slice(0,170))}${r.mitigation?`<div class="muted" style="font-size:11px;margin-top:2px">mitigation: ${esc((r.mitigation||'').slice(0,140))}</div>`:''}</div>`).join('');
   if(fys.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Finance profile · ${esc((fp.finance_status||'').replace(/_/g,' '))} · confidence ${esc(fp.confidence||'—')}</div><div class="chartbox" style="height:160px"><canvas id="optfin"></canvas></div><div class="note">${esc(fp.caveat||'')}</div>`;
   if(wrs.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Workforce requirements${wp&&wp.workforce_status?` · ${esc(wp.workforce_status.replace(/_/g,' '))}`:''}</div><table class="dt ev"><thead><tr><th>Staff group</th><th class="num">FTE change</th><th>Risk</th><th>Rota dependency</th></tr></thead><tbody>`+wrs.map(w=>`<tr><td>${esc((w.staff_group||'').replace(/_/g,' '))}</td><td class="num">${Number(w.fte_change)>=0?'+':''}${Number(w.fte_change).toFixed(2)}</td><td><span class="pill" style="background:${riskCol(w.risk_rating)}">${esc(w.risk_rating||'—')}</span></td><td style="font-size:11.5px">${esc(w.rota_dependency||'')}</td></tr>`).join('')+`</tbody></table>`;
-  h+=`<div id="optaccesslink"></div><div class="note" style="margin-top:12px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration.</div></div></div>`;
+  /* --- build plan · option economics sandbox (modelled, every assumption editable) --- */
+  h+=`<div class="cap" style="margin-top:14px;margin-bottom:4px">Economics sandbox · modelled, every assumption yours to change</div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;font-size:11.5px;color:#5a6172">
+    <label>Capital £m<br><input class="field" id="oeCap" type="number" value="60" style="width:86px;margin-top:2px"></label>
+    <label>Transition £m/yr<br><input class="field" id="oeTr" type="number" value="4" style="width:86px;margin-top:2px"></label>
+    <label>Transition yrs<br><input class="field" id="oeTy" type="number" value="3" style="width:70px;margin-top:2px"></label>
+    <label>Activity shifted WAU/yr<br><input class="field" id="oeWau" type="number" value="5000" style="width:110px;margin-top:2px"></label>
+    <label>From<br><select class="sel" id="oeFrom" style="margin-top:2px">${sysTrusts().map(t=>`<option value="${t.id}">${esc(trustShort(t.code))}</option>`).join('')}</select></label>
+    <label>To<br><select class="sel" id="oeTo" style="margin-top:2px">${sysTrusts().map((t,i2)=>`<option value="${t.id}" ${i2===1?'selected':''}>${esc(trustShort(t.code))}</option>`).join('')}</select></label>
+    <label>Specialty<br><select class="sel" id="oeSpec" style="margin-top:2px"><option value="">loading…</option></select></label>
+    <button class="btn" style="padding:8px 14px" onclick="optEconCompute()">Compute</button></div>
+   <div id="oeOut" class="note" style="margin-top:8px">Set the assumptions and compute: the revenue effect prices the shifted activity at the two trusts' published cost per WAU, then nets capital and transition over ten years.</div>
+   <div class="chartbox sm" id="oeChartBox" style="display:none"><canvas id="oeChart"></canvas></div>`;
+  h+=`<div id="optaccesslink"></div><div class="note" style="margin-top:12px">Option set is a working draft (late-June facilitation seed) — the sandbox above is a modelled sketch to frame the conversation, not an option costing.</div></div></div>`;
   document.getElementById('modalroot').innerHTML=h;
+  optEconInit();
   /* A2 · cross-link when option components reference sites in the access matrix (fuzzy contains) */
   accessFile().then(A=>{const el=document.getElementById('optaccesslink');if(!el||!A||!A.sites)return;
     const txt=comps.map(c=>(c.description||'')).join(' | ').toLowerCase();if(!txt)return;
@@ -1926,6 +2079,32 @@ async function renderAssurance(v){v.innerHTML='<div class="loading">Loading test
   if(xp.length)h+=`<div class="cap" style="margin-top:12px;margin-bottom:4px">Export log</div><div class="card" style="padding:12px 14px"><table class="dt ev"><thead><tr><th>File</th><th>Type</th><th>Status</th><th class="num">Version</th><th>Created</th></tr></thead><tbody>`+xp.map(x=>`<tr><td class="mono" style="font-size:11px">${esc(x.file_name||'—')}</td><td>${esc(x.export_type||'')}</td><td>${esc(x.status||'')}</td><td class="num">${x.version||1}</td><td>${x.created_at?new Date(x.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'}</td></tr>`).join('')+`</tbody></table><div class="note">Smoke-test exports (not yet linked to a pack) — they demonstrate the PPTX/DOCX export path ahead of real pack assembly.</div></div>`;
   v.innerHTML=h;}
 window.openOption=openOption;
+/* Economics sandbox helpers: populate specialties from the national WAU cache, compute a 10-year net profile. */
+async function optEconInit(){const sel2=document.getElementById('oeSpec');if(!sel2)return;
+  const wn=await fetchWauNat();if(!document.getElementById('oeSpec'))return;
+  const lp=latestPeriod(wn.filter(x=>x.metric_code==='mhso_cost_per_wau'));
+  const ids=new Set(sysTrusts().map(t=>t.id));const specsSet={};
+  wn.forEach(x=>{if(x.metric_code==='mhso_cost_per_wau'&&x.period===lp&&ids.has(x.organisation_id)&&!/_as_a_of_/.test(x.specialty_code))specsSet[x.specialty_code]=1;});
+  const list=Object.keys(specsSet).sort();
+  sel2.innerHTML=list.length?list.map(s=>`<option value="${s}">${esc(prettySlug(s))}</option>`).join(''):'<option value="">no published specialty costs</option>';}
+async function optEconCompute(){
+  const g=id=>document.getElementById(id);if(!g('oeOut'))return;
+  const wn=await fetchWauNat();const lp=latestPeriod(wn.filter(x=>x.metric_code==='mhso_cost_per_wau'));
+  const cap=+g('oeCap').value||0,tr=+g('oeTr').value||0,ty=+g('oeTy').value||0,wau=+g('oeWau').value||0;
+  const from=g('oeFrom').value,to=g('oeTo').value,sp=g('oeSpec').value;
+  const cpwOf=oid=>{const r=wn.find(x=>x.metric_code==='mhso_cost_per_wau'&&x.period===lp&&x.organisation_id===oid&&x.specialty_code===sp);return r?Number(r.value):null;};
+  const cf=cpwOf(from),ct=cpwOf(to);
+  if(!sp||cf==null||ct==null){g('oeOut').innerHTML='The open Model Health System does not publish a cost per WAU for that specialty at both trusts — pick another specialty, or treat this option\'s economics as needing local costing.';return;}
+  const annual=(cf-ct)*wau/1e6;
+  const yrs=[...Array(10)].map((_,i)=>i+1);
+  const cum=yrs.map(y=>annual*y-cap-tr*Math.min(y,ty));
+  const be=yrs.find((y,i)=>cum[i]>=0);
+  g('oeOut').innerHTML=`Shifting <b>${wau.toLocaleString()} WAU/yr</b> of ${esc(prettySlug(sp))} from £${Math.round(cf).toLocaleString()}/WAU to £${Math.round(ct).toLocaleString()}/WAU changes the annual cost base by <b style="color:${annual>=0?'#166f4d':'#b3261e'}">£${(Math.round(annual*10)/10)}m/yr</b>. Net of £${cap}m capital and £${tr}m×${ty}yr transition: ten-year position <b style="color:${cum[9]>=0?'#166f4d':'#b3261e'}">£${(Math.round(cum[9]*10)/10)}m</b>${be?`, breakeven in year ${be}`:', no breakeven within ten years'}. Modelled: flat activity, published FY2024/25 unit costs, no optimism bias applied either way.`;
+  const box=document.getElementById('oeChartBox');if(box)box.style.display='block';
+  if(charts.oeChart){try{charts.oeChart.destroy()}catch(e){}delete charts.oeChart;}
+  const cv=document.getElementById('oeChart');
+  if(cv&&window.Chart)charts.oeChart=new Chart(cv.getContext('2d'),{type:'bar',data:{labels:yrs.map(y=>'Yr '+y),datasets:[{data:cum.map(x=>Math.round(x*10)/10),backgroundColor:cum.map(x=>x>=0?'#166f4d':'#b45309'),borderRadius:3,maxBarThickness:30}]},options:{plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:9},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false}});}
+window.optEconCompute=optEconCompute;
 
 /* ===== DECISION MODULE ===== */
 let dstage='orient';

@@ -2,6 +2,7 @@
 // Static app served by python3 http.server on 4173; app itself calls live Supabase (anon reads)
 // and fetches ./geo/* — hence generous timeouts.
 const { defineConfig } = require('@playwright/test');
+const path = require('path');
 
 // If the chromium download is unavailable, set PW_CHANNEL=chrome to run against system Chrome.
 const channel = process.env.PW_CHANNEL || undefined;
@@ -22,7 +23,7 @@ module.exports = defineConfig({
     ...(channel ? { channel } : {}),
   },
   webServer: {
-    command: 'python3 -m http.server 4173 --bind 127.0.0.1 --directory /tmp/sr-repo',
+    command: `python3 -m http.server 4173 --bind 127.0.0.1 --directory ${path.resolve(__dirname, '..')}`,
     url: 'http://127.0.0.1:4173/index.html',
     reuseExistingServer: true,
     timeout: 20000,

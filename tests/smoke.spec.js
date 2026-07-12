@@ -516,4 +516,34 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();
   });
 
+  test('39 pack · case-for-change chapter composes from live data', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=pack');
+    await expect(page.locator('.view h1')).toContainText('Case for change', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('The system position', { timeout: 30000 });
+    await expect(page.locator('.view')).toContainText('The demand ahead');
+    await expect(page.locator('.view')).toContainText('Provenance and freshness');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt), 'no leaked NaN/undefined').toBeFalsy();
+  });
+
+  test('40 options · hurdle screen derives from stored impacts and risks', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=options');
+    await expect(page.locator('.view')).toContainText('Hurdle screen', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('before any weighting');
+    const txt = await page.locator('.view').innerText();
+    expect(/clears screen|conditional|fails screen/i.test(txt), 'screen verdicts render').toBeTruthy();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('41 activity · outpatient efficiency block from HES MAR trust cut', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=activity');
+    await expect(page.locator('.view')).toContainText('Outpatients & day-case efficiency', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('DNA');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
 });
