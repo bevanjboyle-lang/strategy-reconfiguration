@@ -581,3 +581,30 @@ national p10-p90 spread (hover shows the share) so unlike units share one list h
 under 4% of spread suppressed; scale-break guard (order-of-magnitude jumps in scores/ratios =
 recalibrations, not moves — the fragility composite's 10 Jul rescale was polluting the list);
 near-duplicate metric definitions collapse; derived fragility_index excluded. Gate 44/44 (4.4m).
+
+## 12 Jul 2026 eve · Data-wave sprint (Bevan carte blanche on the stocktake menu)
+Loaders (all live, freshness upserted, QA 95 checks 0 fail):
+- load_dw_rtt_waitbands (dw-rtt-bands-v1): 12,924 rows · median/p92/over-65wk per trust x TFC,
+  Apr 2026 + Apr 2025, interpolated from published incomplete waitbands.
+- load_dw_mar_backyears (dw-mar-backyears-v1): 28,615 rows · engine series adm_elective/
+  adm_emergency/op_attendances extended Apr 2018 -> Feb 2024 for all 135 acutes; overlap gate
+  vs existing curated months showed 0.0% median divergence (same lineage) before splice.
+- load_dw_spec_trend (dw-spec-trend-v1): 1,951 rows · spec_el_cagr3 per org x TFC (admitted+
+  non-admitted completed pathways, exact 3.0yr span, 300-pathway floor, ±25% coding guard).
+- load_dw_flow_pack: discharge Table 7 (dw-disch-reason-v1, 3,177 rows: avg delayed/day, bed
+  days, £562/day est cost, cost by reason); WLMDS snapshot (dw-wlmds-v1, 270 rows: weekly WL
+  total + over-52 per provider, w/e 26 Apr); community waits acquisition+load (dw-community-wl-v1,
+  1,810 rows, 121 providers, service-grain, NEW source landed same day).
+App (46-spec gate green): specialty outlook cells use the trust's OWN 3yr observed trend where
+volume allows (national mix printed fallback; method card updated); Performance gains 'Waits
+texture' (p92 heatmap, over-65wk count, WLMDS weekly early-warning line); Flow gains 'Why
+discharges are late' (per-trust cost table + reason-cost bars) and 'Community waits' card
+(honest note where a system's acutes submit no community return); loadSeries cap 30k; FD_LABELS
+for all new codes. Engine fits: series depth 24-26mo -> ~95mo, shrinkage tier relaxes to 0.7.
+Hygiene/register: source_acquisition_register reconciled (7 stale statuses fixed, community
+marked landed, 2 new candidates: SNPP variants (principal-only confirmed held), WLMDS weekly
+sweep); data_lake/docs/WAREHOUSE.md live-vs-retired schema map. Physical archive of the ~3k
+Codex tables DEFERRED deliberately: five active loaders still read gold_*/silver schemas;
+procedure documented for a dedicated maintenance run.
+Carried over (reported to Bevan): OMHS full-width library surfacing; ONS mid-year estimates
+loader; SNPP single-year age refinement; recurring WLMDS weekly sweep (refresh posture).

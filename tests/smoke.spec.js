@@ -598,4 +598,24 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(ok).toBe('ok');
   });
 
+
+  test('45 performance · waits texture from published waitbands', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=performance');
+    await expect(page.locator('.view')).toContainText('Waits texture', { timeout: 50000 });
+    await expect(page.locator('.view')).toContainText('92nd-percentile wait');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('46 flow · discharge delay reasons and community waits cards', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=flow');
+    await expect(page.locator('.view')).toContainText('Why discharges are late', { timeout: 50000 });
+    await expect(page.locator('.view')).toContainText('Community waits');
+    await expect(page.locator('.view')).toContainText('Estimated cost');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
 });
