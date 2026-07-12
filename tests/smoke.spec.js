@@ -618,4 +618,15 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
+
+  test('47 modelling · queue simulator renders with calibration line', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=modelling');
+    await expect(page.locator('.view')).toContainText('The waiting list as a queue', { timeout: 60000 });
+    await expect(page.locator('#qsFind')).toContainText('completions/week', { timeout: 30000 });
+    await expect(page.locator('#qsCal')).toContainText(/Calibration|Single-period/);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
 });

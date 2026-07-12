@@ -608,3 +608,18 @@ Codex tables DEFERRED deliberately: five active loaders still read gold_*/silver
 procedure documented for a dedicated maintenance run.
 Carried over (reported to Bevan): OMHS full-width library surfacing; ONS mid-year estimates
 loader; SNPP single-year age refinement; recurring WLMDS weekly sweep (refresh posture).
+
+## 12 Jul 2026 night · Ceiling sprint W0 + W1 slice 1
+W0 vintage capture LIVE: sr_vintage_archive + BEFORE DELETE triggers on sr_fact/sr_metric_values
+(migration vintage_capture_archive); verified via rolled-back test delete. Every loader force-
+reload now preserves as-published vintages automatically.
+W1 slice 1 · QUEUE SIMULATOR (beta) on Modelling: new table sr_waitband_json + loader
+load_dw_waitband_vectors (4,389 vectors: all trusts x TFC, Apr26 + Apr25, nonzero bands,
+50-pathway floor). In-app weekly-step simulation per specialty (system level): arrivals from
+completions + observed list drift, treatment at observed completion rate, longest-first/
+proportional mix CALIBRATED by replaying Apr25->Apr26 and printing the miss (f grid 0..1).
+Outputs: 18-week share path vs the 92% standard, 65-week cohort clearance, finding sentence,
+first lever (treatment capacity %) wired. Section 'The waiting list as a queue' sits at the
+end of When-it-binds. Suite 47 specs (test 47), gate 46/46 + 47 solo green.
+NEXT (W1 slice 2): lever library replacing interim layers + diff grid (test 42 rewrite),
+scenario composer + compare, judgement log, planning basis; then W2 rewires per charter.

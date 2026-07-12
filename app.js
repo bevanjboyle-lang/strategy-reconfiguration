@@ -1824,7 +1824,13 @@ async function fetchRttNat(){if(rttNatCache)return rttNatCache;
   try{const{data,error}=await sb.from('sr_fact').select('organisation_id,metric_code,specialty_code,period,value').in('metric_code',['rtt_18wk','rtt_52wk','rtt_incomplete']).gte('period',cut.toISOString().slice(0,10)).not('specialty_code','is',null).limit(20000);if(error)throw error;rttNatCache=data||[];}
   catch(e){console.warn('national rtt fetch failed',e);return [];}
   return rttNatCache;}
-let consNatCache=null;
+let consNatCache=null,wbCache={};
+async function fetchWaitbands(){const key=sysSlug;if(wbCache[key])return wbCache[key];
+  try{const ids=sysTrusts().map(t=>t.id);if(!ids.length)return [];
+    const{data,error}=await sb.from('sr_waitband_json').select('organisation_id,specialty_code,period,bands,total').in('organisation_id',ids).limit(4000);if(error)throw error;
+    wbCache[key]=data||[];}
+  catch(e){console.warn('waitband fetch failed',e);return [];}
+  return wbCache[key];}
 async function fetchConsNat(){if(consNatCache)return consNatCache;
   try{const{data,error}=await sb.from('sr_fact').select('organisation_id,specialty_code,period,value').eq('metric_code','consultant_wte_spec').limit(8000);if(error)throw error;consNatCache=data||[];}
   catch(e){console.warn('consultant wte fetch failed',e);return [];}
@@ -1907,7 +1913,7 @@ async function renderModelling(v){
   v.innerHTML='<div class="loading">Loading demand &amp; capacity engine…</div>';
   if(deferredLoads)await deferredLoads; /* E4 · freshness table depends on the deferred load */
   if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
-  const[NS,AF,PF,WF,WN,RN,CN2]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat(),fetchConsNat()]);
+  const[NS,AF,PF,WF,WN,RN,CN2,WB]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat(),fetchConsNat(),fetchWaitbands()]);
   const BL=modelBaseline();const proj=popProjCache[sysSlug]||[];
   let h=`<h1 class="serif">Modelling studio</h1><div class="lead">Will this system hold? Five questions in order: what is coming, where it lands, when it binds, what could bend the curve, and what position to commit to. Every input is evidence-fitted and sourced, every amendment visible, every run saved and reproducible.</div>`;
   const missing=[!BL.nel&&'adm_emergency',!BL.el&&'adm_elective',!BL.op&&'op_attendances',!BL.bedsAvail&&'beds_ga_available',!proj.length&&'sr_population_projections'].filter(Boolean);
@@ -2034,6 +2040,32 @@ async function renderModelling(v){
   if(coRisk.length){h+=`<div class="card" style="margin-bottom:14px"><div class="h3">Co-location risk read</div><div class="cap">Where a fragile service is a level-1 dependency of other services on the same site</div>`+
     coRisk.slice(0,5).map(c=>`<div class="kv"><span class="k">${esc(c.w.name)} at ${esc(trustShort(c.w.tc))} is fragile (score ${c.w.score}) — and ${esc(c.dependants.join(', '))} cannot run without ${esc(IDEP.names[c.key].toLowerCase())}</span></div>`).join('')+`</div>`;}
   h+=`<div class="note">This grid is a curated starter following the published co-dependency frameworks used in acute service reviews (the Clinical Senate family of guidance): level 1 must be co-located around the clock, level 2 is needed on site or by rapid formal arrangement, level 3 can safely run as a network. It is a curation for challenge, not a local clinical decision — have your clinical leads validate and amend it before it informs any option, and treat the co-location read as trust-level until site-grain service data is loaded.</div></details>`;
+  /* ---- W1 · the waiting list as a queue (simulator, beta) ---- */
+  QS.data=null;
+  if(WB&&WB.length){
+    const pers=[...new Set(WB.map(x=>x.period))].sort();const lp=pers[pers.length-1],pp=pers.length>1?pers[0]:null;
+    const agg={};WB.forEach(x=>{const k=x.period+'|'+x.specialty_code;const e=agg[k]=agg[k]||{};JSON.parse(x.bands).forEach(b=>{e[b[0]]=(e[b[0]]||0)+b[1];});});
+    const cpQ=AF.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
+    const cpsQ=[...new Set(cpQ.map(x=>x.period))].sort();const cq12=new Set(cpsQ.slice(-12));
+    const compWk={};cpQ.forEach(x=>{if(cq12.has(x.period))compWk[x.specialty_code]=(compWk[x.specialty_code]||0)+Number(x.value||0);});
+    Object.keys(compWk).forEach(k=>compWk[k]=compWk[k]/52);
+    const specsQ=[...new Set(WB.filter(x=>x.period===lp).map(x=>x.specialty_code))]
+      .map(sc=>{const e=agg[lp+'|'+sc]||{};const tot=Object.values(e).reduce((s2,v2)=>s2+v2,0);const o65=Object.keys(e).filter(b=>+b>=65).reduce((s2,b)=>s2+e[b],0);return {sc,tot,o65};})
+      .filter(x=>x.tot>=200&&compWk[x.sc]>1).sort((x,y)=>y.o65-x.o65).slice(0,12);
+    if(specsQ.length){
+      QS.data={agg,lp,pp,compWk,specsQ};
+      h+=`<div class="eyebrow" style="margin-top:16px">The waiting list as a queue · simulator (beta)</div>`;
+      h+=`<div class="card" style="margin-bottom:14px"><div class="h3">Simulated list shape, 104 weeks forward</div>
+        <div class="cap">The published waitband distribution stepped week by week: arrivals join at week zero, treatment draws a calibrated mix of longest-first and clinically-ordered cases. Calibrated by replaying ${pp?fmtPeriod(pp)+' forward to '+fmtPeriod(lp):'the held year'} and printing the miss. System-level, per specialty; levers arrive with the scenario composer.</div>
+        <div class="filters">Specialty <select id="qsSpec" class="sel" onchange="qsRun()">${specsQ.map((s2,i)=>`<option value="${s2.sc}" ${i===0?'selected':''}>${esc(specName(s2.sc))} · ${fmt(s2.o65,'count')} past 65wk</option>`).join('')}</select>
+        Treatment capacity <input id="qsCap" class="field" style="width:74px;padding:5px 7px;margin-top:0" type="number" step="1" value="0"> %
+        <span class="muted" style="font-size:11px">vs the observed completion rate · first lever, more in phase 2</span></div>
+        <div class="two"><div><div class="cap" style="margin-bottom:4px">Share waiting under 18 weeks</div><div class="chartbox sm"><canvas id="qs18"></canvas></div></div>
+        <div><div class="cap" style="margin-bottom:4px">Pathways past 65 weeks</div><div class="chartbox sm"><canvas id="qs65"></canvas></div></div></div>
+        <div id="qsFind" style="font-size:13px;line-height:1.5;margin-top:10px">Computing…</div>
+        <div class="note" id="qsCal"></div></div>`;
+    }
+  }
   /* ---- 4 · what bends the curve ---- */
   h+=`<div class="eyebrow" id="sBend" style="margin-top:16px">What bends the curve · interim scenario surface</div>`;
   h+=`<div class="note" style="margin-bottom:10px">The lever library (named interventions with evidence bounds: setting shift, length-of-stay convergence, day-case conversion, capacity additions, consolidation) arrives in phase 2 and replaces this surface. Until then: global shift and productivity layers live in the assumptions drawer below (default 0 = do nothing), and trust × POD differentials here.</div>`;
@@ -2080,6 +2112,7 @@ async function renderModelling(v){
   h+=methodHtml();
   v.innerHTML=h;computeModel();loadSavedRuns();
   if(document.getElementById('diffout'))diffApply(true);
+  if(document.getElementById('qsSpec'))qsRun();
 }
 function computeModel(){
   const BL=modelBaseline();const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
@@ -2244,6 +2277,52 @@ function diffApply(initial){
     options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{x:{ticks:{font:{size:10},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e6eaf1'}}},responsive:true,maintainAspectRatio:false}});
 }
 window.diffApply=diffApply;
+/* ===== W1 · queue simulator ===== */
+let QS={data:null};
+function qsDense(e){const v=new Array(106).fill(0);Object.keys(e).forEach(b=>{v[Math.min(105,+b)]+=e[b];});return v;}
+function qsStep(v,A,T,f){
+  const n=v.slice();
+  for(let i=104;i>=0;i--){n[Math.min(105,i+1)] = (i===104? n[105]+v[104] : v[i]);}
+  n[0]=A;
+  let left=T;
+  let fifo=f*T;
+  for(let i=105;i>=0&&fifo>0;i--){const take=Math.min(n[i],fifo);n[i]-=take;fifo-=take;left-=take;}
+  const tot=n.reduce((s,x)=>s+x,0);
+  if(tot>0&&left>0){const sc=Math.max(0,1-left/tot);for(let i=0;i<=105;i++)n[i]*=sc;}
+  return n;}
+function qsStats(v){const tot=v.reduce((s,x)=>s+x,0);let u18=0,o65=0;for(let i=0;i<=105;i++){if(i<18)u18+=v[i];if(i>=65)o65+=v[i];}return{tot,u18:tot?100*u18/tot:0,o65};}
+function qsCalib(v0,v1,A,T){let best={f:0.5,err:1e18};
+  for(let f=0;f<=1.001;f+=0.25){let v=v0.slice();for(let w=0;w<52;w++)v=qsStep(v,A,T,f);
+    let err=0;for(let i=0;i<=105;i++)err+=Math.abs(v[i]-v1[i]);
+    if(err<best.err)best={f,err};}
+  return best;}
+function qsRun(){
+  const D=QS.data;if(!D)return;
+  const sc=(document.getElementById('qsSpec')||{}).value||D.specsQ[0].sc;
+  const capAdj=1+((parseFloat((document.getElementById('qsCap')||{}).value)||0)/100);
+  const e1=D.agg[D.lp+'|'+sc];if(!e1)return;
+  const v1=qsDense(e1);const s1=qsStats(v1);
+  const T=D.compWk[sc]||1;
+  let A=T,cal=null;
+  if(D.pp&&D.agg[D.pp+'|'+sc]){const v0=qsDense(D.agg[D.pp+'|'+sc]);const s0=qsStats(v0);
+    A=Math.max(0,T+(s1.tot-s0.tot)/52);
+    cal=qsCalib(v0,v1,A,T);cal.pct=Math.round(100*cal.err/Math.max(1,s1.tot));}
+  const f=cal?cal.f:0.5;
+  const run=cap=>{let v=v1.slice();const out=[];for(let w=0;w<=104;w++){out.push(qsStats(v));v=qsStep(v,A,cap*T,f);}return out;};
+  const base=run(1),scn=capAdj!==1?run(capAdj):null;
+  const labels=base.map((_,w)=>w%13===0?'wk '+w:'');
+  ['qs18','qs65'].forEach(id=>{if(charts[id]){try{charts[id].destroy()}catch(e){}delete charts[id];}});
+  const mk=(id,key,std)=>lineChart(id,labels,[
+    {label:'do nothing',data:base.map(x=>Math.round(key==='u18'?x.u18*10:x.o65)/(key==='u18'?10:1)),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.6},
+    ...(scn?[{label:'with capacity change',data:scn.map(x=>Math.round(key==='u18'?x.u18*10:x.o65)/(key==='u18'?10:1)),borderColor:'#1d4ed8',pointRadius:0,borderWidth:2}]:[]),
+    ...(std!=null?[{label:'92% standard',data:base.map(()=>std),borderColor:'#b45309',borderDash:[2,3],pointRadius:0,borderWidth:1}]:[])]);
+  mk('qs18','u18',92);mk('qs65','o65',null);
+  const path=scn||base;const hit=path.findIndex(x=>x.u18>=92);const clear=path.findIndex(x=>x.o65<Math.max(5,0.005*s1.tot));
+  const find=document.getElementById('qsFind');
+  if(find)find.innerHTML=`${esc(specName(sc))}: list ${fmt(s1.tot,'count')}, ${Math.round(s1.u18)}% under 18 weeks, ${fmt(s1.o65,'count')} past 65. At the observed treatment rate (${Math.round(T)} completions/week${capAdj!==1?`, scenario ${(capAdj>1?'+':'')+Math.round((capAdj-1)*100)}%`:''}) and estimated arrivals of ${Math.round(A)}/week, the simulation ${hit>=0?`reaches the 92% standard around <b>week ${hit}</b>`:`does not reach the 92% standard within two years`} and the 65-week cohort ${clear>=0?`clears around <b>week ${clear}</b>`:`does not clear within two years`}.`;
+  const calEl=document.getElementById('qsCal');
+  if(calEl)calEl.textContent=cal?`Calibration: replaying ${fmtPeriod(D.pp)} forward 52 weeks reproduces the ${fmtPeriod(D.lp)} band distribution within ${cal.pct}% of the list (best treatment-order mix f=${cal.f.toFixed(2)}, 1 = strictly longest-first). Arrivals estimated from completions plus observed list drift; a stated model, every input published.`:'Single-period bands held: calibration replay starts when a second year loads.';}
+window.qsRun=qsRun;
 async function saveModelRun(){const L=MOD.last;if(!L)return;const btn=document.getElementById('msave'),note=document.getElementById('msavenote');
   /* U3 · writes require a session (anon INSERT revoked in E2) */
   if(!session){if(note)note.textContent='Sign in to save (public data stays open to read).';return;}
