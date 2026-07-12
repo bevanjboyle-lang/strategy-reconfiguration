@@ -1260,7 +1260,7 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
     const cpD=AFd.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
     const cpsD=[...new Set(cpD.map(x=>x.period))].sort();const l12=new Set(cpsD.slice(-12)),p12=new Set(cpsD.slice(-24,-12));
     const volD={},volPrev={};cpD.forEach(x=>{const kk=x.organisation_id+'|'+x.specialty_code;if(l12.has(x.period))volD[kk]=(volD[kk]||0)+Number(x.value||0);if(p12.has(x.period))volPrev[kk]=(volPrev[kk]||0)+Number(x.value||0);});
-    const OUTd=specOutlook(NSd);const DCd=demoCAGR(2036);
+    const OUTd=specOutlook(NSd);const DCd=demoCAGR(2036);const gfD=g10From(AFd,DCd,OUTd);
     const occD={};tIds.forEach(o=>{const r=stRow(o,'bed_occupancy');occD[o]=r?Number(r.value):null;});
     /* TFC ↔ mhso slug map via name */
     const tfcSlug={};rttSpecsD.forEach(s=>{const sl=slugName(s.name);const hit=Object.keys(medSpec).find(k=>k===sl||k.startsWith(sl)||sl.startsWith(k));if(hit)tfcSlug[s.code]=hit;});
@@ -1275,7 +1275,7 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
         const v18=pfI[kk+'|rtt_18wk'],d18=(v18!=null&&m18[s.code]!=null)?v18-m18[s.code]:null;
         const v52=pfI[kk+'|rtt_52wk'],vin=pfI[kk+'|rtt_incomplete'];const s52=(v52!=null&&vin>0)?100*v52/vin:null;
         const vt=(volD[kk]!=null&&volPrev[kk]>60)?100*(volD[kk]/volPrev[kk]-1):null;
-        const g10=(OUTd.agg[s.code]&&DCd)?100*(Math.pow((1+DCd.cagr)*OUTd.agg[s.code].mix,10)-1):null;
+        const g10v=gfD(oid,s.code);const g10=g10v!=null?100*g10v:null;
         const planes=[gap!=null,wte!=null,(d18!=null||s52!=null),(vt!=null||g10!=null)].filter(Boolean).length;
         if(planes<2)return;
         let arch=null;
@@ -1506,12 +1506,18 @@ async function renderPopulation(v){
     `<div class="note">Derived proxy from the Estates Intelligence trust catchment model (attributed population by MSOA) — indicative of flow direction, not a patient-level flow count.</div></div>`;}
   /* --- item 5 · the demographic forecast carried down to specialty level --- */
   const[NSp,AFp]=await Promise.all([fetchNatSpec(),ensure('activity')]);
+  let basisRun=null;try{const{data:br}=await sb.from('sr_model_runs').select('name,created_at,assumptions,summary').order('created_at',{ascending:false}).limit(40);
+    basisRun=(br||[]).find(r=>r.assumptions&&r.assumptions.is_planning_basis&&r.assumptions.system===sysSlug)||null;}catch(e){}
   const OUTp=specOutlook(NSp);const DCp=demoCAGR(2036);
+  if(basisRun){const hl=(basisRun.summary||{}).headline||{};const scn=(basisRun.assumptions.scenarios||[]).filter(s2=>s2.dm||s2.shift||s2.prod||s2.cap);
+    h+=`<div class="exec"><div class="e1">The system's planning basis</div><p>This case for change reads from the scenario the system has committed to: <span class="hl">${esc(basisRun.name)}</span> (saved ${new Date(basisRun.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}). Under it the 2040 bed requirement is ${hl.beds_required_2040?fmt(hl.beds_required_2040,'count'):'—'} against ${hl.beds_available?fmt(hl.beds_available,'count'):'—'} available${hl.beds_bind_year?`, with beds binding around ${hl.beds_bind_year} before mitigation`:''}${scn.length?`; the committed levers are ${scn.map(s2=>s2.name).join(', ')}`:''}. Every figure beneath uses the same published evidence base; the judgement log for this run is stored with it.</p></div>`;}
+  else h+=`<div class="note" style="margin-bottom:12px">No planning basis has been marked yet: the modelling studio's save card can commit one, and this pack will then read from it. Everything below uses the evidence baseline.</div>`;
   const cpP=AFp.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
   if(DCp&&cpP.length&&Object.keys(OUTp.agg).length){
     const cpsP=[...new Set(cpP.map(x=>x.period))].sort();const cp12P=new Set(cpsP.slice(-12));
     const sysVolP={};cpP.forEach(x=>{if(cp12P.has(x.period))sysVolP[x.specialty_code]=(sysVolP[x.specialty_code]||0)+Number(x.value||0);});
-    const outRows=Object.keys(sysVolP).filter(sc=>OUTp.agg[sc]&&OUTp.agg[sc].cagr3!=null).map(sc=>{const o=OUTp.agg[sc];const g=Math.pow((1+DCp.cagr)*o.mix,10)-1;
+    const gfP=g10From(AFp,DCp,OUTp);
+    const outRows=Object.keys(sysVolP).filter(sc=>OUTp.agg[sc]&&OUTp.agg[sc].cagr3!=null).map(sc=>{const o=OUTp.agg[sc];const g=(gfP.sys(sc)!=null?gfP.sys(sc):Math.pow((1+DCp.cagr)*o.mix,10)-1);
       return {sc,name:specName(sc),vol:sysVolP[sc],nat:o.cagr3*100,em:o.emShare,g:g*100,extra:sysVolP[sc]*g};}).sort((a,b)=>b.extra-a.extra);
     if(outRows.length){
       h+=`<div class="eyebrow">Demand outlook by specialty · this population, ten years out</div><div class="card" style="padding:4px 0"><div class="cap" style="padding:10px 14px 0">This system's demographic growth (${(DCp.cagr*100).toFixed(1)}%/yr, ONS SNPP age-weighted) × each specialty's observed national trend (HES, 3-year) applied to current elective throughput · top 10 by projected extra demand</div><table class="dt ev"><thead><tr><th>Specialty</th><th class="num">Pathways /yr now</th><th class="num">National trend /yr</th><th class="num">Urgent share</th><th class="num">Projected +10yr</th><th class="num">Extra pathways /yr</th></tr></thead><tbody>`;
@@ -1726,7 +1732,8 @@ async function renderPack(v){
     const cpP=AF.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
     const cpsP=[...new Set(cpP.map(x=>x.period))].sort();const cp12P=new Set(cpsP.slice(-12));
     const sysVolP={};cpP.forEach(x=>{if(cp12P.has(x.period))sysVolP[x.specialty_code]=(sysVolP[x.specialty_code]||0)+Number(x.value||0);});
-    const outRows=Object.keys(sysVolP).filter(sc=>OUT.agg[sc]&&OUT.agg[sc].cagr3!=null).map(sc=>{const o=OUT.agg[sc];const g=Math.pow((1+DC.cagr)*o.mix,10)-1;return {name:specName(sc),em:o.emShare,g:g*100,extra:sysVolP[sc]*g};}).sort((a,b)=>b.extra-a.extra).slice(0,8);
+    const gfW=g10From(AF,DC,OUT);
+    const outRows=Object.keys(sysVolP).filter(sc=>OUT.agg[sc]&&OUT.agg[sc].cagr3!=null).map(sc=>{const g=(gfW.sys(sc)!=null?gfW.sys(sc):Math.pow((1+DC.cagr)*OUT.agg[sc].mix,10)-1);const o=OUT.agg[sc];return {name:specName(sc),em:o.emShare,g:g*100,extra:sysVolP[sc]*g};}).sort((a,b)=>b.extra-a.extra).slice(0,8);
     if(outRows.length){h+=`<div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Specialty</th><th class="num">Urgent share</th><th class="num">Projected +10yr</th><th class="num">Extra pathways /yr</th></tr></thead><tbody>`+
       outRows.map(x=>`<tr><td>${esc(x.name)}</td><td class="num muted">${x.em!=null?Math.round(x.em*100)+'%':'—'}</td><td class="num" style="font-weight:600;color:${x.g>15?'#b3261e':'#191f2b'}">${(x.g>0?'+':'')+Math.round(x.g)}%</td><td class="num" style="font-weight:700">${Math.round(x.extra).toLocaleString()}</td></tr>`).join('')+`</tbody></table></div>`;}}
   else h+=covNote('Population projections are not loaded for this system.');
@@ -1854,6 +1861,17 @@ function specOutlook(ns){
     e.mix=e.cagr3==null?1:Math.max(0.97,Math.min(1.03,(1+e.cagr3)/(1+allC)));});
   return {agg,allC};}
 /* Local demographic CAGR from ONS SNPP, weighted by the same editable age-band activity weights the engine uses. */
+/* W2 · ONE outlook implementation: local spec_el_cagr3 where held (clamped ±4%/yr), national
+   specialty mix composed with local demography otherwise. Every surface calls this. */
+function g10From(fr,DC,OUT){const loc={};(fr||[]).forEach(x=>{if(x.metric_code==='spec_el_cagr3'&&x.specialty_code)loc[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
+  const f=(oid,sc)=>{const lt=oid!=null?loc[oid+'|'+sc]:null;
+    if(lt!=null)return Math.pow(1+Math.max(-4,Math.min(4,lt))/100,10)-1;
+    const o=OUT&&OUT.agg[sc];if(!o||!DC)return null;return Math.pow((1+DC.cagr)*o.mix,10)-1;};
+  f.sys=sc=>{const ids=sysTrusts().map(t=>t.id);const vs=ids.map(id=>loc[id+'|'+sc]).filter(v=>v!=null);
+    if(vs.length)return Math.pow(1+Math.max(-4,Math.min(4,vs.reduce((s,v)=>s+v,0)/vs.length))/100,10)-1;
+    return f(null,sc);};
+  f.tier=g=>g==null?null:g>0.25?['rising fast','#b3261e']:g>0.10?['rising','#b45309']:g>-0.05?['steady','#6a7183']:['easing','#166f4d'];
+  return f;}
 function demoCAGR(toYear){
   const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
   if(!proj.length)return null;
@@ -1861,7 +1879,8 @@ function demoCAGR(toYear){
   const y0=years.includes(2026)?2026:years[0];
   const yT=years.includes(toYear)?toYear:years[years.length-1];
   const popB=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
-  const W=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*MOD.w[b],0);
+  const wset=(MOD.wpod&&MOD.wpod.el)||MOD.w; /* W2: outlook demography uses the elective POD weights */
+  const W=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*wset[b],0);
   const w0=W(y0);if(!w0||yT<=y0)return null;
   return {cagr:Math.pow(W(yT)/w0,1/(yT-y0))-1,y0,yT,g85:(popB('85+',yT)/(popB('85+',y0)||1)-1)*100};}
 /* HCHS workforce specialty slugs differ from TFC names in a few places. */
@@ -1957,9 +1976,8 @@ async function renderModelling(v){
       const shown=specsOut.slice(0,14);
       const exMax=Math.max(...shown.map(x=>Math.abs(x.extra)),1);
       const colEx=vv=>{if(vv==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.sqrt(Math.min(1,Math.abs(vv)/exMax));return vv<0?{bg:d3.interpolateRgb('#f4f6f9','#44639f')(t),fg:t>0.55?'#fff':'#33415e'}:{bg:d3.interpolateRgb('#fdf3f1','#b3261e')(t),fg:t>0.55?'#fff':'#7a1712'};};
-      const locT={};AF.forEach(x=>{if(x.metric_code==='spec_el_cagr3'&&x.specialty_code)locT[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
-      const g10loc=v2=>Math.pow(1+Math.max(-4,Math.min(4,v2))/100,10)-1;
-      const cellEx=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const val=vol[oid+'|'+sc];if(val==null)return null;const lt=locT[oid+'|'+sc];const g=lt!=null?g10loc(lt):g10(sc);return g==null?null:val*g;};
+      const gfM=g10From(AF,DC,OUT);
+      const cellEx=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const val=vol[oid+'|'+sc];if(val==null)return null;const g=gfM(oid,sc);return g==null?null:val*g;};
       h+=`<div class="eyebrow" style="margin-top:16px">Specialty demand outlook · where the growth lands</div>`;
       h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Projected extra elective pathways per year by ${DC.yT}, trust × specialty</div><div class="cap">Local demographic growth (ONS SNPP, weighted by the engine's age weights: ${(DC.cagr*100).toFixed(1)}%/yr) × each specialty's national demand trend (HES, 3-year, clamped ±3%/yr) applied to today's completed-pathway volumes · where a trust publishes 300+ pathways in a specialty, the cell now uses that trust's OWN observed 3-year trend (clamped ±4%/yr) instead of the national mix · red = growth, blue = projected decline · † = urgent-heavy specialty (60%+ of national admissions are emergency)</div>`;
       h+=hmGrid(shown,cellEx,colEx,v2=>v2==null?'':(Math.abs(v2)>=1000?((Math.round(v2/100)/10)+'k'):Math.round(v2)),(oid,sc)=>`openFactDrill('activity','${oid}','${sc}','rtt_completed_pathways')`);
@@ -2017,8 +2035,10 @@ async function renderModelling(v){
     h+=`</div>`;
     const worst=fragWorst;fragRows.forEach(rw=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===rw.code);const c=fragCell(oid,rw.code,s2?s2.name:rw.code);if(c&&c.score>=55)worst.push({name:rw.name,tc,score:c.score,wte:c.wte});}));
     worst.sort((a,b)=>b.score-a.score);
-    if(worst.length)h+=`<div class="card" style="margin-bottom:14px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Most fragile services</div><div class="cap" style="padding:2px 14px 0">Score 55+ · the consolidation and network conversation starts here</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">Fragility</th><th class="num">Doctors in post</th></tr></thead><tbody>`+
-      worst.slice(0,10).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.score>=70?'#b3261e':'#b45309'}">${x.score}</td><td class="num muted">${x.wte!=null?(Math.round(x.wte*10)/10)+' WTE':'—'}</td></tr>`).join('')+`</tbody></table></div>`;
+    if(worst.length){const gfF=g10From(AF,DC,OUT);
+    h+=`<div class="card" style="margin-bottom:14px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Most fragile services</div><div class="cap" style="padding:2px 14px 0">Score 55+ · the consolidation and network conversation starts here · outlook = ten-year demand on this service (trust's own trend where held), the forward marker the fragility score deliberately excludes</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">Fragility</th><th class="num">Doctors in post</th><th class="num">Outlook</th></tr></thead><tbody>`+
+      worst.slice(0,10).map(x=>{const rw2=fragRows.find(r2=>r2.name===x.name);const oid2=(orgs.find(o=>o.code===x.tc)||{}).id;const g=rw2?gfF(oid2,rw2.code):null;const t2=gfF.tier(g);
+        return `<tr><td>${esc(x.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.score>=70?'#b3261e':'#b45309'}">${x.score}</td><td class="num muted">${x.wte!=null?(Math.round(x.wte*10)/10)+' WTE':'—'}</td><td class="num" style="font-weight:600;color:${t2?t2[1]:'#9aa0af'}">${g!=null?((g>0?'+':'')+Math.round(g*100)+'% · '+t2[0]):'—'}</td></tr>`;}).join('')+`</tbody></table></div>`;}
     h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the fragility score is built · full methodology</div><div class="note" style="margin-top:6px">Each trust-and-specialty cell starts from five questions, each answered from a published national source and each carrying a fixed weight. <b>Can it staff a rota? (30 points)</b> Scored on the CONSULTANT grade where the census publishes it (under 4 consultant WTE scores the full 30, under 6 scores 24, under 8 scores 16, under 10 scores 8 — a sustainable 1-in-8 on-call needs roughly eight consultants), falling back to all-grades doctors in post (under 3 / 5 / 8 / 12 WTE) where it does not. <b>Is access holding? (25 points)</b> The specialty's RTT 18-week position against the national median for the same specialty: 10 points better than median scores 0, sliding to the full 25 at 15 points worse. <b>How severe are the long waits? (15 points)</b> 52-week breaches as a share of that specialty's waiting list: 0% scores 0, 5%+ scores the full 15. <b>Is the service shrinking? (15 points)</b> Completed pathways, last 12 months against the previous 12: growth scores 0, a 25% decline scores the full 15 — falling throughput with a stable population is how services quietly wither before they fail. <b>Is it a cost outlier? (15 points)</b> Cost per weighted activity unit against the national specialty median (open Model Health System): at or below median scores 0, 30% above scores the full 15. The cell score is the points taken as a share of the points available — where a source does not publish that specialty (cost per WAU covers around 21 specialties, workforce around 60), the score is renormalised over what is published rather than pretending the gap is a zero. A score of 55 or more is flagged; nothing in this index is a verdict, every component opens to its published source, and the weights are stated so they can be challenged and re-run.</div></div>`;}
   /* --- build plan · clinical co-location dependencies: starter matrix, requires clinical sign-off --- */
   const IDEP={

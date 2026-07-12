@@ -636,3 +636,14 @@ reason; who/when/why stored and saved with runs (params.judgements). Planning-ba
 on save (params.is_planning_basis) + PLANNING BASIS pill in the runs list (W2 consumers read
 it). Save params gain scenarios[]; load restores them. Gate 43+3 flaky +1 env-fail; fail
 (test 01 boot class) + both new modelling tests passed solo in 15s — known throttle class.
+
+## 13 Jul 2026 · Ceiling sprint W2: one outlook implementation + planning-basis consumers
+g10From() is now THE outlook: local spec_el_cagr3 first (clamped ±4%/yr), national mix ×
+demography fallback, with .sys() aggregate + .tier() marker. All four duplicate computations
+rewired to it (value dossiers, pack, workforce, modelling cells); demoCAGR now uses the
+elective per-POD weight set (v2), retiring the legacy global weights for outlook consumers.
+Fragility 'Most fragile services' gains the forward marker column (ten-year outlook + tier,
+trust's own trend where held) with the score itself untouched, per D5. Pack opens with 'The
+system's planning basis' exec block reading the committed run (name, 2040 requirement,
+binding year, committed levers) with an honest note when none is marked. Gate 42+4 flaky,
+1 fail = test 01 boot class; 01+35+38+30 all passed solo in 18s (throttle class confirmed).
