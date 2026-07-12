@@ -1,9 +1,9 @@
 const { chromium } = require('@playwright/test');
 const fs = require('fs');
-const OUT = '/Users/bevanboyle/Documents/Claude/Projects/Strategy and Reconfiguration/shots/ui-audit2/';
+const OUT = '/Users/bevanboyle/Documents/Claude/Projects/Strategy and Reconfiguration/shots/ui-final/';
 const BSW = 'nhs-bath-and-north-east-somerset-swindon-and-wiltshire-icb';
-const BASE = 'http://127.0.0.1:4173/index.html';
-const stages = ['overview','drivers','activity','flow','performance','capacity','estate','finance','value','workforce','population','access','modelling','options','assurance','decide','pack','xentity','xmetric','xgrid'];
+const BASE = 'https://strategy-reconfiguration.vercel.app/';
+const stages = ['capacity','decide','overview','modelling'];
 const AUDIT = () => {
   const out = { hoverflow: [], clipped: [], thover: [], gaps: [] };
   const seen = new Set();

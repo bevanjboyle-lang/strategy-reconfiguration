@@ -367,16 +367,36 @@ function renderOverview(v){
   const strips=['ae_4hr','rtt_18wk','bed_occupancy','cancer_62','fragility_index'].map(code=>{const any=rows.find(r=>r.metric_code===code);const st=distStrip(code,sysIds,null);if(!st)return '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line2)"><span style="width:190px;flex:none;font-size:11.5px;color:var(--ink2)">${esc(any?any.metric_name:code)}</span><div style="flex:1;min-width:0">${st}</div></div>`;}).filter(Boolean).join('');
   if(strips)h+=`<div class="eyebrow">System vs England</div><div class="card"><div class="cap" style="margin-bottom:6px">Every English acute trust's latest value (dots) · this system's trusts (diamonds) · dashed line = national median</div>${strips}</div>`;
-  /* --- build plan · movers since last period --- */
-  const mv=rows.filter(r=>TRUSTS.includes(r.org_code)&&!r.service_id&&r.value!=null&&r.prev_value!=null&&Number(r.prev_value)!==0&&['pct','ratio','score','index','days'].includes(r.unit))
-    .map(r=>{const ch=100*(Number(r.value)-Number(r.prev_value))/Math.abs(Number(r.prev_value));const adverse=(r.higher_is_better===false)?ch:-ch;return {r,ch,adverse};})
-    .filter(x=>Math.abs(x.ch)>=3&&Math.abs(x.ch)<400);
-  mv.sort((a,b)=>b.adverse-a.adverse);
-  const worse=mv.slice(0,5),better=mv.filter(x=>x.adverse<0).slice(-3).reverse();
+  /* --- movers since last period · unit-aware presentation ---
+     A percentage-led measure moving from -0.2% to -0.5% is a 0.3 percentage-point move, and
+     saying "+150%" of it is technically true and practically misleading. So: pp deltas for
+     rate measures, point deltas for scores and indices, relative change only for quantities
+     (days, ratios), and ranking by the move as a share of the measure's national spread
+     (p10 to p90 across every English acute trust) so different unit types can share one list. */
+  const mvSpan=code=>{const all=rows.filter(x=>x.metric_code===code&&x.org_type==='acute_trust'&&!x.service_id&&x.value!=null).map(x=>Number(x.value)).sort((a,b)=>a-b);
+    if(all.length<10)return null;const p=q=>all[Math.min(all.length-1,Math.floor(q*all.length))];const sp=p(0.9)-p(0.1);return sp>0?sp:null;};
+  const mvDisp=(r,d)=>{if(r.unit==='pct')return (d>0?'+':'−')+(Math.round(Math.abs(d)*10)/10)+'pp';
+    if(r.unit==='score'||r.unit==='index')return (d>0?'+':'−')+(Math.round(Math.abs(d)*10)/10)+' pts';
+    const rel=100*d/Math.abs(Number(r.prev_value));return (rel>0?'+':'−')+(Math.round(Math.abs(rel)*10)/10)+'%';};
+  const mvSeen=new Set();
+  const mv=rows.filter(r=>TRUSTS.includes(r.org_code)&&!r.service_id&&r.value!=null&&r.prev_value!=null&&['pct','ratio','score','index','days'].includes(r.unit)&&(['pct','score','index'].includes(r.unit)||Number(r.prev_value)!==0)&&r.metric_code!=='fragility_index')
+    .map(r=>{const d=Number(r.value)-Number(r.prev_value);const sp=mvSpan(r.metric_code);if(!sp||!d)return null;
+      /* scale-break guard: a score or ratio that jumps an order of magnitude in one period is a
+         recalibration or a re-based series, not a movement */
+      if(r.unit!=='pct'&&Number(r.prev_value)!==0&&Math.abs(Number(r.value)/Number(r.prev_value))>8)return null;
+      if(r.unit!=='pct'&&Number(r.prev_value)!==0&&Math.abs(Number(r.prev_value)/Number(r.value||1e-9))>8)return null;
+      const share=Math.abs(d)/sp;const adv=((r.higher_is_better===false)?d:-d)>0?share:-share;
+      const dk=r.org_code+'|'+Math.round(Number(r.value)*100)+'|'+Math.round(Number(r.prev_value)*100);
+      if(mvSeen.has(dk))return null;mvSeen.add(dk); /* near-duplicate metric definitions collapse */
+      return {r,d,share,adv};})
+    .filter(Boolean).filter(x=>x.share>=0.04&&x.share<=1.5);
+  mv.sort((a,b)=>b.adv-a.adv);
+  const worse=mv.filter(x=>x.adv>0).slice(0,5),better=mv.filter(x=>x.adv<0).sort((a,b)=>a.adv-b.adv).slice(0,3);
+  const mvRow=(x,col)=>`<tr style="cursor:pointer" onclick="openDrill('${x.r.organisation_id}','${x.r.metric_code}')"><td>${esc(x.r.metric_name)}</td><td>${esc(trustShort(x.r.org_code))}</td><td class="num muted">${fmt(x.r.prev_value,x.r.unit)}</td><td class="num" style="font-weight:600">${fmt(x.r.value,x.r.unit)}</td><td class="num" style="font-weight:700;color:${col}" title="${Math.round(x.share*100)}% of the national spread (p10 to p90) for this measure">${mvDisp(x.r,x.d)}</td></tr>`;
   if(worse.length){h+=`<div class="eyebrow">Moved since the last period</div><div class="card" style="padding:4px 0"><table class="dt ev"><thead><tr><th>Measure</th><th>Trust</th><th class="num">Previous</th><th class="num">Latest</th><th class="num">Move</th></tr></thead><tbody>`+
-    worse.map(x=>`<tr style="cursor:pointer" onclick="openDrill('${x.r.organisation_id}','${x.r.metric_code}')"><td>${esc(x.r.metric_name)}</td><td>${esc(trustShort(x.r.org_code))}</td><td class="num muted">${fmt(x.r.prev_value,x.r.unit)}</td><td class="num" style="font-weight:600">${fmt(x.r.value,x.r.unit)}</td><td class="num" style="font-weight:700;color:#b3261e">${(x.ch>0?'+':'')+(Math.round(x.ch*10)/10)}%</td></tr>`).join('')+
-    better.map(x=>`<tr style="cursor:pointer" onclick="openDrill('${x.r.organisation_id}','${x.r.metric_code}')"><td>${esc(x.r.metric_name)}</td><td>${esc(trustShort(x.r.org_code))}</td><td class="num muted">${fmt(x.r.prev_value,x.r.unit)}</td><td class="num" style="font-weight:600">${fmt(x.r.value,x.r.unit)}</td><td class="num" style="font-weight:700;color:#166f4d">${(x.ch>0?'+':'')+(Math.round(x.ch*10)/10)}%</td></tr>`).join('')+
-    `</tbody></table><div class="note" style="padding:6px 14px 10px">Largest adverse moves first, biggest improvements beneath, latest published period against the one before; rate-like measures only, moves under 3% suppressed. Click any row for the full drill.</div></div>`;}
+    worse.map(x=>mvRow(x,'#b3261e')).join('')+
+    better.map(x=>mvRow(x,'#166f4d')).join('')+
+    `</tbody></table><div class="note" style="padding:6px 14px 10px">Largest adverse moves first, biggest improvements beneath, latest published period against the one before. Each move reads in the measure's own terms: percentage points (pp) for rate measures, points for scores and indices, relative change for quantities. Rows are ranked by the move as a share of that measure's national spread (p10 to p90, hover the move), so a 0.3pp shift in a tightly-bunched measure can outrank a large-looking swing elsewhere; moves under 4% of the spread are suppressed. Click any row for the full drill.</div></div>`;}
   h+=`<div class="eyebrow">Closest to failure</div><div class="two"><div class="list">`+(closest.length?closest.map(rrow).join(''):'<div class="row"><div class="m"><div class="t1">No serious or near-failure flags</div><div class="t2">across this system’s published headline measures</div></div></div>')+`</div>`;
   h+=`<div class="card"><div class="h3">Distress by domain</div><div class="cap">${esc(o.name||'')}</div><div class="chartbox sm"><canvas id="radar"></canvas></div>
    <div class="h3" style="margin-top:14px">Trusts in this system</div><table class="dt ev"><thead><tr><th>Trust</th><th>CQC</th><th class="num">Distress</th></tr></thead><tbody>`+

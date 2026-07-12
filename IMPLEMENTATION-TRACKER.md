@@ -565,3 +565,19 @@ overlap, card clipping, horizontal overflow, gap rhythm) ran before and after; z
   (6px controls), softer shadows, chart hairlines #e6eaf1. Data palette and verdict colours were
   already shared with EI and stay. (Appraisal app is login-gated; its visible tokens agree.)
 - Gate 44/44 green (5.0m, zero retries). Audit scripts kept in tests/ (ui-audit.js, gap-probe.js).
+
+## 12 Jul 2026 pm · Movement methodology review (Bevan): unit-aware movers
+Systematic review of every period-movement and delta presentation in the app after Bevan caught
+"variance to plan -0.2% → -0.5% = +321%" (relative change of a percentage measure) on the
+overview movers panel. Inventory: the movers panel was the ONLY instance computing relative
+change on percentage-led measures. Verified correct and unchanged: workforce staff-group
+12-month change (FTE counts, absolute + %), dossier activity trends (counts), cost-per-WAU gaps
+(% of a £ median), differential grid deltas (counts), capacity bed movements (absolute), access
+what-if deltas (minutes / pp by unit), drill-modal vs-standard/vs-median deltas (absolute in the
+measure's unit), scoring-model worsening (span-normalised, untouched).
+Movers panel rebuilt: percentage-point deltas for pct measures, point deltas for scores/indices,
+relative % only for quantities (days, ratios); ranked by |move| as a share of the measure's
+national p10-p90 spread (hover shows the share) so unlike units share one list honestly; moves
+under 4% of spread suppressed; scale-break guard (order-of-magnitude jumps in scores/ratios =
+recalibrations, not moves — the fragility composite's 10 Jul rescale was polluting the list);
+near-duplicate metric definitions collapse; derived fragility_index excluded. Gate 44/44 (4.4m).
