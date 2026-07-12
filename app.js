@@ -1825,7 +1825,7 @@ function engineFit(){
   const F={pod:{},dev:{}};const ts=sysTrusts();
   MOD_PODS.forEach(pd=>{const p=pd[0],code=pd[2];
     const o=sysObsCagr(code),d=demoRateRecent(p);
-    if(o&&d){const resid=(o.g-d.r)*100;const lam=o.months>=36?0.7:0.5;
+    if(o&&d){const resid=(o.g-d.r)*100;const lam=o.months>=48?0.7:o.months>=36?0.6:0.35; /* short windows shrink hard: one strong year must not set a 15-year rate */
       const v=Math.max(0,Math.min(GND_CAP,lam*resid+(1-lam)*GND_DEFAULT));
       F.pod[p]={v:+v.toFixed(2),obs:+(o.g*100).toFixed(2),demo:+(d.r*100).toFixed(2),months:o.months,from:o.from,to:o.to,lam,dy0:d.y0,dy1:d.y1};}
     else F.pod[p]={v:GND_DEFAULT,fallback:true,months:o?o.months:0};
@@ -2091,7 +2091,8 @@ function computeModel(){
   const addB=k=>k==null?null:bedNeed[k]-availSum;
   const B=bind.sys;
   let find=`On current evidence, emergency admissions in ${esc(sysLabel())} grow about <b>${pct(idx[k36])}%</b> by ${y36} (${pct(idxLo[k36])}% to ${pct(idxHi[k36])}% across the variant band). Demographic change contributes ${Math.round((demogIdx-1)*100)} points, with the 85+ population growing ${g85}%; the fitted non-demographic trend supplies the rest. Elective demand grows ${pct(idxPod('el',y36,0))}% and outpatient attendances ${pct(idxPod('op',y36,0))}%. At today's length of stay and a ${MOD.ceil}% occupancy ceiling, that implies <b>${addB(k31)!=null?sgn(addB(k31)):'—'}</b> G&amp;A beds by ${k31!=null?yrs[k31]:2031} and <b>${sgn(addB(k36))}</b> by ${y36} across the system.`;
-  if(B.c)find+=` Projected occupied beds cross the ceiling of today's stock around <b>${B.c}</b>${B.early&&B.late?` (${B.early} to ${B.late} across the band)`:B.early?` (${B.early} under high demand)`:''}; with a typical ${LEAD_YEARS}-year capacity lead time (stated assumption), the decision point is <b>${B.c-LEAD_YEARS<=nowY?'now':B.c-LEAD_YEARS}</b>.`;
+  if(B.c===yrs[0])find+=` At the ${MOD.ceil}% standard the system is over the line already: today's occupied beds imply <b>${sgn(bedNeed[0]-availSum)}</b> staffed beds against today's stock before any growth lands${BL.occ?` (occupancy is running at ${fmt(BL.occ,'pct')})`:''}, so the capacity decision is already due.`;
+  else if(B.c)find+=` Projected occupied beds cross the ceiling of today's stock around <b>${B.c}</b>${B.early&&B.late&&(B.early!==B.c||B.late!==B.c)?` (${B.early} to ${B.late} across the band)`:B.early&&!B.late?` (${B.early} to beyond ${yEnd})`:''}; with a typical ${LEAD_YEARS}-year capacity lead time (stated assumption), the decision point is <b>${B.c-LEAD_YEARS<=nowY?'now':B.c-LEAD_YEARS}</b>.`;
   else if(B.early)find+=` Beds hold under the central case but cross the ceiling in ${B.early} under the high-demand variant.`;
   else find+=` On current stock, projected occupied beds stay under the ${MOD.ceil}% ceiling out to ${yEnd}.`;
   if(MOD.shift>0||MOD.prod>0)find+=` <span class="muted">Includes drawer layers: shift ${MOD.shift}%/yr, productivity ${MOD.prod}%/yr.</span>`;
@@ -2113,14 +2114,15 @@ function computeModel(){
       else{const pe=px(e!=null?e:c),pc2=c!=null?px(c):100;
         g=`background:linear-gradient(90deg,#2e7d54 0%,#2e7d54 ${pe}%,#b45309 ${pe}%,#b45309 ${pc2}%${c!=null?`,#8f1d17 ${pc2}%,#8f1d17 100%`:''})`;}
       return `<div class="tipbar" style="${g}"></div>`;};
-    const lab=b2=>{if(b2.c)return `<b>binds ~${b2.c}</b>${b2.early&&b2.late?` (${b2.early} to ${b2.late})`:b2.early?` (${b2.early} to beyond ${yEnd})`:''}<br><span class="muted">decide by ${b2.c-LEAD_YEARS<=nowY?'now':b2.c-LEAD_YEARS}</span>`;
+    const lab=(b2,short0)=>{if(b2.c===y0)return `<b>over the ${MOD.ceil}% standard today</b><br><span class="muted">${short0!=null?sgn(short0)+' beds at the standard now · growth widens it':'decision already due'}</span>`;
+      if(b2.c)return `<b>binds ~${b2.c}</b>${b2.early&&b2.late&&(b2.early!==b2.c||b2.late!==b2.c)?` (${b2.early} to ${b2.late})`:b2.early&&!b2.late?` (${b2.early} to beyond ${yEnd})`:''}<br><span class="muted">decide by ${b2.c-LEAD_YEARS<=nowY?'now':b2.c-LEAD_YEARS}</span>`;
       if(b2.early)return `holds centrally · <b>${b2.early}</b> under high demand`;
       return `beyond ${yEnd} on current stock`;};
     let th=`<div class="tiprow tiphead"><div></div><div style="display:flex;justify-content:space-between;font-size:9.5px;color:#9aa0af"><span>${y0}</span><span>${Math.round((y0+yEnd)/2)}</span><span>${yEnd}</span></div><div></div></div>`;
-    th+=`<div class="tiprow"><div class="tl"><b>Whole system</b><div class="muted" style="font-size:10.5px">${fmt(availSum,'count')} beds</div></div>${bar(bind.sys)}<div class="tr">${lab(bind.sys)}</div></div>`;
+    th+=`<div class="tiprow"><div class="tl"><b>Whole system</b><div class="muted" style="font-size:10.5px">${fmt(availSum,'count')} beds</div></div>${bar(bind.sys)}<div class="tr">${lab(bind.sys,Math.round(bedNeed[0]-availSum))}</div></div>`;
     ts.forEach(t=>{const x=tb[t.id];if(!x)return;
       if(x.nodata){th+=`<div class="tiprow"><div class="tl"><b>${esc(trustShort(t.code))}</b></div><div class="muted" style="font-size:11px">beds series not published for this trust</div><div></div></div>`;return;}
-      th+=`<div class="tiprow"><div class="tl"><b>${esc(trustShort(t.code))}</b><div class="muted" style="font-size:10.5px">${fmt(x.avail,'count')} beds · occ ${fmt(x.occ0,'count')}</div></div>${bar(bind[t.id])}<div class="tr">${lab(bind[t.id])}</div></div>`;});
+      th+=`<div class="tiprow"><div class="tl"><b>${esc(trustShort(t.code))}</b><div class="muted" style="font-size:10.5px">${fmt(x.avail,'count')} beds · occ ${fmt(x.occ0,'count')}</div></div>${bar(bind[t.id])}<div class="tr">${lab(bind[t.id],Math.round(x.need[0]-x.avail))}</div></div>`;});
     tw.innerHTML=th;}
   /* scale of the response */
   const rc=document.getElementById('reqcards');if(rc)rc.innerHTML=
