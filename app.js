@@ -541,7 +541,7 @@ function rrow(r){const adj=adjustedOverride(r.metric_value_id);const wp=natWorse
 function countUps(){const rm=reducedMotion();document.querySelectorAll('.cu').forEach(el=>{const t=Number(el.dataset.target);if(isNaN(t))return;if(rm){el.textContent=Math.round(t);return;}const st=performance.now();(function f(n){const p=Math.min(1,(n-st)/650);el.textContent=Math.round(t*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f);})(st);});}
 function drawRadar(){const cv=document.getElementById('radar');if(!cv)return;const data=DOMAINS.map(d=>{const rs=orgRows().filter(r=>r.domain===d[0]);return rs.length?Math.round(rs.reduce((s,r)=>s+r.distress,0)/rs.length):0;});charts.radar=new Chart(cv.getContext('2d'),{type:'radar',data:{labels:DOMAINS.map(d=>d[1]),datasets:[{data,fill:true,backgroundColor:'rgba(31,58,120,.16)',borderColor:'#1f3a78',borderWidth:2,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{r:{suggestedMin:0,suggestedMax:100,ticks:{stepSize:25,font:{size:8},backdropColor:'transparent',color:'#9aa0af'},grid:{color:'#e7ecf2'},angleLines:{color:'#e7ecf2'},pointLabels:{font:{size:9.5},color:'#3c4354'}}},responsive:true,maintainAspectRatio:false}});}
 
-/* ===== PRIORITY DRIVERS (ASR) ===== */
+/* ===== PRIORITY DRIVERS ===== */
 const DRIVER_METRICS={service_fragility:['fragility_index','bed_occupancy','beds_ga_available','dm01_6wk','sickness_rate','deficit','shmi','cqc_rating'],uec:['ae_4hr','amb_over30_pct','amb_handover_60','delayed_discharge_beddays','emerg_admissions'],elective_backlog:['rtt_total','rtt_18wk','rtt_52wk','cancelled_ops','adm_elective'],cancer:['cancer_62','cancer_fds_28','cancer_31']};
 const DRIVER_HEADLINE={service_fragility:'bed_occupancy',uec:'ae_4hr',elective_backlog:'rtt_18wk',cancer:'cancer_62'};
 const DRIVER_BLURB={service_fragility:'Occupancy, diagnostics and mortality signals that show where services are running closest to the edge.',uec:'The urgent and emergency pathway under strain: front door, ambulance handovers and delayed discharges.',elective_backlog:'The waiting list a decade in the making: size, waits over 18 and 52 weeks, and lost theatre activity.',cancer:'Cancer access against the 62-day, faster-diagnosis and 31-day standards.'};
@@ -984,12 +984,12 @@ async function renderFinance(v){v.innerHTML='<div class="loading">Loading financ
       const bmRows=['tac_net_margin','tac_agency_share_pay','tac_pay_share_income'].map(c=>orgRows().find(r=>r.metric_code===c)).filter(Boolean);
       if(nccRows.length||bmRows.length){h+=`<div class="two">`;
         if(nccRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Cost per unit of activity · NCC ${finFY(nccRows[0].period)}</div><div class="cap" style="padding:2px 14px 0">National Cost Collection index, MFF adjusted · 100 = costs as expected for this activity mix</div><table class="dt ev"><thead><tr><th>Care setting</th><th class="num">Index</th><th class="num">vs England</th></tr></thead><tbody>`;
-          nccRows.forEach(r=>{const wp=natWorsePct(r);const dv=Number(r.value)-100;h+=`<tr${r.metric_code==='ncc_index_total'?' style="font-weight:700"':''}><td>${esc(r.metric_name.replace('Cost index: ','').replace(' (NCCI, 100 = expected)',''))}</td><td class="num" style="color:${dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${fmt(r.value,'score')}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+          nccRows.forEach(r=>{const wp=natWorsePct(r);const dv=Number(r.value)-100;h+=`<tr${r.metric_code==='ncc_index_total'?' style="font-weight:700"':''}><td>${esc(r.metric_name.replace('Cost index: ','').replace(' (NCCI, 100 = expected)',''))}</td><td class="num" style="color:${dv>5?'#b3261e':dv<-5?'#166f4d':'#191f2b'}">${fmt(r.value,'score')}</td><td class="num postxt">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
           h+=`</tbody></table></div>`;}
         if(bmRows.length){h+=`<div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Financial ratios vs England</div><div class="cap" style="padding:2px 14px 0">Latest audited year · every English trust benchmarked</div><table class="dt ev"><thead><tr><th>Ratio</th><th class="num">This trust</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
           bmRows.forEach(r=>{const wp=natWorsePct(r);let med=r.nm_value;
             if(med==null){const all=rows.filter(x=>x.metric_code===r.metric_code&&x.org_type==='acute_trust'&&!x.service_id&&x.value!=null).map(x=>Number(x.value)).sort((a,b)=>a-b);if(all.length>=10)med=all[Math.floor(all.length/2)];}
-            h+=`<tr onclick="openDrill('${sel}','${r.metric_code}')" style="cursor:pointer"><td>${esc(r.metric_name)}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${med!=null?fmt(med,r.unit):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+            h+=`<tr onclick="openDrill('${sel}','${r.metric_code}')" style="cursor:pointer"><td>${esc(r.metric_name)}</td><td class="num" style="font-weight:600;color:${color(r.distress)}">${fmt(r.value,r.unit)}</td><td class="num muted">${med!=null?fmt(med,r.unit):'—'}</td><td class="num postxt">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
           h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Open any row for the full drill: trend, distribution and provenance.</div></div>`;}
         h+=`</div>`;}
     }
@@ -1317,7 +1317,7 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
   const medTot=medRows.reduce((s,r)=>s+r.wte,0);
   if(medRows.length){
     const shown=medRows.slice(0,18);
-    h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Medical staffing by specialty${medRows.length>18?' · top 18 of '+medRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Doctors in post · NHS Workforce Statistics ${fmtPeriod(medPeriod)}${grp?' · system trusts combined':''}</div><table class="dt ev"><thead><tr><th>Specialty</th><th class="num">WTE</th><th class="num">Share of medical</th></tr></thead><tbody>`;
+    h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Medical staffing by specialty${medRows.length>18?' · top 18 of '+medRows.length:''}</div><div class="cap" style="padding:2px 14px 0">Doctors in post, ALL grades including doctors in training · NHS Workforce Statistics ${fmtPeriod(medPeriod)}${grp?' · system trusts combined — divide by the number of trusts for a per-trust feel':''}</div><table class="dt ev"><thead><tr><th>Specialty</th><th class="num">WTE</th><th class="num">Share of medical</th></tr></thead><tbody>`;
     shown.forEach(r=>{const nm=specNm[r.code]||r.code.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase());h+=`<tr><td>${esc(nm)}</td><td class="num">${Math.round(r.wte).toLocaleString()}</td><td class="num muted">${medTot?fmt(100*r.wte/medTot,'pct'):'—'}</td></tr>`;});
     h+=`</tbody></table></div><div class="card"><div class="h3">Largest specialties</div><div class="cap">WTE doctors in post</div><div class="chartbox tall"><canvas id="wfmed"></canvas></div></div></div>`;
     /* trust × specialty medical staffing heatmap + fragile rotas (system view) */
@@ -1337,8 +1337,44 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
         fragile.sort((a,b)=>a.c-b.c);
         if(fragile.length)h+=`<div class="eyebrow">Fragile rotas · fewer than five whole-time doctors</div><div class="card" style="padding:4px 0;margin-bottom:14px"><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">WTE in post</th></tr></thead><tbody>`+
           fragile.slice(0,12).map(x=>`<tr><td>${esc(x.s.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.c<3?'#b3261e':'#b45309'}">${Math.round(x.c*10)/10}</td></tr>`).join('')+
-          `</tbody></table><div class="note" style="padding:6px 14px 10px">A service carried by fewer than five whole-time doctors is exposed to single points of failure in rota cover — a first-order fragility signal for reconfiguration, derived from the published specialty census. Cross-check against the fragility composite before drawing conclusions.</div></div>`;}
+          `</tbody></table><div class="note" style="padding:6px 14px 10px">A service carried by fewer than five whole-time doctors of any grade is exposed to single points of failure in rota cover. The consultant rota depth below is the sharper read: the census here includes doctors in training.</div></div>`;}
     }
+  }
+  /* --- rota depth · the consultant grade is what an on-call rota actually runs on --- */
+  const CN=await fetchConsNat();
+  if(CN.length){
+    const cps=[...new Set(CN.map(x=>x.period))].sort();const cLp=cps[cps.length-1],cPrev=cps.length>1?cps[0]:null;
+    const cw={},cwPrev={},natBySpec={};
+    CN.forEach(x=>{const k=x.organisation_id+'|'+x.specialty_code;
+      if(x.period===cLp){cw[k]=Number(x.value);(natBySpec[x.specialty_code]=natBySpec[x.specialty_code]||[]).push([x.organisation_id,Number(x.value)]);}
+      else if(x.period===cPrev)cwPrev[k]=Number(x.value);});
+    const trs2=sysTrusts();const tIds2=trs2.map(t=>t.id);
+    const specSet={};Object.keys(cw).forEach(k=>{const i=k.indexOf('|');if(tIds2.includes(k.slice(0,i)))specSet[k.slice(i+1)]=1;});
+    const mainSite=tc=>{const cand=SITES.filter(s2=>s2[0]===tc);const ga=cand.find(s2=>String(s2[5]||'').indexOf('General Acute')>=0);return ga||cand[0]||null;};
+    const partnerFor=(spec,exclId)=>{
+      const inSys=trs2.filter(t=>t.id!==exclId&&(cw[t.id+'|'+spec]||0)>=8).map(t=>trustShort(t.code));
+      if(inSys.length)return inSys[0]+' (in system)';
+      const home=orgById[exclId];const hs=home?mainSite(home.code):null;if(!hs)return null;
+      let best=null;
+      (natBySpec[spec]||[]).forEach(pair=>{const oid=pair[0],v2=pair[1];if(v2<8||oid===exclId)return;const o2=orgById[oid];if(!o2||o2.type!=='acute_trust')return;const s2=mainSite(o2.code);if(!s2)return;
+        const mins=accEstMins(accHavKm(hs[2],hs[3],s2[2],s2[3]));if(!best||mins<best.mins)best={mins,name:trustShort(o2.code)};});
+      return best?best.name+' · ~'+Math.round(best.mins)+' min drive (est.)':null;};
+    const rotaRows=Object.keys(specSet).map(sp2=>{
+      const per=trs2.map(t=>({t,v:cw[t.id+'|'+sp2],pv:cwPrev?cwPrev[t.id+'|'+sp2]:null}));
+      const withV=per.filter(x=>x.v!=null).sort((a,b)=>a.v-b.v);
+      const nat=(natBySpec[sp2]||[]);const under8=nat.filter(x=>x[1]<8).length;
+      return {sp:sp2,name:prettySlug(sp2),per,minV:withV.length?withV[0].v:null,under8,natN:nat.length};
+    }).filter(x=>x.minV!=null).sort((a,b)=>a.minV-b.minV);
+    if(rotaRows.length){
+      h+=`<div class="eyebrow" style="margin-top:16px">Consultant rota depth · what the on-call actually runs on</div>`;
+      h+=`<div class="card" style="padding:4px 0;overflow-x:auto;margin-bottom:14px"><div class="cap" style="padding:10px 14px 0">Consultant-grade WTE by specialty · NHS Workforce Statistics ${fmtPeriod(cLp)}${cPrev?' · change vs '+fmtPeriod(cPrev):''} · a sustainable 1-in-8 on-call needs roughly eight consultant WTE · thinnest rotas first</div><table class="dt"><thead><tr><th>Specialty</th>${trs2.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')}<th class="num">Under 8 across England</th><th>Nearest robust partner for the thinnest</th></tr></thead><tbody>`;
+      rotaRows.slice(0,18).forEach(x=>{
+        const withV=x.per.filter(p2=>p2.v!=null).sort((a,b)=>a.v-b.v);
+        const partner=(x.minV<8&&withV.length)?partnerFor(x.sp,withV[0].t.id):null;
+        h+=`<tr><td>${esc(x.name)}</td>`+x.per.map(p2=>{const d2=(p2.v!=null&&p2.pv!=null)?p2.v-p2.pv:null;
+          return `<td class="num" style="font-weight:600;color:${p2.v==null?'#9aa0af':p2.v<4?'#b3261e':p2.v<8?'#b45309':'#166f4d'}">${p2.v==null?'—':Math.round(p2.v*10)/10}${d2!=null&&Math.abs(d2)>=0.5?`<small style="color:${d2<0?'#b3261e':'#166f4d'};font-weight:600"> ${d2>0?'▲':'▼'}${Math.abs(Math.round(d2*10)/10)}</small>`:''}</td>`;}).join('')+
+          `<td class="num postxt">${x.natN>=10?x.under8+' of '+x.natN:'—'}</td><td style="font-size:11px;color:#5a6172">${partner?esc(partner):(x.minV<8?'none within reach on the census':'')}</td></tr>`;});
+      h+=`</tbody></table><div class="note" style="padding:6px 14px 10px">Where many English trusts run the same specialty under eight consultants, the scarcity is national and networking is the realistic answer; where this system is the outlier, recruitment or consolidation is. Partner distances are estimated drive times between main acute sites. The all-grades census above includes doctors in training, which is why those figures run far higher than the consultant tier here.</div></div>`;}
   }
   /* agency + bank from audited accounts */
   if(lastFy){
@@ -1369,7 +1405,7 @@ async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading work
     h+=`<div class="two"><div class="card" style="padding:4px 0"><div class="h3" style="padding:10px 14px 0">Staff survey · ${esc((orgById[svOrg]||{}).code||'')}${grp?' (one trust shown — switch organisation above for others)':''}</div><div class="cap" style="padding:2px 14px 0">NHS Staff Survey 2025 · People Promise elements, 0-10 · national benchmark</div><table class="dt ev"><thead><tr><th>Theme</th><th class="num">Score</th><th class="num">National median</th><th class="num">Position</th></tr></thead><tbody>`;
     svRows.forEach(x=>{const wp=natWorsePct(x.r);let med=x.r.nm_value;
       if(med==null){const all=rows.filter(r2=>r2.metric_code===x.r.metric_code&&r2.org_type==='acute_trust'&&!r2.service_id&&r2.value!=null).map(r2=>Number(r2.value)).sort((a,b)=>a-b);if(all.length>=10)med=all[Math.floor(all.length/2)];}
-      h+=`<tr onclick="openDrill('${svOrg}','${x.r.metric_code}')" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="num" style="font-weight:600;color:${color(x.r.distress)}">${fmt(x.r.value,'score')}</td><td class="num muted">${med!=null?fmt(med,'score'):'—'}</td><td class="num muted" style="font-size:11px">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
+      h+=`<tr onclick="openDrill('${svOrg}','${x.r.metric_code}')" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="num" style="font-weight:600;color:${color(x.r.distress)}">${fmt(x.r.value,'score')}</td><td class="num muted">${med!=null?fmt(med,'score'):'—'}</td><td class="num postxt">${wp!=null?wp+'% of trusts do better':'—'}</td></tr>`;});
     h+=`</tbody></table></div><div class="card"><div class="h3">Survey vs national median</div><div class="cap">0-10 theme scores</div><div class="chartbox tall"><canvas id="wfsvy"></canvas></div></div></div>`;}
   v.innerHTML=h;countUps();
   const wfBars=wfRows.filter(sg=>gv(sg.code,'wte')!=null);
@@ -1691,7 +1727,7 @@ async function renderPack(v){
 const ENGINE_VERSION='v1-2026-07-02';
 const MOD_BANDS=['0-15','16-64','65-84','85+'];
 const ENGINE_INPUTS=['adm_emergency','adm_elective','op_attendances','ae_attendances','beds_ga_available','beds_ga_occupied','bed_occupancy'];
-let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},gnd:0.5,shift:0.5,prod:0.5,ceil:92,runsCache:null,last:null};
+let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},gnd:0.5,shift:0.5,prod:0.5,ceil:92,runsCache:null,last:null,diff:{}};
 function sysTrusts(){return orgs.filter(x=>TRUSTS.includes(x.code));}
 function mrow(orgId,code){return rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);}
 function last12(orgId,code){const r=mrow(orgId,code);if(!r)return null;const s=officialSeries(orgId,r.metric_id);if(!s.length)return null;const a=s.slice(-12);return{sum:a.reduce((t,x)=>t+Number(x.value),0),months:a.length,to:a[a.length-1].period};}
@@ -1712,6 +1748,11 @@ async function fetchRttNat(){if(rttNatCache)return rttNatCache;
   try{const{data,error}=await sb.from('sr_fact').select('organisation_id,metric_code,specialty_code,period,value').in('metric_code',['rtt_18wk','rtt_52wk','rtt_incomplete']).gte('period',cut.toISOString().slice(0,10)).not('specialty_code','is',null).limit(20000);if(error)throw error;rttNatCache=data||[];}
   catch(e){console.warn('national rtt fetch failed',e);return [];}
   return rttNatCache;}
+let consNatCache=null;
+async function fetchConsNat(){if(consNatCache)return consNatCache;
+  try{const{data,error}=await sb.from('sr_fact').select('organisation_id,specialty_code,period,value').eq('metric_code','consultant_wte_spec').limit(8000);if(error)throw error;consNatCache=data||[];}
+  catch(e){console.warn('consultant wte fetch failed',e);return [];}
+  return consNatCache;}
 function slugName(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
 /* Observed national demand trend per specialty: 3-year CAGR of admissions (HES MAR), emergency share,
    and a mix-shift factor vs the all-specialty trend, clamped to ±3%/yr so coding drift cannot run away. */
@@ -1745,7 +1786,7 @@ async function renderModelling(v){
   v.innerHTML='<div class="loading">Loading demand &amp; capacity engine…</div>';
   if(deferredLoads)await deferredLoads; /* E4 · freshness table depends on the deferred load */
   if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
-  const[NS,AF,PF,WF,WN,RN]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat()]);
+  const[NS,AF,PF,WF,WN,RN,CN2]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat(),fetchConsNat()]);
   const BL=modelBaseline();const proj=popProjCache[sysSlug]||[];
   let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, reproducible demand &amp; capacity engine: live activity baseline, ONS demographic projections weighted by age-band activity, and editable scenario layers — every run saveable and re-loadable.</div>`;
   const missing=[!BL.nel&&'adm_emergency',!BL.el&&'adm_elective',!BL.op&&'op_attendances',!BL.bedsAvail&&'beds_ga_available',!proj.length&&'sr_population_projections'].filter(Boolean);
@@ -1766,6 +1807,23 @@ async function renderModelling(v){
    +`<div class="card"><div class="h3">Projected demand to 2040</div><div class="cap" id="mdcap"></div><div class="chartbox"><canvas id="a1demand"></canvas></div></div></div>`;
   h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Bed requirement vs available beds</div><div class="cap">Future bed need = occupied beds × demand index × (1−productivity)^t ÷ occupancy ceiling</div><div class="chartbox"><canvas id="a1beds"></canvas></div></div>
    <div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists every assumption, the baseline and per-year outputs to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div><div class="cap" style="margin-top:16px;margin-bottom:4px">Previous runs · this database</div><div id="mrunlist"><div class="note">Loading…</div></div></div></div>`;
+  /* --- differential growth & mitigation · trust × point of delivery --- */
+  const PODS4=[['nel','Non-elective admissions','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatient attendances','op_attendances'],['ae','A&E attendances','ae_attendances']];
+  const dTrusts=sysTrusts();
+  const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
+  const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
+  const diffBase={};dTrusts.forEach(t=>PODS4.forEach(pd=>{diffBase[t.id+'|'+pd[0]]=base12(t.id,pd[2]);}));
+  if(dTrusts.length&&Object.values(diffBase).some(v2=>v2!=null)){
+    h+=`<div class="eyebrow" style="margin-top:16px">Differential growth &amp; mitigation · trust × point of delivery</div>`;
+    h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="cap">The engine above applies one demographic driver and one set of scenario layers to the whole system. Here you vary them: extra growth (demand drivers specific to a trust or POD) and mitigation (shift-left, prevention, productivity) in %/yr, on top of the global sliders. Zero everywhere reproduces the system engine.</div>`;
+    h+=`<table class="dt" style="max-width:860px"><thead><tr><th>Point of delivery</th><th></th>`+dTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    PODS4.forEach(pd=>{
+      h+=`<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">${pd[1]}</td><td class="muted" style="font-size:10.5px">extra growth %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).g||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dg_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;
+      h+=`<tr><td class="muted" style="font-size:10.5px">mitigation %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).m||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dm_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;});
+    h+=`</tbody></table><div style="margin-top:10px"><button class="btn" onclick="diffApply()">Apply differentials</button> <span class="muted" style="font-size:11px">applied on top of the demographic index and the global growth/shift sliders · saved with a scenario run</span></div>`;
+    h+=`<div id="diffout" style="margin-top:12px"></div></div>`;
+    h+=`<div class="note" style="margin:-4px 2px 14px">Specialty-grain growth lives in the outlook heatmap below (national specialty trend × this demography); PODs here, specialties there, one demographic engine underneath both.</div>`;
+  }
   h+=`<div class="eyebrow">Future capacity requirements</div><div class="grid three" id="reqcards"></div>`;
   h+=`<div class="prov" id="mprov"></div>`;
   /* --- item 7 · specialty demand outlook: where future growth lands, trust by trust --- */
@@ -1793,6 +1851,8 @@ async function renderModelling(v){
   RN.forEach(x=>{const m=x.metric_code==='rtt_18wk'?rtt18Nat:x.metric_code==='rtt_52wk'?rtt52Nat:rttIncNat;(m[x.specialty_code]=m[x.specialty_code]||[]).push([x.organisation_id,Number(x.value)]);});
   const med18={};Object.keys(rtt18Nat).forEach(sc=>{const a=rtt18Nat[sc].map(x=>x[1]).sort((x,y)=>x-y);if(a.length>=10)med18[sc]=a[Math.floor(a.length/2)];});
   const wteBy={};WF.forEach(x=>{if(x.metric_code!=='medical_wte'||!x.specialty_code)return;const k=x.organisation_id+'|'+x.specialty_code;const e=wteBy[k];if(!e||x.period>e.period)wteBy[k]={period:x.period,v:Number(x.value)};});
+  const consLp2=CN2.length?[...new Set(CN2.map(x=>x.period))].sort().pop():null;
+  const consBy={};CN2.forEach(x=>{if(x.period===consLp2)consBy[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
   const wnLp=latestPeriod(WN.filter(x=>x.metric_code==='mhso_cost_per_wau'));
   const cpwF={},cpwSpec={};WN.forEach(x=>{if(x.metric_code!=='mhso_cost_per_wau'||x.period!==wnLp||!(Number(x.value)>0)||/_as_a_of_/.test(x.specialty_code))return;cpwF[x.organisation_id+'|'+x.specialty_code]=Number(x.value);(cpwSpec[x.specialty_code]=cpwSpec[x.specialty_code]||[]).push(Number(x.value));});
   const cpwMed={};Object.keys(cpwSpec).forEach(sc=>{const a=cpwSpec[sc].slice().sort((x,y)=>x-y);if(a.length>=10)cpwMed[sc]=a[Math.floor(a.length/2)];});
@@ -1804,7 +1864,10 @@ async function renderModelling(v){
     const parts=[];const slug=slugName(nm.replace(' †',''));
     const wkey=Object.keys(wteBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36)||k.indexOf('|')<0)return false;const s=k.slice(k.indexOf('|')+1);const al=WTE_ALIAS[slug]||slug;return s===al||s===slug||s.startsWith(al)||al.startsWith(s);});
     const wte=wkey?wteBy[wkey].v:null;
-    if(wte!=null)parts.push([30,wte<3?30:wte<5?24:wte<8?16:wte<12?8:0]);
+    const ckey=Object.keys(consBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36))return false;const s3=k.slice(37);const al=WTE_ALIAS[slug]||slug;return s3===al||s3===slug||s3.startsWith(al)||al.startsWith(s3);});
+    const cwte=ckey!=null?consBy[ckey]:null;
+    if(cwte!=null)parts.push([30,cwte<4?30:cwte<6?24:cwte<8?16:cwte<10?8:0]);
+    else if(wte!=null)parts.push([30,wte<3?30:wte<5?24:wte<8?16:wte<12?8:0]);
     const v18=pfAt(oid,sc,'rtt_18wk');
     if(v18!=null&&med18[sc]!=null)parts.push([25,25*clamp01((10-(v18-med18[sc]))/25)]);
     const v52=pfAt(oid,sc,'rtt_52wk'),vin=pfAt(oid,sc,'rtt_incomplete');
@@ -1831,7 +1894,7 @@ async function renderModelling(v){
     worst.sort((a,b)=>b.score-a.score);
     if(worst.length)h+=`<div class="card" style="margin-bottom:12px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Most fragile services</div><div class="cap" style="padding:2px 14px 0">Score 55+ · the consolidation and network conversation starts here</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">Fragility</th><th class="num">Doctors in post</th></tr></thead><tbody>`+
       worst.slice(0,10).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.score>=70?'#b3261e':'#b45309'}">${x.score}</td><td class="num muted">${x.wte!=null?(Math.round(x.wte*10)/10)+' WTE':'—'}</td></tr>`).join('')+`</tbody></table></div>`;
-    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the fragility score is built · full methodology</div><div class="note" style="margin-top:6px">Each trust-and-specialty cell starts from five questions, each answered from a published national source and each carrying a fixed weight. <b>Can it staff a rota? (30 points)</b> Doctors in post from NHS workforce statistics: under 3 WTE scores the full 30, under 5 scores 24, under 8 scores 16, under 12 scores 8 — below roughly 8 WTE a specialty cannot run a sustainable 1-in-8 on-call without locums. <b>Is access holding? (25 points)</b> The specialty's RTT 18-week position against the national median for the same specialty: 10 points better than median scores 0, sliding to the full 25 at 15 points worse. <b>How severe are the long waits? (15 points)</b> 52-week breaches as a share of that specialty's waiting list: 0% scores 0, 5%+ scores the full 15. <b>Is the service shrinking? (15 points)</b> Completed pathways, last 12 months against the previous 12: growth scores 0, a 25% decline scores the full 15 — falling throughput with a stable population is how services quietly wither before they fail. <b>Is it a cost outlier? (15 points)</b> Cost per weighted activity unit against the national specialty median (open Model Health System): at or below median scores 0, 30% above scores the full 15. The cell score is the points taken as a share of the points available — where a source does not publish that specialty (cost per WAU covers around 21 specialties, workforce around 60), the score is renormalised over what is published rather than pretending the gap is a zero. A score of 55 or more is flagged; nothing in this index is a verdict, every component opens to its published source, and the weights are stated so they can be challenged and re-run.</div></div>`;}
+    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the fragility score is built · full methodology</div><div class="note" style="margin-top:6px">Each trust-and-specialty cell starts from five questions, each answered from a published national source and each carrying a fixed weight. <b>Can it staff a rota? (30 points)</b> Scored on the CONSULTANT grade where the census publishes it (under 4 consultant WTE scores the full 30, under 6 scores 24, under 8 scores 16, under 10 scores 8 — a sustainable 1-in-8 on-call needs roughly eight consultants), falling back to all-grades doctors in post (under 3 / 5 / 8 / 12 WTE) where it does not. <b>Is access holding? (25 points)</b> The specialty's RTT 18-week position against the national median for the same specialty: 10 points better than median scores 0, sliding to the full 25 at 15 points worse. <b>How severe are the long waits? (15 points)</b> 52-week breaches as a share of that specialty's waiting list: 0% scores 0, 5%+ scores the full 15. <b>Is the service shrinking? (15 points)</b> Completed pathways, last 12 months against the previous 12: growth scores 0, a 25% decline scores the full 15 — falling throughput with a stable population is how services quietly wither before they fail. <b>Is it a cost outlier? (15 points)</b> Cost per weighted activity unit against the national specialty median (open Model Health System): at or below median scores 0, 30% above scores the full 15. The cell score is the points taken as a share of the points available — where a source does not publish that specialty (cost per WAU covers around 21 specialties, workforce around 60), the score is renormalised over what is published rather than pretending the gap is a zero. A score of 55 or more is flagged; nothing in this index is a verdict, every component opens to its published source, and the weights are stated so they can be challenged and re-run.</div></div>`;}
   /* --- build plan · clinical co-location dependencies: starter matrix, requires clinical sign-off --- */
   const IDEP={
     names:{ed:'Emergency department (Type 1)',acmed:'Acute & general medicine',ccu:'Critical care (level 2/3)',emsurg:'Emergency general surgery',anaes:'Anaesthetics & theatres',imaging:'Imaging (CT 24/7)',path:'Pathology & blood sciences',obs:'Consultant-led obstetrics',neo:'Neonatal care',paeds:'Inpatient paediatrics',trauma:'Trauma & orthopaedics',stroke:'Hyperacute stroke',pci:'Primary PCI',ir:'Interventional radiology',elsurg:'Elective inpatient surgery'},
@@ -1862,6 +1925,7 @@ async function renderModelling(v){
   h+=`<div class="note" style="margin-bottom:14px">This grid is a curated starter following the published co-dependency frameworks used in acute service reviews (the Clinical Senate family of guidance): level 1 must be co-located around the clock, level 2 is needed on site or by rapid formal arrangement, level 3 can safely run as a network. It is a curation for challenge, not a local clinical decision — have your clinical leads validate and amend it before it informs any option, and treat the co-location read as trust-level until site-grain service data is loaded.</div>`;
   h+=methodHtml();
   v.innerHTML=h;computeModel();loadSavedRuns();
+  if(document.getElementById('diffout'))diffApply(true);
 }
 function computeModel(){
   const BL=modelBaseline();const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
@@ -1904,11 +1968,48 @@ function computeModel(){
 }
 function reqCard(t,n,s){return `<div class="card"><div class="kpi"><div class="l">${t}</div><div class="v" style="color:#b45309">${n==null?'—':(n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()}</div><div class="s">${s}</div></div></div>`;}
 function runName(){const d=new Date().toISOString().slice(0,10);return `${sysSlug} — ${d} — nd${MOD.gnd}/shift${MOD.shift}/prod${MOD.prod}/occ${MOD.ceil}/w${MOD_BANDS.map(b=>MOD.w[b]).join('·')}`;}
+function demoIdxAt(y){const proj=(popProjCache[sysSlug]||[]).filter(p2=>p2.year>=2025&&p2.year<=2040);if(!proj.length)return null;
+  const years=[...new Set(proj.map(p2=>p2.year))].sort((a,b)=>a-b);const y0=years.includes(2026)?2026:years[0];
+  const yy=years.includes(y)?y:years[years.length-1];
+  const popB=(b,yr)=>proj.filter(p2=>p2.age_band===b&&p2.year===yr).reduce((s2,p2)=>s2+Number(p2.population),0);
+  const W=yr=>MOD_BANDS.reduce((s2,b)=>s2+popB(b,yr)*MOD.w[b],0);
+  const w0=W(y0);if(!w0)return null;return {idx:W(yy)/w0,t:yy-y0,y0,y:yy};}
+function diffApply(initial){
+  const out=document.getElementById('diffout');if(!out)return;
+  const PODS4=[['nel','Non-elective','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatients','op_attendances'],['ae','A&E','ae_attendances']];
+  const dTrusts=sysTrusts();
+  dTrusts.forEach(t=>PODS4.forEach(pd=>{const g=document.getElementById('dg_'+t.id+'_'+pd[0]),m=document.getElementById('dm_'+t.id+'_'+pd[0]);
+    if(g||m)MOD.diff[t.id+'|'+pd[0]]={g:g?(+g.value||0):0,m:m?(+m.value||0):0};}));
+  const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
+  const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
+  const d31=demoIdxAt(2031),d36=demoIdxAt(2036);
+  if(!d31||!d36){out.innerHTML='<div class="note">Population projections are not loaded for this system, so differentials cannot project.</div>';return;}
+  const proj=(oid,pod,base,D)=>{const dd=MOD.diff[oid+'|'+pod]||{g:0,m:0};
+    return base*D.idx*Math.pow(1+(MOD.gnd+dd.g)/100,D.t)*Math.pow(1-(MOD.shift+dd.m)/100,D.t);};
+  let rowsH='',sys={};PODS4.forEach(pd=>{sys[pd[0]]={b:0,p31:0,p36:0};});
+  dTrusts.forEach(t=>{PODS4.forEach(pd=>{const b=base12(t.id,pd[2]);if(b==null)return;
+    const p31=proj(t.id,pd[0],b,d31),p36=proj(t.id,pd[0],b,d36);
+    sys[pd[0]].b+=b;sys[pd[0]].p31+=p31;sys[pd[0]].p36+=p36;
+    const ch=100*(p36/b-1);
+    rowsH+=`<tr><td>${esc(trustShort(t.code))}</td><td>${pd[1]}</td><td class="num muted">${b.toLocaleString()}</td><td class="num">${Math.round(p31).toLocaleString()}</td><td class="num" style="font-weight:600">${Math.round(p36).toLocaleString()}</td><td class="num" style="font-weight:700;color:${ch>20?'#b3261e':ch>8?'#b45309':ch<0?'#1f3a78':'#191f2b'}">${(ch>0?'+':'')+Math.round(ch)}%</td></tr>`;});});
+  let sysH='';PODS4.forEach(pd=>{const s2=sys[pd[0]];if(!s2.b)return;const ch=100*(s2.p36/s2.b-1);
+    sysH+=`<tr style="font-weight:700;border-top:1px solid #dcd9d0"><td>Whole system</td><td>${pd[1]}</td><td class="num">${Math.round(s2.b).toLocaleString()}</td><td class="num">${Math.round(s2.p31).toLocaleString()}</td><td class="num">${Math.round(s2.p36).toLocaleString()}</td><td class="num" style="color:${ch>20?'#b3261e':ch>8?'#b45309':'#191f2b'}">${(ch>0?'+':'')+Math.round(ch)}%</td></tr>`;});
+  out.innerHTML=`<table class="dt ev"><thead><tr><th>Trust</th><th>POD</th><th class="num">Now /yr</th><th class="num">${d31.y}</th><th class="num">${d36.y}</th><th class="num">Δ by ${d36.y}</th></tr></thead><tbody>${rowsH}${sysH}</tbody></table>
+   <div class="chartbox sm" style="margin-top:10px"><canvas id="diffchart"></canvas></div>
+   <div class="note">Projection per cell = latest 12-month activity × the demographic index (ONS, age-weighted) × (1 + global growth + extra growth)ᵗ × (1 − global shift − mitigation)ᵗ. ${initial?'All differentials zero: this reproduces the system engine trust by trust.':'Differentials applied.'} Modelled, and saved with any scenario run.</div>`;
+  if(charts.diffchart){try{charts.diffchart.destroy()}catch(e){}delete charts.diffchart;}
+  const cv=document.getElementById('diffchart');
+  if(cv&&window.Chart)charts.diffchart=new Chart(cv.getContext('2d'),{type:'bar',data:{labels:PODS4.map(pd=>pd[1]),datasets:[
+    {label:'Now',data:PODS4.map(pd=>Math.round(sys[pd[0]].b)),backgroundColor:'#b7c4de',borderRadius:3,maxBarThickness:34},
+    {label:''+d36.y,data:PODS4.map(pd=>Math.round(sys[pd[0]].p36)),backgroundColor:'#1f3a78',borderRadius:3,maxBarThickness:34}]},
+    options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{x:{ticks:{font:{size:10},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false}});
+}
+window.diffApply=diffApply;
 async function saveModelRun(){const L=MOD.last;if(!L)return;const btn=document.getElementById('msave'),note=document.getElementById('msavenote');
   /* U3 · writes require a session (anon INSERT revoked in E2) */
   if(!session){if(note)note.textContent='Sign in to save (public data stays open to read).';return;}
   if(btn)btn.disabled=true;if(note)note.textContent='Saving…';
-  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),non_demographic_growth_pct:MOD.gnd,shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,
+  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),non_demographic_growth_pct:MOD.gnd,shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,differential_trust_pod:Object.assign({},MOD.diff),
     baseline:{year:L.y0,nel_annual:L.BL.nel.annual,el_annual:L.BL.el.annual,op_annual:L.BL.op.annual,ae_annual:L.BL.ae?L.BL.ae.annual:null,beds_available:L.BL.bedsAvail,beds_occupied:L.BL.bedsOcc,occupancy_pct:L.BL.occ,activity_to:L.BL.nel.to,beds_period:L.BL.bedsPeriod,trusts:TRUSTS.slice()}};
   try{
     const{data:sc,error:e1}=await sb.from('sr_scenarios').insert({name:runName(),params,version:1,notes:'A1 v1 in-app engine — saved from the modelling studio'}).select('id').single();if(e1)throw e1;
@@ -1994,23 +2095,22 @@ function aiScore(o,lens){const s=optCache?(optCache.scores||[]).find(x=>x.option
 function testMeta(s){return {met:['met','#166f4d'],passed:['met','#166f4d'],partial:['partial','#b45309'],needs_evidence:['needs evidence','#b45309'],not_started:['not started','#9aa0af'],high_risk:['high risk','#b3261e'],unmet:['unmet','#b3261e']}[s]||[(s||'not assessed').replace(/_/g,' '),'#9aa0af'];}
 async function renderOptions(v){v.innerHTML='<div class="loading">Loading options…</div>';const OC=await ensureOptions();
   const opts=(OC.options||[]).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''));
-  let h=`<h1 class="serif">Options &amp; appraisal</h1><div class="lead">The long list: configuration options developed from the issue register, appraised against the six ITT criteria.</div>`;
+  let h=`<h1 class="serif">Options &amp; appraisal</h1><div class="lead">The long list: configuration options developed from the issue register, appraised against the configured criteria, with switchable weighting lenses.</div>`;
   const soSet=new Set(sysOrgs().map(o=>o.id));
   const ownIssues=issues.filter(i=>i.organisation_id&&soSet.has(i.organisation_id));
   const sysOpts=opts.filter(o=>optIssues(o).some(i=>i.organisation_id&&soSet.has(i.organisation_id)));
-  if(sysSlug!==BSW_SLUG){
-    if(sysOpts.length)h+=`<div class="banner">${sysOpts.length} option${sysOpts.length>1?'s':''} drafted from this system's issue register; the reference set remains visible.</div>`;
-    else h+=optionSeedPanel(ownIssues);
-  }
+  /* system-agnostic: each system sees only options drafted from its own issue register */
+  const showOpts=(sysSlug===BSW_SLUG)?opts:sysOpts;
+  if(sysSlug!==BSW_SLUG&&!showOpts.length)h+=optionSeedPanel(ownIssues);
   if(OC.error)h+=`<div class="banner">Option data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
-  if(!opts.length){if(!OC.error)h+=`<div class="card"><div class="h3">No options yet</div><div class="cap">Options are promoted from AI drafts generated off the issue register.</div></div>`;v.innerHTML=h;return;}
-  h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+opts.map(o=>{const iss=optIssues(o);const stCol={proposed:'#1f3a78',appraised:'#7a6200',shortlisted:'#166f4d',rejected:'#6a7183'}[o.status]||'#1f3a78';
+  if(!showOpts.length){if(!OC.error)h+=`<div class="card"><div class="h3">No options yet for this system</div><div class="cap">Options are drafted from this system's own issue register and promoted here; nothing is inherited from any other system's review.</div></div>`;v.innerHTML=h;return;}
+  h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+showOpts.map(o=>{const iss=optIssues(o);const stCol={proposed:'#1f3a78',appraised:'#7a6200',shortlisted:'#166f4d',rejected:'#6a7183'}[o.status]||'#1f3a78';
     return `<div class="card" style="cursor:pointer;display:flex;flex-direction:column" onclick="openOption('${o.id}')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div class="h3" style="font-size:14px">${esc(optShort(o.title))}</div><span class="pill" style="background:${stCol};flex:none">${esc(o.status||'draft')}</span></div><div class="cap" style="margin-bottom:8px">${esc((o.option_type||'').replace(/_/g,' '))} · ${esc(o.stage||'longlist')} · ${esc(o.owner||'')}</div><div style="font-size:12.5px;color:var(--ink2);flex:1">${esc((o.summary||'').slice(0,190))}${(o.summary||'').length>190?'…':''}</div><div style="margin-top:10px">${iss.map(i=>`<span class="pill" style="background:#e8e5dc;color:#3c4354;cursor:pointer;margin-right:5px" onclick="event.stopPropagation();openIssue('${esc(i.code)}')">${esc(i.code.length>28?i.code.slice(0,26)+'…':i.code)}</span>`).join('')||'<span class="note">no registered issue link</span>'}</div></div>`;}).join('')+`</div>`;
-  h+=`<div class="eyebrow">Appraisal matrix · six ITT criteria</div>`+lensBar();
+  h+=`<div class="eyebrow">Appraisal matrix · configured criteria</div>`+lensBar();
   h+=`<div class="card" style="overflow-x:auto;padding:12px 14px"><a class="csvlink" href="#" onclick="csvTable('optmatrix','options-matrix-${sysSlug}-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="optmatrix"><thead><tr><th style="min-width:200px">Option</th>${criteria.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num" style="border-left:1px solid var(--line)">Weighted · ${esc(lensName)}</th><th class="num">AI appraisal</th></tr></thead><tbody>`+
-    opts.map(o=>{const tot=optWsum(o);const ai=aiScore(o,'balanced')!=null?aiScore(o,'balanced'):aiScore(o,'quality_safety_first');
+    showOpts.map(o=>{const tot=optWsum(o);const ai=aiScore(o,'balanced')!=null?aiScore(o,'balanced'):aiScore(o,'quality_safety_first');
       return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,84))}</td>${criteria.map(c=>{const s=optCrit(o,c.code);return `<td class="num" style="font-weight:600;color:${scoreCol(s)}">${s==null?'—':s}</td>`;}).join('')}<td class="num" style="border-left:1px solid var(--line);font-weight:700;color:${scoreCol(tot)}">${tot==null?'—':Math.round(tot)}</td><td class="num" style="color:${scoreCol(ai)}">${ai==null?'—':ai}</td></tr>`;}).join('')+
-    `</tbody></table><div class="note">Criterion cells are derived from qualitative impact ratings (positive 75 · mixed 50 · negative 25; impact domains mapped quality→quality &amp; safety, inequalities→equity, workforce→workforce, capacity→estates &amp; digital, finance→financial &amp; ROI, access→travel &amp; access) — no per-criterion option scores exist yet, so treat cells as indicative. Weighted = live ${esc(lensName)} lens weights over these cells. AI appraisal = stored balanced-lens option score (directional, asr-option-appraisal-v1).</div></div>`;
+    `</tbody></table><div class="note">Criterion cells are derived from qualitative impact ratings (positive 75 · mixed 50 · negative 25; impact domains mapped quality→quality &amp; safety, inequalities→equity, workforce→workforce, capacity→estates &amp; digital, finance→financial &amp; ROI, access→travel &amp; access) — no per-criterion option scores exist yet, so treat cells as indicative. Weighted = live ${esc(lensName)} lens weights over these cells. AI appraisal = stored balanced-lens option score (directional).</div></div>`;
   /* --- build plan · hurdle screen: pass/caution/fail per option from stored impacts and risks --- */
   const HURDLES=[['Clinical safety','quality'],['Travel & access','access'],['Workforce viability','workforce'],['Affordability','finance'],['Deliverability',null]];
   const hstat=(o,dom)=>{const imps=(OC.impacts||[]).filter(x=>x.option_id===o.id);
@@ -2021,11 +2121,11 @@ async function renderOptions(v){v.innerHTML='<div class="loading">Loading option
   const hg=s=>s==null?'<span class="muted">—</span>':s==='pass'?'<b style="color:#166f4d">✓</b>':s==='caution'?'<b style="color:#b45309">!</b>':'<b style="color:#b3261e">✗</b>';
   h+=`<div class="eyebrow">Hurdle screen · before any weighting</div>`;
   h+=`<div class="card" style="overflow-x:auto;padding:4px 0"><table class="dt ev"><thead><tr><th>Option</th>${HURDLES.map(x=>`<th class="num">${x[0]}</th>`).join('')}<th class="num" style="border-left:1px solid var(--line)">Screen</th></tr></thead><tbody>`+
-    opts.map(o=>{const st=HURDLES.map(x=>hstat(o,x[1]));const fails=st.filter(s=>s==='fail').length,cauts=st.filter(s=>s==='caution').length;
+    showOpts.map(o=>{const st=HURDLES.map(x=>hstat(o,x[1]));const fails=st.filter(s=>s==='fail').length,cauts=st.filter(s=>s==='caution').length;
       const verdict=fails?['fails screen','#b3261e']:cauts>1?['conditional','#b45309']:['clears screen','#166f4d'];
       return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,80))}</td>${st.map(s=>`<td class="num">${hg(s)}</td>`).join('')}<td class="num" style="border-left:1px solid var(--line)"><span class="pill" style="background:${verdict[1]}">${verdict[0]}</span></td></tr>`;}).join('')+
     `</tbody></table><div class="note" style="padding:6px 14px 10px">A hurdle screen answers "may this option proceed at all" before any weighting: an option that fails clinical safety cannot buy its way back with a good finance score. Derived from each option's stored impact ratings (negative = fail, mixed = caution) and risk register (a significant risk fails deliverability); dashes are unassessed, and the screen is a facilitation aid to challenge, not a verdict.</div></div>`;
-  h+=`<div class="note" style="margin-top:10px">Option set is a working draft (late-June facilitation seed) — quantified appraisal pending engine integration. Each option's modal now carries a modelled economics sandbox.</div>`;
+  h+=`<div class="note" style="margin-top:10px">Options are working drafts from facilitation; the hurdle screen, weighted matrix and each option's economics sandbox deepen as engine integration lands.</div>`;
   v.innerHTML=h;}
 function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(x=>x.id===id);if(!o)return;hideTip();
   const comps=(optCache.components||[]).filter(x=>x.option_id===id);
@@ -2061,7 +2161,7 @@ function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(
     <button class="btn" style="padding:8px 14px" onclick="optEconCompute()">Compute</button></div>
    <div id="oeOut" class="note" style="margin-top:8px">Set the assumptions and compute: the revenue effect prices the shifted activity at the two trusts' published cost per WAU, then nets capital and transition over ten years.</div>
    <div class="chartbox sm" id="oeChartBox" style="display:none"><canvas id="oeChart"></canvas></div>`;
-  h+=`<div id="optaccesslink"></div><div class="note" style="margin-top:12px">Option set is a working draft (late-June facilitation seed) — the sandbox above is a modelled sketch to frame the conversation, not an option costing.</div></div></div>`;
+  h+=`<div id="optaccesslink"></div><div class="note" style="margin-top:12px">The sandbox above is a modelled sketch to frame the conversation, not an option costing.</div></div></div>`;
   document.getElementById('modalroot').innerHTML=h;
   optEconInit();
   /* A2 · cross-link when option components reference sites in the access matrix (fuzzy contains) */

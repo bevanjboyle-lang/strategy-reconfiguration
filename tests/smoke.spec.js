@@ -413,13 +413,12 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('.view .jchip').filter({ hasText: 'Frame' })).toContainText('○');
   });
 
-  test('30 options · a non-flagship system gets the issues-to-options path, flagship set as reference', async ({ page }) => {
+  test('30 options · system-agnostic: a non-flagship system sees only its own options', async ({ page }) => {
     test.slow();
     await page.goto('/index.html?system=nhs-devon-icb&view=options');
-    await expect(page.locator('.view'), 'seed panel or own options').toContainText(/Draft options from your prioritised issues|drafted from this system's issue register/, { timeout: 30000 });
-    const cards = await page.locator('.view .card').count();
-    expect(cards, 'reference option cards still render').toBeGreaterThan(2);
+    await expect(page.locator('.view'), 'seed panel or own-options empty state').toContainText(/Draft options from your prioritised issues|No options yet for this system|issue register/i, { timeout: 30000 });
     const txt = await page.locator('.view').innerText();
+    expect(/reference set|ITT/i.test(txt), 'no flagship reference or ITT language').toBeFalsy();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
@@ -542,6 +541,25 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await page.goto('/index.html?system=' + BSW_SLUG + '&view=activity');
     await expect(page.locator('.view')).toContainText('Outpatients & day-case efficiency', { timeout: 45000 });
     await expect(page.locator('.view')).toContainText('DNA');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('42 modelling · differential growth grid projects trust × POD', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=modelling');
+    await expect(page.locator('.view')).toContainText('Differential growth', { timeout: 50000 });
+    await expect(page.locator('#diffout table')).toBeVisible({ timeout: 25000 });
+    await expect(page.locator('#diffout')).toContainText('Whole system');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('43 workforce · consultant rota depth with national context and partners', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=workforce');
+    await expect(page.locator('.view')).toContainText('Consultant rota depth', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('ALL grades including doctors in training');
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
