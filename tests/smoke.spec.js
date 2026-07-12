@@ -694,4 +694,23 @@ test.describe('System Intelligence — smoke (E1)', () => {
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
+
+  test('53 value · the open MHS library browses every open measure', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=value');
+    await expect(page.locator('.view')).toContainText('The open library', { timeout: 60000 });
+    await expect(page.locator('.view')).toContainText(/open measures across \d+ compartments/);
+    await expect(page.locator('.view')).toContainText('national median');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('54 population · projection base check against mid-year actuals', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=population');
+    await expect(page.locator('.view')).toContainText('Projection base check', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText(/mid-\d{4} actual/);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
 });

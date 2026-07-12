@@ -26,7 +26,7 @@ const IMPACT={uec_flow:["Improved flow could release ~25-30 beds and cut 12-hour
 'financial-sustainability-reconfiguration-case':["Clinical services strategy and site reconfiguration to close the structural deficit","Long"]};
 let TRUSTS=[],TRUSTCOL={}; /* dynamic per system */
 let orgs=[],orgdist=[],rows=[],overrides=[],criteria=[],lenses=[],issues=[],iscores=[],series={},bench=[];
-let issueEvidence=[],evidenceItems=[],lastEnsureError=null,showSourceValue=false,popProjCache={},sysDistressMap=null,freshness=[],deferredLoads=null;
+let issueEvidence=[],evidenceItems=[],lastEnsureError=null,showSourceValue=false,popProjCache={},popActCache={},sysDistressMap=null,freshness=[],deferredLoads=null;
 let specs=[],pods=[],sgs=[],flines=[],sites=[];
 let orgById={},distByOrg={},distByCode={},topo=null,fcache={};
 let stage='overview',sel=null,driver=null,drill=null,lensName='Balanced',weights={},charts={};
@@ -1335,6 +1335,31 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
       h+=`<div class="note" style="margin-top:8px"><b>First action:</b> ${action}</div></div>`;});
     if(dossiers.length>8)h+=`<div class="note" style="margin:0 2px 12px">${dossiers.length-8} further dossiers below the display threshold are visible through the lenses above.</div>`;
   }
+  /* ---- W7 · the open library: every open Model Health System measure, browsable ---- */
+  const LIB=rows.filter(r=>r.metric_code&&r.metric_code.slice(0,5)==='mhso_'&&!r.service_id&&r.value!=null);
+  if(LIB.length){
+    const compOf=r=>{const m=/\(([^)]+)\)\s*#mhso-v1$/.exec(r.source||'');return m?m[1]:'Other';};
+    const byCode={};LIB.forEach(r=>{const e=byCode[r.metric_code]=byCode[r.metric_code]||{name:r.metric_name,comp:compOf(r),hib:r.higher_is_better,unit:r.unit,rows:[]};e.rows.push(r);});
+    const comps=[...new Set(Object.values(byCode).map(e=>e.comp))].sort();
+    if(!window._libComp||!comps.includes(window._libComp))window._libComp=comps.includes('Corporate services')?'Corporate services':comps[0];
+    const codesIn=Object.keys(byCode).filter(c=>byCode[c].comp===window._libComp).sort((x,y)=>byCode[x].name.localeCompare(byCode[y].name));
+    if(!window._libMet||byCode[window._libMet]===undefined||byCode[window._libMet].comp!==window._libComp)window._libMet=codesIn[0];
+    const M=byCode[window._libMet];
+    const vals=M.rows.map(r=>Number(r.value)).filter(x=>isFinite(x)).sort((x,y)=>x-y);
+    const medN=vals.length?vals[Math.floor(vals.length/2)]:null;
+    const pctile=v2=>{if(!vals.length)return null;const worse=M.hib?vals.filter(x=>x<v2).length:vals.filter(x=>x>v2).length;return Math.round(100*worse/vals.length);};
+    const fmtV=v2=>{const n=Number(v2);if(!isFinite(n))return esc(String(v2));return Math.abs(n)>=1000?Math.round(n).toLocaleString():(Math.round(n*100)/100).toString();};
+    h+=`<div class="eyebrow">The open library · every published Model Health System measure</div>`;
+    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">${Object.keys(byCode).length} open measures across ${comps.length} compartments</div>
+      <div class="filters" style="margin-top:6px">Compartment <select class="sel" onchange="window._libComp=this.value;window._libMet=null;render()">${comps.map(c=>`<option ${c===window._libComp?'selected':''}>${esc(c)}</option>`).join('')}</select>
+      Measure <select class="sel" style="max-width:430px" onchange="window._libMet=this.value;render()">${codesIn.map(c=>`<option value="${c}" ${c===window._libMet?'selected':''}>${esc(byCode[c].name.length>72?byCode[c].name.slice(0,70)+'…':byCode[c].name)}</option>`).join('')}</select></div>
+      <div class="cap" style="margin:8px 0 4px">${esc(M.name)} · national median ${medN!=null?fmtV(medN):'—'} · ${vals.length} trusts publish it · ${M.hib?'higher is better':'lower is better'}</div>
+      <table class="dt ev"><thead><tr><th>Trust</th><th class="num">Value</th><th class="num">vs national median</th><th class="num">Better than</th><th>Period</th></tr></thead><tbody>`+
+      sysTrusts().map(t=>{const r=M.rows.find(x=>x.organisation_id===t.id);if(!r)return `<tr><td>${esc(trustShort(t.code))}</td><td class="num muted" colspan="4">not published for this trust</td></tr>`;
+        const v2=Number(r.value);const d=medN!=null?v2-medN:null;const good=d!=null?(M.hib?d>=0:d<=0):null;const p=pctile(v2);
+        return `<tr><td>${esc(trustShort(t.code))}</td><td class="num" style="font-weight:700">${fmtV(r.value)}</td><td class="num" style="color:${good==null?'#6a7183':good?'#166f4d':'#b3261e'}">${d==null?'—':(d>0?'+':'')+fmtV(d)}</td><td class="num">${p==null?'—':p+'% of trusts'}</td><td style="font-size:11.5px" class="muted">${fmtPeriod(r.period)}</td></tr>`;}).join('')+
+      `</tbody></table><div class="note" style="margin-top:8px">The full open Model Health System headline set for this system's acute trusts, straight from the public portal rip (open.model.nhs.uk, no login, tag mhso-v1). Interpret with the portal's own caution: variation reflects service configuration, recording practice and case mix as well as performance. The five value lenses above are curated from this library; this browser is the uncurated whole.</div></div>`;
+  }
   /* method */
   h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How to read this page</div><div class="note" style="margin-top:6px">Every lens uses the same convention: value the gap to the national median, count nothing for services already at or better than it. That is deliberately conservative on ambition (top-quartile would be larger) and deliberately generous on deliverability (no trust closes every gap). All figures are derived first-time here from official published sources: the open Model Health System, the National Cost Collection, audited accounts, sickness statistics and ERIC. Dossiers are deterministic rules over at least two corroborating planes, never a model verdict; every evidence line opens its published source. Nothing on this page is a plan; it is where the money says to look first.</div></div>`;
   v.innerHTML=h;
@@ -1502,6 +1527,8 @@ async function renderPopulation(v){
     catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
   const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
   const years=[...new Set(proj.map(p=>p.year))].sort((a,b)=>a-b);
+  if(popActCache[sysSlug]===undefined){try{const{data:pa}=await sb.from('sr_population_actuals').select('*').eq('system_slug',sysSlug).order('year');popActCache[sysSlug]=pa||[];}catch(e){popActCache[sysSlug]=[];}}
+  const ACT=popActCache[sysSlug]||[];
   const bandAt=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
   const growth=b=>{if(!years.length)return null;const v0=bandAt(b,years[0]),v1=bandAt(b,2040);return v0?Math.round(100*(v1-v0)/v0):null;};
   const g65=growth('65-84'),g85=growth('85+');
@@ -1513,6 +1540,18 @@ async function renderPopulation(v){
    <div class="card"><div class="h3">Population by age band</div><div class="cap">${years[0]} → 2040</div><table class="dt ev"><thead><tr><th>Age band</th><th class="num">${years[0]}</th><th class="num">2040</th><th class="num">Change</th></tr></thead><tbody>`+
    ['0-15','16-64','65-84','85+'].map(b=>{const v0=bandAt(b,years[0]),v1=bandAt(b,2040);const ch=v0?Math.round(100*(v1-v0)/v0):null;return `<tr><td>${b}</td><td class="num">${Math.round(v0).toLocaleString()}</td><td class="num">${Math.round(v1).toLocaleString()}</td><td class="num" style="font-weight:600;color:${ch!=null&&ch>25?'#b45309':ch!=null&&ch<0?'#166f4d':'#191f2b'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</td></tr>`;}).join('')+
    `</tbody></table><div class="note">${esc((proj[0]||{}).source||'')}</div></div></div>`;}
+  /* ---- W7 · projection base check: SNPP vs the published mid-year actuals ---- */
+  if(ACT.length&&years.length){
+    const act=ACT[ACT.length-1];
+    const p0=['0-15','16-64','65-84','85+'].reduce((s,b)=>s+bandAt(b,years[0]),0);
+    const actG=ACT.length>1?(ACT[ACT.length-1].population/ACT[ACT.length-2].population-1):null;
+    const implied=act.population*(actG!=null?Math.pow(1+actG,years[0]-act.year):1);
+    const gap=p0?100*(p0-implied)/implied:null;
+    const tone=gap==null?'#6a7183':Math.abs(gap)<=1?'#166f4d':Math.abs(gap)<=2?'#b45309':'#b3261e';
+    h+=`<div class="card" style="margin-bottom:14px"><div class="h3">Projection base check · the projection against the published actuals</div>
+      <div style="font-size:13px;line-height:1.55;margin-top:6px">ONS mid-${act.year} actual for this system: <b>${Number(act.population).toLocaleString()}</b>${actG!=null?` (growing ${(actG>=0?'+':'')}${(100*actG).toFixed(1)}%/yr on the latest published pair)`:''}. Carried forward to ${years[0]} that implies ${Math.round(implied).toLocaleString()}; the SNPP ${years[0]} base the engine projects from is <b>${Math.round(p0).toLocaleString()}</b> — a gap of <b style="color:${tone}">${gap==null?'—':(gap>0?'+':'')+gap.toFixed(1)}%</b>. ${gap!=null&&Math.abs(gap)<=1?'Within a percent: the projection base holds against the published actuals.':gap!=null&&Math.abs(gap)<=2?'One to two percent adrift: worth noting in any demand narrative, not yet enough to re-base.':'More than two percent adrift: treat demographic projections here with care and consider re-basing when ONS revise.'}</div>
+      <div class="note" style="margin-top:8px">Actuals: ONS mid-year population estimates via Nomis (all English local authorities, mapped to this system exactly as the projection loader maps them). Projection: ONS SNPP 2022-based. The engine's demand index is driven by the projection's SHAPE (age-band growth), which a level gap of this size barely moves; the check is here so the base is never taken on trust.</div></div>`;
+  }
   /* Wiring · D10 cross-border catchment proxy (crossborder_share / catchment_pop) */
   const xb=TRUSTS.map(tc=>{const oid=(orgs.find(x=>x.code===tc)||{}).id;if(!oid)return null;
     const s=rows.find(r=>r.organisation_id===oid&&r.metric_code==='crossborder_share');
@@ -1523,21 +1562,7 @@ async function renderPopulation(v){
     `<div class="note">Derived proxy from the Estates Intelligence trust catchment model (attributed population by MSOA) — indicative of flow direction, not a patient-level flow count.</div></div>`;}
   /* --- item 5 · the demographic forecast carried down to specialty level --- */
   const[NSp,AFp]=await Promise.all([fetchNatSpec(),ensure('activity')]);
-  let basisRun=null;try{const{data:br}=await sb.from('sr_model_runs').select('name,created_at,assumptions,summary').order('created_at',{ascending:false}).limit(40);
-    basisRun=(br||[]).find(r=>r.assumptions&&r.assumptions.is_planning_basis&&r.assumptions.system===sysSlug)||null;}catch(e){}
   const OUTp=specOutlook(NSp);const DCp=demoCAGR(2036);
-  if(basisRun){const hl=(basisRun.summary||{}).headline||{};const scn=(basisRun.assumptions.scenarios||[]).filter(s2=>s2.dm||s2.shift||s2.prod||s2.cap);
-    h+=`<div class="exec"><div class="e1">The system's planning basis</div><p>This case for change reads from the scenario the system has committed to: <span class="hl">${esc(basisRun.name)}</span> (saved ${new Date(basisRun.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}). Under it the 2040 bed requirement is ${hl.beds_required_2040?fmt(hl.beds_required_2040,'count'):'—'} against ${hl.beds_available?fmt(hl.beds_available,'count'):'—'} available${hl.beds_bind_year?`, with beds binding around ${hl.beds_bind_year} before mitigation`:''}${scn.length?`; the committed levers are ${scn.map(s2=>s2.name).join(', ')}`:''}. Every figure beneath uses the same published evidence base; the judgement log for this run is stored with it.</p></div>`;}
-  else h+=`<div class="note" style="margin-bottom:12px">No planning basis has been marked yet: the modelling studio's save card can commit one, and this pack will then read from it. Everything below uses the evidence baseline.</div>`;
-  /* ---- W6 · in their own words: cited quotes from the system's published documents ---- */
-  let CIT=[];try{const{data:cd}=await sb.from('sr_doc_citations').select('*').eq('system_slug',sysSlug).order('score',{ascending:false}).limit(40);CIT=cd||[];}catch(e){}
-  const CIT_LABEL={configuration:'Configuration intent',workforce_fragility:'Workforce and fragile rotas',finance:'The financial position',estates:'Estate and infrastructure',waits_access:'Waiting times and access'};
-  if(CIT.length){
-    h+=`<div class="eyebrow">In their own words · the system's published documents</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr));margin-bottom:2px">`+
-    Object.keys(CIT_LABEL).map(th=>{const q=CIT.filter(c=>c.theme===th).slice(0,2);if(!q.length)return '';
-      return `<div class="card"><div class="h3" style="font-size:13.5px">${CIT_LABEL[th]}</div>`+q.map(c=>`<div style="font-family:'Source Serif 4',Georgia,serif;font-size:13px;line-height:1.5;margin:8px 0 4px">“${esc(c.quote)}”</div><div class="cap">${c.doc_url?`<a href="${esc(c.doc_url)}" target="_blank" rel="noopener">${esc(c.doc_title)}</a>`:esc(c.doc_title)} · p.${c.page}</div>`).join('')+`</div>`;}).join('')+`</div>`;
-    h+=`<div class="note" style="margin-bottom:12px">Drawn from this system's published strategies and board papers by lexical retrieval (a stated model: BM25-style scoring against curated theme queries; the semantic-embedding upgrade is registered). Quotes are verbatim with page citations; read them in situ before quoting onwards.</div>`;
-  }else h+=`<div class="note" style="margin-bottom:12px">In their own words: no public-document corpus is loaded for this system yet. The corpus engine (scripts/serving) distils board papers and strategies into cited quotes; BSW is the prototype.</div>`;
   const cpP=AFp.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
   if(DCp&&cpP.length&&Object.keys(OUTp.agg).length){
     const cpsP=[...new Set(cpP.map(x=>x.period))].sort();const cp12P=new Set(cpsP.slice(-12));
@@ -1735,6 +1760,21 @@ async function renderPack(v){
   const secH=(n,t)=>`<div class="packsec"><div class="eyebrow" style="margin-top:26px">Section ${n}</div><h2 class="serif" style="font-size:22px;margin:2px 0 10px">${t}</h2>`;
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1 class="serif">Case for change · evidence pack</h1><button class="btn" onclick="window.print()">Print / save as PDF</button></div>`;
   h+=`<div class="lead">${esc(sys.name||'')} · assembled ${today} from live published NHS data, benchmarked against every English trust. Every figure carries its source and confidence; nothing in this pack is typed in by hand.</div>`;
+  let basisRun=null;try{const{data:br}=await sb.from('sr_model_runs').select('name,created_at,assumptions,summary').order('created_at',{ascending:false}).limit(40);
+    basisRun=(br||[]).find(r=>r.assumptions&&r.assumptions.is_planning_basis&&r.assumptions.system===sysSlug)||null;}catch(e){}
+  if(basisRun){const hl=(basisRun.summary||{}).headline||{};const scn=(basisRun.assumptions.scenarios||[]).filter(s2=>s2.dm||s2.shift||s2.prod||s2.cap);
+    h+=`<div class="exec"><div class="e1">The system's planning basis</div><p>This case for change reads from the scenario the system has committed to: <span class="hl">${esc(basisRun.name)}</span> (saved ${new Date(basisRun.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}). Under it the 2040 bed requirement is ${hl.beds_required_2040?fmt(hl.beds_required_2040,'count'):'—'} against ${hl.beds_available?fmt(hl.beds_available,'count'):'—'} available${hl.beds_bind_year?`, with beds binding around ${hl.beds_bind_year} before mitigation`:''}${scn.length?`; the committed levers are ${scn.map(s2=>s2.name).join(', ')}`:''}. Every figure beneath uses the same published evidence base; the judgement log for this run is stored with it.</p></div>`;}
+  else h+=`<div class="note" style="margin-bottom:12px">No planning basis has been marked yet: the modelling studio's save card can commit one, and this pack will then read from it. Everything below uses the evidence baseline.</div>`;
+  /* ---- W6 · in their own words: cited quotes from the system's published documents ---- */
+  let CIT=[];try{const{data:cd}=await sb.from('sr_doc_citations').select('*').eq('system_slug',sysSlug).order('score',{ascending:false}).limit(40);CIT=cd||[];}catch(e){}
+  const CIT_LABEL={configuration:'Configuration intent',workforce_fragility:'Workforce and fragile rotas',finance:'The financial position',estates:'Estate and infrastructure',waits_access:'Waiting times and access'};
+  if(CIT.length){
+    h+=`<div class="eyebrow">In their own words · the system's published documents</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr));margin-bottom:2px">`+
+    Object.keys(CIT_LABEL).map(th=>{const q=CIT.filter(c=>c.theme===th).slice(0,2);if(!q.length)return '';
+      return `<div class="card"><div class="h3" style="font-size:13.5px">${CIT_LABEL[th]}</div>`+q.map(c=>`<div style="font-family:'Source Serif 4',Georgia,serif;font-size:13px;line-height:1.5;margin:8px 0 4px">“${esc(c.quote)}”</div><div class="cap">${c.doc_url?`<a href="${esc(c.doc_url)}" target="_blank" rel="noopener">${esc(c.doc_title)}</a>`:esc(c.doc_title)} · p.${c.page}</div>`).join('')+`</div>`;}).join('')+`</div>`;
+    h+=`<div class="note" style="margin-bottom:12px">Drawn from this system's published strategies and board papers by lexical retrieval (a stated model: BM25-style scoring against curated theme queries; the semantic-embedding upgrade is registered). Quotes are verbatim with page citations; read them in situ before quoting onwards.</div>`;
+  }else h+=`<div class="note" style="margin-bottom:12px">In their own words: no public-document corpus is loaded for this system yet. The corpus engine (scripts/serving) distils board papers and strategies into cited quotes; BSW is the prototype.</div>`;
+
   /* 1 · system position */
   h+=secH(1,'The system position');
   const od=distByOrg[sel];const gm=c=>orgRows().find(r=>r.metric_code===c);

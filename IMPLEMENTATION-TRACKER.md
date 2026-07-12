@@ -711,3 +711,26 @@ sr_doc_citations (new table, RLS read, tag dw-doc-cite-v1, delete+reinsert per s
 App: pack opens 'In their own words · the system's published documents' - five theme cards,
 serif verbatim quotes, doc link + page, retrieval model stated; honest empty state for systems
 without a corpus. Test 52. Gate 50 passed + t52 flaky-on-retry + t29 boot-class solo-pass 4.1s.
+
+## 13 Jul 2026 · Ceiling sprint W7: carried-overs
+Open library: Cost & value gains 'The open library' - all 188 open Model Health System
+measures (49.5k curated rows already boot-loaded) browsable by compartment and measure,
+each system trust vs national median with a better-than percentile and period; the five
+curated lenses stay the front door, this is the uncurated whole (test 53).
+Population base check: new loader load_mye_basecheck.py (ONS mid-year estimates via Nomis
+NM_2002_1, all English LADs, LAD->ICB mapped exactly as the SNPP loader maps them, tag
+mye-v1, 82 system-year rows live in new sr_population_actuals table) + Population page
+'Projection base check' card: latest actual carried forward at its own growth vs the SNPP
+base the engine projects from, gap % with tolerance wording (test 54). BSW: mid-2024
+actual 967,603.
+IMPORTANT FIX FOUND BY THE GATE: the W2 planning-basis block and W6 'In their own words'
+had anchored inside renderPopulation, not renderPack (the pack fetch line existed in both;
+the unique match was the wrong one). Both blocks relocated into the pack proper, after the
+lead; population's item-5 flow restored to its pre-W2 shape. Test 52 now passes against the
+actual pack.
+Dispositions recorded: SNPP single-year held in warehouse bronze (nomis_snpp_2022 C_AGE)
+but the engine consumes 4 bands - serving refinement DEFERRED until an engine consumer
+exists. Rota back-trend at org grain needs the historical Trusts-and-core CSV zips (only
+Mar 2026 held; the 101 monthly workbooks are NATIONAL grain) - registered as an acquisition
+backlog item; national-grain consultant supply trend (2009+) available cheaply if wanted.
+Gate 53 passed + 1 flaky-on-retry = 54/54.
