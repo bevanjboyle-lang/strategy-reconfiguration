@@ -686,4 +686,12 @@ test.describe('System Intelligence — smoke (E1)', () => {
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
+
+  test('52 pack · in-their-own-words citations from the system corpus', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=pack');
+    await expect(page.locator('.view')).toContainText('In their own words', { timeout: 60000 });
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
 });

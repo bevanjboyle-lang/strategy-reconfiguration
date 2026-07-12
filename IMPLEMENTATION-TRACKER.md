@@ -697,3 +697,17 @@ catchment's routed LSOAs (OSRM matrix; coverage % printed; >+20min share printed
 first, honest empty state; footnote states every source and every gap. Optimiser respects the
 options early-return (seed-panel systems skip it) - registered as a refinement candidate.
 Test 51; gate 50 passed + 1 flaky-on-retry = 51/51.
+
+## 13 Jul 2026 · Ceiling sprint W6: document intelligence v1
+Corpus: scripts/serving/acquire_bsw_corpus.py (depth-2 crawl from each org's site, curated deep
+landings for RUH trustboard + Salisbury board-papers, certifi-aware SSL with explicit unverified
+fallback printed per host) -> 25 public PDFs at data_lake/raw/bsw_corpus/2026-07-12/ with
+manifest: BSW ICB Integrated Care Strategy v4 + Implementation Plan v3 + Green Plan, RUH annual
+reports 2021-2025 + strategy engagement, Salisbury board agenda bundles (Feb 2026, May 2025) +
+green plans, GWH EDI reports. Distiller: scripts/serving/build_doc_citations.py: pypdf page text
+-> 9,415 candidate sentences -> lexical BM25-lite against five curated theme queries (stated
+model; semantic-embedding upgrade registered) -> 20 verbatim quotes with page citations ->
+sr_doc_citations (new table, RLS read, tag dw-doc-cite-v1, delete+reinsert per system).
+App: pack opens 'In their own words · the system's published documents' - five theme cards,
+serif verbatim quotes, doc link + page, retrieval model stated; honest empty state for systems
+without a corpus. Test 52. Gate 50 passed + t52 flaky-on-retry + t29 boot-class solo-pass 4.1s.
