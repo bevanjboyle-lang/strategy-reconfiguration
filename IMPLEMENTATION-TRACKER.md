@@ -647,3 +647,22 @@ trust's own trend where held) with the score itself untouched, per D5. Pack open
 system's planning basis' exec block reading the committed run (name, 2040 requirement,
 binding year, committed levers) with an honest note when none is marked. Gate 42+4 flaky,
 1 fail = test 01 boot class; 01+35+38+30 all passed solo in 18s (throttle class confirmed).
+
+## 13 Jul 2026 · Ceiling sprint W3: precedent library v1
+Engine: scripts/serving/build_precedents.py (Mac) distils the RTT provider monthlies (Apr 2013+,
+157 months) into per-trust outcome series (pct18 / incomplete list / completions) cached at
+data_lake/reports/rtt_provider_monthly_cache.csv.gz, then runs synthetic-control event studies:
+non-negative donor weights (1/L projected gradient) fit on a 24-month pre-window, effect = mean
+24-month post gap, uncertainty from placebo studies on 40 donors (* = |effect| > 2 placebo sd).
+Era-proof parsing (IP999/AP999/NP999/C_999 total rows; fraction-era pct18 guard). 6/6 events OK:
+Northumbria NSECH 2015 (honest null on RTT, pre-RMSE 0.46pp, 164 donors), Chorley A&E 2016
+(pct18 -5.8pp), Grantham A&E 2016 (-2.2pp), Mid Staffs dissolution 2014 (wl +32.6%, absorption
+labelled in story), Liverpool merger 2019 (pre_sum REM+RQ6, -2.9pp), Midland Met 2024 (comp
++24.6%, short post-window). Artefacts committed: geo/precedents/catalog.json + 6 event files.
+App: Precedent library page (APPRAISE nav, neutral stage - national evidence, no system commit):
+actual-vs-synthetic chart per event with event-line plugin, outcome selector, reconfiguration-
+shape filter, placebo sd / pre-window RMSE / donor count printed under every chart, method
+paragraph rendered verbatim from catalog.json. Options: cards cite nearest precedents by shape
+keywords (precFor), cross-link note above the appraisal matrix. Tests 48+49 (49 specs); gate
+47/49 with 33+41 throttle-class, solo-pass 19.6s. CI: W2 green on rerun; W1b failed boot-class
+throttle twice, its code validated by W2-green CI on top; third rerun kicked.

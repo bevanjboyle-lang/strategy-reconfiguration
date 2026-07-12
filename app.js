@@ -8,12 +8,12 @@ const NAV=[["START",[["home","Start"],["england","England overview"]]],
 ["DOMAINS",[["activity","Activity"],["flow","Flow & transit"],["performance","Performance"],["capacity","Capacity"],["estate","Estate"],["finance","Finance"],["value","Cost & value"],["workforce","Workforce"],["population","Population & demand"],["access","Access & travel"]]],
 ["DATA EXPLORER",[["xentity","Trust explorer"],["xmetric","Metric explorer"],["xgrid","Extract grid"]]],
 ["MODEL",[["modelling","Modelling studio"]]],
-["APPRAISE",[["options","Options & appraisal"],["assurance","Tests & packs"]]],
+["APPRAISE",[["options","Options & appraisal"],["precedents","Precedent library"],["assurance","Tests & packs"]]],
 ["DECIDE",[["decide","Decision journey"],["pack","Case-for-change pack"]]]];
 /* E1 · entry-flow state: nothing is system-committed until the user chooses (door B, resume chip,
    in-app picker or a ?system= deep link). Neutral surfaces (England overview + data explorer) never commit. */
 const SYS_STAGES=['overview','drivers','activity','flow','performance','capacity','estate','finance','value','workforce','population','access','modelling','options','assurance','decide','pack'];
-const NEUTRAL_STAGES=['england','xentity','xmetric','xgrid'];
+const NEUTRAL_STAGES=['england','xentity','xmetric','xgrid','precedents'];
 let appReady=false,sysCommitted=false,mapEngland=false,pendingOrg=null;
 const DRIVERS=[["service_fragility","Service fragility"],["uec","Urgent & emergency care"],["elective_backlog","Elective backlog"],["cancer","Cancer pathway"]];
 const DOMAINS=[["performance","Performance"],["activity","Activity & flow"],["capacity","Capacity & estate"],["workforce","Workforce"],["finance","Finance"],["quality","Quality & safety"],["patient_experience","Patient experience"],["demand","Demand & need"]];
@@ -206,7 +206,7 @@ function setDriver(d){driver=driver===d?null:d;render();}
 function setLens(n){const L=lenses.find(x=>x.name===n);if(L){lensName=n;weights=Object.assign({},L.weights);}render();}
 function setWeight(c,v){weights[c]=v/100;lensName='Custom';render();}
 window.setStage=setStage;window.selectCode=selectCode;window.setDriver=setDriver;window.setLens=setLens;window.setWeight=setWeight;
-const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',assurance:'Tests & packs',decide:'Decision journey',value:'Cost & value',pack:'Case-for-change pack'};
+const TITLES={home:'Start',england:'England overview',overview:'System overview',drivers:'Priority drivers',activity:'Activity',flow:'Flow & transit',performance:'Performance',capacity:'Capacity',estate:'Estate (ERIC)',finance:'Finance',workforce:'Workforce',population:'Population & demand',access:'Access & travel',xentity:'Trust explorer',xmetric:'Metric explorer',xgrid:'Extract grid',modelling:'Modelling studio',options:'Options & appraisal',precedents:'Precedent library',assurance:'Tests & packs',decide:'Decision journey',value:'Cost & value',pack:'Case-for-change pack'};
 function render(){killCharts();const o=orgById[sel]||{};
   document.body.classList.toggle('home',stage==='home');document.body.classList.toggle('neutral',!sysCommitted&&stage!=='home');
   const scope=stage==='home'?'Choose how to begin':(!sysCommitted?'England · every acute trust':`${sysLabel()} · ${o.type==='acute_trust'?trustShort(o.code):'Whole system'}`);
@@ -214,7 +214,7 @@ function render(){killCharts();const o=orgById[sel]||{};
   const ph=document.getElementById('printhead');if(ph)ph.innerHTML=`System Intelligence — ${esc(system()?system().name:'')}<small>${esc(TITLES[stage]||'')} · ${esc(o.name||'')} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})} · source-tagged data — modelled and estimated figures are labelled</small>`;
   const lc=document.getElementById('lenschip');if(stage==='decide'||stage==='options'){lc.style.display='';lc.textContent='Lens: '+lensName;}else lc.style.display='none';
   const v=document.getElementById('view');
-  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,value:renderValue,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,assurance:renderAssurance,decide:renderDecide,pack:renderPack}[stage];
+  const fn={home:renderHome,england:renderEngland,overview:renderOverview,drivers:renderDrivers,activity:renderActivity,flow:renderFlow,performance:renderPerformance,capacity:renderCapacity,estate:renderEstate,finance:renderFinance,value:renderValue,workforce:renderWorkforce,population:renderPopulation,access:renderAccess,xentity:renderXEntity,xmetric:renderXMetric,xgrid:renderXGrid,modelling:renderModelling,options:renderOptions,precedents:renderPrecedents,assurance:renderAssurance,decide:renderDecide,pack:renderPack}[stage];
   mapEngland=(stage==='england');
   fn(v);
 }
@@ -2475,7 +2475,64 @@ function optIssues(o){const d=optDraft(o);return d&&d.issue_ids?d.issue_ids.map(
 function optShort(t){return (t||'').replace(/^Draft option \d+ — /,'');}
 function aiScore(o,lens){const s=optCache?(optCache.scores||[]).find(x=>x.option_id===o.id&&x.lens===lens):null;return s?Math.round(Number(s.score)):null;}
 function testMeta(s){return {met:['met','#166f4d'],passed:['met','#166f4d'],partial:['partial','#b45309'],needs_evidence:['needs evidence','#b45309'],not_started:['not started','#9aa0af'],high_risk:['high risk','#b3261e'],unmet:['unmet','#b3261e']}[s]||[(s||'not assessed').replace(/_/g,' '),'#9aa0af'];}
-async function renderOptions(v){v.innerHTML='<div class="loading">Loading options…</div>';const OC=await ensureOptions();
+/* ===== W3 · precedent library: synthetic-control event studies of real English
+   reconfigurations, published as static artefacts by scripts/serving/build_precedents.py.
+   Trust-grain honesty: site-level effects are diluted at trust level, and every donor
+   pool, pre-window fit and placebo spread is printed alongside the effect. ===== */
+let precCatCache=null,precEvCache={};
+async function precCat(){if(precCatCache!==null)return precCatCache;
+  try{const r=await fetch('geo/precedents/catalog.json');precCatCache=r.ok?await r.json():false;}
+  catch(e){precCatCache=false;}
+  return precCatCache;}
+function pcShort(e){return e.name.split(':')[0].replace(/ NHS.*$/,'').slice(0,30)+' · '+e.date.slice(0,4);}
+function precFor(o,C){if(!C||!C.events)return [];
+  const t=((o.title||'')+' '+(o.summary||'')+' '+(o.option_type||'')).toLowerCase();const m=[];
+  C.events.forEach(e=>{const ty=e.type;
+    const hit=(/(a&e|emergency|urgent treatment|obstetric|maternity)/.test(t)&&/emergency/.test(ty))
+      ||(/(merge|merger|single organisation|dissolv|acquisi|absorb)/.test(t)&&/(merger|dissolution)/.test(ty))
+      ||(/(consolidat|centralis|new hospital|new-build|single site|elective hub|co-locat)/.test(t)&&/consolidation/.test(ty));
+    if(hit)m.push(e);});
+  return m.slice(0,2);}
+function pcChart(id,labels,datasets,evIdx){const cv=document.getElementById(id);if(!cv||!window.Chart)return;
+  charts[id]=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets},
+    options:{plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},
+      scales:{x:{ticks:{maxTicksLimit:8,font:{size:9},color:'#9aa0af'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e6eaf1'}}},responsive:true,maintainAspectRatio:false},
+    plugins:[{id:'evline',afterDraw(c){const xs=c.scales.x;if(!xs)return;const x=xs.getPixelForValue(evIdx);if(!isFinite(x))return;
+      const g=c.ctx;g.save();g.strokeStyle='#b3261e';g.setLineDash([4,3]);g.lineWidth=1;
+      g.beginPath();g.moveTo(x,c.chartArea.top);g.lineTo(x,c.chartArea.bottom);g.stroke();
+      g.setLineDash([]);g.fillStyle='#b3261e';g.font='9px "IBM Plex Mono",monospace';g.fillText('event',x+3,c.chartArea.top+9);g.restore();}}]});}
+function pcDraw(eid){const d=precEvCache[eid];if(!d)return;
+  const selEl=document.getElementById('pcsel_'+eid);
+  const key=selEl?selEl.value:'pct18';
+  const oc=d.outcomes.find(o=>o.key===key)||d.outcomes[0];if(!oc)return;
+  const cid='pc_'+eid;if(charts[cid]){try{charts[cid].destroy()}catch(e){}delete charts[cid];}
+  pcChart(cid,oc.months.map(m=>m.slice(0,7)),[
+    {label:'actual',data:oc.actual,borderColor:'#0c233c',pointRadius:0,borderWidth:2,spanGaps:true},
+    {label:'synthetic (no-change counterfactual)',data:oc.synthetic,borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.6}],oc.event_at);
+  const bad=(oc.key==='wl')?oc.effect>0:oc.effect<0;
+  const fx=document.getElementById('pcfx_'+eid);
+  if(fx)fx.innerHTML=`24-month effect <b style="color:${oc.significant?(bad?'#b3261e':'#166f4d'):'#6a7183'}">${oc.effect_display>0?'+':''}${oc.effect_display}${oc.effect_unit==='pp'?'pp':'%'}${oc.significant?'*':''}</b> vs synthetic · placebo sd ${oc.placebo_sd} · pre-window fit RMSE ${oc.pre_rmse} · ${oc.n_donors} donor trusts`;}
+window.pcDraw=pcDraw;
+async function renderPrecedents(v){v.innerHTML='<div class="loading">Loading precedent library…</div>';
+  const C=await precCat();
+  let h=`<h1 class="serif">Precedent library</h1><div class="lead">What measurably happened when English systems did what this one is weighing. Each reconfiguration is an event study: the trust against a synthetic counterfactual assembled from peer trusts that changed nothing, on the published RTT provider series back to 2013.</div>`;
+  if(!C||!C.events||!C.events.length){h+=`<div class="card"><div class="h3">No precedent artefacts published</div><div class="cap">scripts/serving/build_precedents.py distils geo/precedents/*.json from the RTT provider monthlies already in the lake; run it and redeploy to light this page.</div></div>`;v.innerHTML=h;return;}
+  const types=[...new Set(C.events.map(e=>e.type))];const cur=window._pcType||'';
+  h+=`<div class="filters">Reconfiguration shape <select class="sel" onchange="window._pcType=this.value;render()"><option value="">every shape (${C.events.length})</option>${types.map(t=>`<option value="${esc(t)}" ${cur===t?'selected':''}>${esc(t)}</option>`).join('')}</select><span class="muted" style="font-size:11px">* = effect clears twice the placebo spread</span></div>`;
+  const evs=C.events.filter(e=>!cur||e.type===cur);
+  const det=await Promise.all(evs.map(e=>precEvCache[e.id]?Promise.resolve(precEvCache[e.id]):fetch('geo/precedents/'+e.id+'.json').then(r=>r.ok?r.json():null).catch(()=>null)));
+  det.forEach((d,i)=>{if(d)precEvCache[evs[i].id]=d;});
+  h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(430px,1fr))">`+evs.map(e=>{const d=precEvCache[e.id];
+    return `<div class="card"><div class="h3">${esc(e.name)}</div><div class="cap">${esc(e.date)} · ${esc(e.type)}</div>
+      <div style="font-size:12.5px;color:var(--ink2);margin:4px 0 8px">${esc(e.story)}</div>
+      ${d?`<div class="filters" style="margin-bottom:4px">Outcome <select id="pcsel_${e.id}" class="sel" onchange="pcDraw('${e.id}')">${d.outcomes.map((o,i2)=>`<option value="${o.key}" ${(o.key==='pct18'||(i2===0&&!d.outcomes.some(x=>x.key==='pct18')))?'selected':''}>${esc(o.label)}</option>`).join('')}</select></div>
+      <div class="chartbox sm"><canvas id="pc_${e.id}"></canvas></div><div class="cap" id="pcfx_${e.id}" style="margin-top:6px"></div>`
+      :`<div class="note">event artefact failed to load</div>`}</div>`;}).join('')+`</div>`;
+  h+=`<div class="prov" style="margin-top:14px">${esc(C.method)} Artefacts generated ${esc(C.generated)}; refreshed with each monthly RTT publication. Precedents inform the conversation, they do not forecast it: context, casemix and implementation quality differ, and trust-level series dilute site-level effects.</div>`;
+  h+=`<div class="note">Weighing an option shaped like one of these? The cards in <a href="#" onclick="setStage('options');return false">Options &amp; appraisal</a> cite their nearest precedents automatically.</div>`;
+  v.innerHTML=h;
+  evs.forEach(e=>{if(precEvCache[e.id])pcDraw(e.id);});}
+async function renderOptions(v){v.innerHTML='<div class="loading">Loading options…</div>';const OC=await ensureOptions();const PC=await precCat();
   const opts=(OC.options||[]).slice().sort((a,b)=>(a.code||'').localeCompare(b.code||''));
   let h=`<h1 class="serif">Options &amp; appraisal</h1><div class="lead">The long list: configuration options developed from the issue register, appraised against the configured criteria, with switchable weighting lenses.</div>`;
   const soSet=new Set(sysOrgs().map(o=>o.id));
@@ -2487,7 +2544,8 @@ async function renderOptions(v){v.innerHTML='<div class="loading">Loading option
   if(OC.error)h+=`<div class="banner">Option data could not be loaded (network). <a href="#" onclick="optCache=null;render();return false">Retry</a></div>`;
   if(!showOpts.length){if(!OC.error)h+=`<div class="card"><div class="h3">No options yet for this system</div><div class="cap">Options are drafted from this system's own issue register and promoted here; nothing is inherited from any other system's review.</div></div>`;v.innerHTML=h;return;}
   h+=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+showOpts.map(o=>{const iss=optIssues(o);const stCol={proposed:'#1f3a78',appraised:'#7a6200',shortlisted:'#166f4d',rejected:'#6a7183'}[o.status]||'#1f3a78';
-    return `<div class="card" style="cursor:pointer;display:flex;flex-direction:column" onclick="openOption('${o.id}')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div class="h3" style="font-size:14px">${esc(optShort(o.title))}</div><span class="pill" style="background:${stCol};flex:none">${esc(o.status||'draft')}</span></div><div class="cap" style="margin-bottom:8px">${esc((o.option_type||'').replace(/_/g,' '))} · ${esc(o.stage||'longlist')} · ${esc(o.owner||'')}</div><div style="font-size:12.5px;color:var(--ink2);flex:1">${esc((o.summary||'').slice(0,190))}${(o.summary||'').length>190?'…':''}</div><div style="margin-top:10px">${iss.map(i=>`<span class="pill" style="background:#e6eaf1;color:#3c4354;cursor:pointer;margin-right:5px" onclick="event.stopPropagation();openIssue('${esc(i.code)}')">${esc(i.code.length>28?i.code.slice(0,26)+'…':i.code)}</span>`).join('')||'<span class="note">no registered issue link</span>'}</div></div>`;}).join('')+`</div>`;
+    return `<div class="card" style="cursor:pointer;display:flex;flex-direction:column" onclick="openOption('${o.id}')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div class="h3" style="font-size:14px">${esc(optShort(o.title))}</div><span class="pill" style="background:${stCol};flex:none">${esc(o.status||'draft')}</span></div><div class="cap" style="margin-bottom:8px">${esc((o.option_type||'').replace(/_/g,' '))} · ${esc(o.stage||'longlist')} · ${esc(o.owner||'')}</div><div style="font-size:12.5px;color:var(--ink2);flex:1">${esc((o.summary||'').slice(0,190))}${(o.summary||'').length>190?'…':''}</div><div style="margin-top:10px">${iss.map(i=>`<span class="pill" style="background:#e6eaf1;color:#3c4354;cursor:pointer;margin-right:5px" onclick="event.stopPropagation();openIssue('${esc(i.code)}')">${esc(i.code.length>28?i.code.slice(0,26)+'…':i.code)}</span>`).join('')||'<span class="note">no registered issue link</span>'}${precFor(o,PC).map(e2=>`<span class="pill" style="background:#e8edf9;color:#1d4ed8;cursor:pointer;margin-right:5px" onclick="event.stopPropagation();setStage('precedents')" title="what happened when a system did this — open the precedent library">precedent · ${esc(pcShort(e2))}</span>`).join('')}</div></div>`;}).join('')+`</div>`;
+  if(PC&&PC.events&&PC.events.length)h+=`<div class="note" style="margin-bottom:12px">What happened elsewhere: ${PC.events.length} measured reconfigurations of these shapes, each against a synthetic counterfactual, live in the <a href="#" onclick="setStage('precedents');return false">Precedent library</a>; the cards above cite their nearest shapes.</div>`;
   h+=`<div class="eyebrow">Appraisal matrix · configured criteria</div>`+lensBar();
   h+=`<div class="card" style="overflow-x:auto;padding:12px 14px"><a class="csvlink" href="#" onclick="csvTable('optmatrix','options-matrix-${sysSlug}-${new Date().toISOString().slice(0,10)}.csv');return false">CSV</a><table class="dt" id="optmatrix"><thead><tr><th style="min-width:200px">Option</th>${criteria.map(c=>`<th class="num">${esc(c.name)}</th>`).join('')}<th class="num" style="border-left:1px solid var(--line)">Weighted · ${esc(lensName)}</th><th class="num">AI appraisal</th></tr></thead><tbody>`+
     showOpts.map(o=>{const tot=optWsum(o);const ai=aiScore(o,'balanced')!=null?aiScore(o,'balanced'):aiScore(o,'quality_safety_first');

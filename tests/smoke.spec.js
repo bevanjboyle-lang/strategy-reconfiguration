@@ -631,4 +631,31 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
 
+
+  test('48 precedents · event-study library renders actual vs synthetic', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?view=precedents');
+    await expect(page.locator('h1')).toContainText('Precedent library', { timeout: 35000 });
+    await expect(page.locator('.view')).toContainText('synthetic counterfactual');
+    await expect(page.locator('.view')).toContainText(/Northumbria|Liverpool/);
+    await expect(page.locator('.view')).toContainText('placebo');
+    await expect.poll(async () => page.locator('.view canvas').count(), { timeout: 20000 }).toBeGreaterThanOrEqual(2);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+  test('49 precedents · catalog artefact sound and options page cites the library', async ({ page }) => {
+    test.slow();
+    const res = await page.request.get('/geo/precedents/catalog.json');
+    expect(res.ok()).toBeTruthy();
+    const cat = await res.json();
+    expect(cat.events.length).toBeGreaterThanOrEqual(4);
+    expect(cat.method).toContain('placebo');
+    for (const e of cat.events) { expect(e.headline.length).toBeGreaterThan(0); }
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=options');
+    await expect(page.locator('.view')).toContainText('What happened elsewhere', { timeout: 45000 });
+    await expect(page.locator('.view')).toContainText('Precedent library');
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
 });
