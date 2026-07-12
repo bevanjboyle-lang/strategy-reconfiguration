@@ -515,3 +515,31 @@ Bevan caught RJ7 diagnostics (5.6% waiting 6+ weeks vs national median 17.9%) fl
   colourers, drill arrows) reads higher_is_better from data — no app changes needed.
   Test 01 updated (asserted the removed KPMG mark; now asserts wordmark + KPMG absence).
   Suite 32/32.
+
+## 12 Jul 2026 pm · Modelling studio v2 · phase 1 of the approved first-principles rebuild
+Proposal approved by Bevan (doc in Projects folder); this run ships phase 1.
+- Five-question spine replaces the slider-first page: 1 outlook (computed finding sentence,
+  decomposition chart, variant fan) · 2 where it lands (trust × POD growth on fitted trends +
+  specialty outlook moved here) · 3 when it binds (beds tipping timeline per trust + system,
+  binding year with variant range and decide-by date; fragility index anchors the section;
+  co-location matrix demoted to a reference drawer pending clinical sign-off) · 4 what bends
+  the curve (interim: drawer layers + differential grid; lever library is phase 2) · 5 commit
+  & reuse (save/load, v1 runs labelled and mapped on load).
+- Engine v2 (ENGINE_VERSION v2-2026-07-12): per-POD age weights DERIVED FROM PUBLICATIONS
+  (HES APC/OP 2024-25, ECDS A&E 2024-25 ÷ ONS mid-2024 population; scripts/reference/
+  age_weights_2024_25.md holds the full derivation): admitted 0.7/1.0/2.9/5.1, OP 0.6/1.0/2.3/2.6,
+  A&E 1.3/1.0/1.2/2.2; NEL/EL share the admitted shape (no published age × admission-method
+  cross; DARS named). Non-demographic growth FITTED per POD from the system's own history
+  (observed CAGR minus SNPP demographic component, 50-70% shrinkage to the 0.5 default by
+  window length, cap 2.5%, fit printed in the drawer; curated series currently 24-26 months,
+  fit strengthens automatically as history loads). Per-trust fitted deviations (clamp ±1.5pp)
+  drive the landing table, bed tipping and the differential grid baseline. Variant band ±0.5pp
+  default carried through every output; saved runs now write low/central/high rows for NEL and
+  beds. Defaults for shift/productivity moved to 0 (honest do-nothing baseline).
+- Assumptions drawer: every input with source, evidence/amended chips, reset-to-evidence;
+  ceiling as cited presets (92 planning ambition / 85 lower-harm reference / custom).
+- Legacy kept working: MOD.w still feeds the specialty outlook on other pages until phase 3;
+  demoCAGR/specOutlook untouched; v1 saved runs listed with 'engine v1' label and Load maps
+  approximately onto v2.
+- Tests: 08 rewritten for the spine, 44 added (engine self-consistency: variant ordering,
+  binding-year correctness, fit ranges). Gate 44/44 green in 4.1m, zero retries.

@@ -1722,12 +1722,28 @@ async function renderPack(v){
           occupancy ceiling (default 92%) → staffed beds needed to run AT the ceiling.
    4. OUTPUTS — projected NEL/elective/OP demand vs today, B(y) vs available beds, and
       additional-bed requirements at 2031/2036/2040 plus theatre/diagnostic growth proxies.
-   Saved runs persist every slider + the baseline + per-year outputs to sr_scenarios,
+   v2 (2026-07-12): per-POD age weights from national age tables, fitted non-demographic
+   rates, a variant band, per-trust bed tipping years. Saved runs persist every assumption
+   + the baseline + per-year outputs to sr_scenarios,
    sr_model_runs and sr_model_outputs, so every figure is versioned and reproducible. */
-const ENGINE_VERSION='v1-2026-07-02';
+const ENGINE_VERSION='v2-2026-07-12';
 const MOD_BANDS=['0-15','16-64','65-84','85+'];
 const ENGINE_INPUTS=['adm_emergency','adm_elective','op_attendances','ae_attendances','beds_ga_available','beds_ga_occupied','bed_occupancy'];
-let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},gnd:0.5,shift:0.5,prod:0.5,ceil:92,runsCache:null,last:null,diff:{}};
+/* v2 · per-POD age-band activity weights, derived from national publications
+   (per-1,000 activity rates by band, normalised to the 16-64 rate):
+   admitted care  HES APC 2024-25 FCEs by age (all admission methods) ÷ ONS mid-2024 England population — 190/278/811/1,424 per 1,000
+   outpatients    HES Outpatient Activity 2024-25 attended appointments by age — 922/1,650/3,722/4,211 per 1,000
+   A&E            ECDS Hospital A&E Activity 2024-25 attendances by age — 510/395/469/883 per 1,000
+   NEL and EL share the admitted-care shape: no published table crosses age with admission method
+   (record-level HES via DARS is the named upgrade, printed in the assumptions drawer). */
+const MOD_PODS=[['nel','Non-elective admissions','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatient attendances','op_attendances'],['ae','A&E attendances','ae_attendances']];
+const WPOD_DEF={nel:{'0-15':0.7,'16-64':1.0,'65-84':2.9,'85+':5.1},el:{'0-15':0.7,'16-64':1.0,'65-84':2.9,'85+':5.1},op:{'0-15':0.6,'16-64':1.0,'65-84':2.3,'85+':2.6},ae:{'0-15':1.3,'16-64':1.0,'65-84':1.2,'85+':2.2}};
+const WPOD_SRC={nel:'HES APC 2024-25 FCEs by age ÷ ONS mid-2024 population (190/278/811/1,424 per 1,000 by band)',el:'shares the admitted-care shape: published tables do not cross age with admission method (DARS upgrade)',op:'HES Outpatient Activity 2024-25 attended by age (922/1,650/3,722/4,211 per 1,000)',ae:'ECDS A&E Activity 2024-25 attendances by age (510/395/469/883 per 1,000)'};
+const GND_DEFAULT=0.5,GND_CAP=2.5,LEAD_YEARS=4;
+function wpodCopy(){const o={};MOD_PODS.forEach(pd=>{o[pd[0]]=Object.assign({},WPOD_DEF[pd[0]]);});return o;}
+/* MOD.w is the legacy global weight set: the specialty outlook on other pages reads it until the
+   phase-3 rewiring. The studio itself runs on MOD.wpod (per-POD) + MOD.gndPod (fitted per POD). */
+let MOD={w:{'0-15':0.6,'16-64':1.0,'65-84':2.2,'85+':3.6},wpod:wpodCopy(),gndPod:null,fit:null,fitSys:null,band:0.5,gnd:0.5,shift:0,prod:0,ceil:92,runsCache:null,last:null,diff:{},amended:{}};
 function sysTrusts(){return orgs.filter(x=>TRUSTS.includes(x.code));}
 function mrow(orgId,code){return rows.find(x=>x.organisation_id===orgId&&x.metric_code===code);}
 function last12(orgId,code){const r=mrow(orgId,code);if(!r)return null;const s=officialSeries(orgId,r.metric_id);if(!s.length)return null;const a=s.slice(-12);return{sum:a.reduce((t,x)=>t+Number(x.value),0),months:a.length,to:a[a.length-1].period};}
@@ -1782,50 +1798,78 @@ function demoCAGR(toYear){
   return {cagr:Math.pow(W(yT)/w0,1/(yT-y0))-1,y0,yT,g85:(popB('85+',yT)/(popB('85+',y0)||1)-1)*100};}
 /* HCHS workforce specialty slugs differ from TFC names in a few places. */
 const WTE_ALIAS={ear_nose_and_throat:'otolaryngology',elderly_medicine:'geriatric_medicine'};
+/* ===== v2 · evidence-fitted non-demographic growth (observed minus demographic, shrunk, capped) ===== */
+function obsCagr(oid,code){const r=mrow(oid,code);if(!r)return null;const s=officialSeries(oid,r.metric_id);if(!s||s.length<24)return null;
+  const a=s.slice(0,12).reduce((t,x)=>t+Number(x.value||0),0),b=s.slice(-12).reduce((t,x)=>t+Number(x.value||0),0);
+  if(a<=0||b<=0)return null;const years=(s.length-12)/12;
+  return{g:Math.pow(b/a,1/years)-1,months:s.length,from:s[0].period,to:s[s.length-1].period};}
+function sysObsCagr(code){const ts=sysTrusts();const per={};let nT=0;
+  ts.forEach(t=>{const r=mrow(t.id,code);if(!r)return;const s=officialSeries(t.id,r.metric_id);if(!s||!s.length)return;nT++;
+    s.forEach(x=>{const e=per[x.period]=per[x.period]||{v:0,n:0};e.v+=Number(x.value||0);e.n++;});});
+  if(!nT)return null;
+  const ps=Object.keys(per).filter(p=>per[p].n===nT).sort();/* composition guard: only months every reporting trust covers */
+  if(ps.length<24)return null;
+  const sum=a=>a.reduce((t,p)=>t+per[p].v,0);
+  const a=sum(ps.slice(0,12)),b=sum(ps.slice(-12));if(a<=0||b<=0)return null;
+  const years=(ps.length-12)/12;
+  return{g:Math.pow(b/a,1/years)-1,months:ps.length,from:ps[0],to:ps[ps.length-1]};}
+function demoRateRecent(pod){const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);if(!proj.length)return null;
+  const years=[...new Set(proj.map(p=>p.year))].sort((a,b)=>a-b);const y0=years[0];const y1=years.includes(y0+2)?y0+2:years[Math.min(2,years.length-1)];
+  const popB=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
+  const W=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*MOD.wpod[pod][b],0);
+  const w0=W(y0);if(!w0||y1<=y0)return null;
+  return{r:Math.pow(W(y1)/w0,1/(y1-y0))-1,y0,y1};}
+function engineFit(){
+  if(MOD.fit&&MOD.fitSys===sysSlug)return MOD.fit;
+  if(MOD.fitSys&&MOD.fitSys!==sysSlug){MOD.wpod=wpodCopy();MOD.shift=0;MOD.prod=0;MOD.ceil=92;MOD.band=0.5;MOD.amended={};MOD.diff={};}
+  const F={pod:{},dev:{}};const ts=sysTrusts();
+  MOD_PODS.forEach(pd=>{const p=pd[0],code=pd[2];
+    const o=sysObsCagr(code),d=demoRateRecent(p);
+    if(o&&d){const resid=(o.g-d.r)*100;const lam=o.months>=36?0.7:0.5;
+      const v=Math.max(0,Math.min(GND_CAP,lam*resid+(1-lam)*GND_DEFAULT));
+      F.pod[p]={v:+v.toFixed(2),obs:+(o.g*100).toFixed(2),demo:+(d.r*100).toFixed(2),months:o.months,from:o.from,to:o.to,lam,dy0:d.y0,dy1:d.y1};}
+    else F.pod[p]={v:GND_DEFAULT,fallback:true,months:o?o.months:0};
+    if(d&&!F.pod[p].fallback)ts.forEach(t=>{const ot=obsCagr(t.id,code);if(!ot)return;
+      const rT=(ot.g-d.r)*100;const lamT=ot.months>=36?0.6:0.4;
+      const vT=lamT*rT+(1-lamT)*F.pod[p].v;
+      const dev=+Math.max(-1.5,Math.min(1.5,vT-F.pod[p].v)).toFixed(2);
+      if(dev)F.dev[t.id+'|'+p]=dev;});});
+  MOD.fit=F;MOD.fitSys=sysSlug;
+  MOD.gndPod={};MOD_PODS.forEach(pd=>{MOD.gndPod[pd[0]]=F.pod[pd[0]].v;});
+  return F;}
+function modMark(el){MOD.amended[el.id]=1;const map={mceilc:'mceilsel'};const cid='chip_'+(el.id.indexOf('wp_')===0?'wp_'+el.id.split('_')[1]:(map[el.id]||el.id));const c=document.getElementById(cid);if(c){c.textContent='amended';c.style.background='#b45309';}}
+window.modMark=modMark;
+function resetAssumptions(){MOD.wpod=wpodCopy();MOD.shift=0;MOD.prod=0;MOD.ceil=92;MOD.band=0.5;MOD.amended={};if(MOD.fit)MOD.gndPod=Object.fromEntries(MOD_PODS.map(pd=>[pd[0],MOD.fit.pod[pd[0]].v]));render();}
+window.resetAssumptions=resetAssumptions;
+function fitLine(p){const f=(MOD.fit&&MOD.fit.pod[p])||{};if(f.fallback)return `no usable history for this POD yet (${f.months||0} complete months): the ${GND_DEFAULT}% planning default stands until more months load`;
+  return `observed ${f.obs>=0?'+':''}${f.obs}%/yr (${f.months} months to ${fmtPeriod(f.to)}, first 12 vs last 12) minus demographic ${f.demo>=0?'+':''}${f.demo}%/yr (SNPP ${f.dy0} to ${f.dy1}), shrunk ${Math.round((1-f.lam)*100)}% toward the ${GND_DEFAULT}% planning default given the window, capped at ${GND_CAP}%`;}
 async function renderModelling(v){
   v.innerHTML='<div class="loading">Loading demand &amp; capacity engine…</div>';
   if(deferredLoads)await deferredLoads; /* E4 · freshness table depends on the deferred load */
   if(popProjCache[sysSlug]===undefined){try{const{data,error}=await sb.from('sr_population_projections').select('*').eq('system_slug',sysSlug);if(error)throw error;popProjCache[sysSlug]=data||[];}catch(e){console.warn('projections fetch failed',e);popProjCache[sysSlug]=[];}}
   const[NS,AF,PF,WF,WN,RN,CN2]=await Promise.all([fetchNatSpec(),ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat(),fetchConsNat()]);
   const BL=modelBaseline();const proj=popProjCache[sysSlug]||[];
-  let h=`<h1 class="serif">Modelling studio</h1><div class="lead">A transparent, reproducible demand &amp; capacity engine: live activity baseline, ONS demographic projections weighted by age-band activity, and editable scenario layers — every run saveable and re-loadable.</div>`;
+  let h=`<h1 class="serif">Modelling studio</h1><div class="lead">Will this system hold? Five questions in order: what is coming, where it lands, when it binds, what could bend the curve, and what position to commit to. Every input is evidence-fitted and sourced, every amendment visible, every run saved and reproducible.</div>`;
   const missing=[!BL.nel&&'adm_emergency',!BL.el&&'adm_elective',!BL.op&&'op_attendances',!BL.bedsAvail&&'beds_ga_available',!proj.length&&'sr_population_projections'].filter(Boolean);
   if(missing.length){h+=`<div class="banner">The engine needs its full baseline — missing for this system: ${missing.join(', ')}.</div>`;v.innerHTML=h;return;}
+  engineFit();
+  h+=`<div class="spinenav"><a href="#sOut">1 · The outlook</a><a href="#sLand">2 · Where it lands</a><a href="#sBind">3 · When it binds</a><a href="#sBend">4 · What bends the curve</a><a href="#sCommit">5 · Commit &amp; reuse</a></div>`;
+  /* ---- 1 · the outlook ---- */
+  h+=`<div class="eyebrow" id="sOut">The outlook · what is coming if nothing changes</div>`;
+  h+=`<div class="card" style="margin-bottom:12px"><div class="h3">The finding, on current evidence</div><div id="outFind" style="font-size:14px;line-height:1.55;margin-top:6px">Computing…</div></div>`;
   h+=`<div class="grid kpis">`+
     kpi('Non-elective admissions',fmt(BL.nel.annual,'count'),'/yr',`12-mo sum to ${fmtPeriod(BL.nel.to)} · ${BL.nel.orgs} trusts`,'#191f2b')+
     kpi('Elective admissions',fmt(BL.el.annual,'count'),'/yr',`incl. day case · to ${fmtPeriod(BL.el.to)}`,'#191f2b')+
     kpi('Outpatient attendances',fmt(BL.op.annual,'count'),'/yr',`12-mo sum to ${fmtPeriod(BL.op.to)}`,'#191f2b')+
     kpi('G&A beds available',fmt(BL.bedsAvail,'count'),'',`${fmt(BL.bedsOcc,'count')} occupied · ${BL.occ?fmt(BL.occ,'pct'):'—'} occupancy · ${fmtPeriod(BL.bedsPeriod)}`,'#b45309')+`</div>`;
-  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Assumptions</div><div class="cap">Age-band activity weights (relative acute activity per head) and scenario layers — all editable, all persisted with a saved run</div>`
-   +MOD_BANDS.map((b,i)=>`<div class="slabel"${i?' style="margin-top:8px"':''}><span>Activity weight · ${b}</span><b id="mwv${i}">${MOD.w[b].toFixed(1)}×</b></div><input id="mw${i}" type="range" min="0" max="5" step="0.1" value="${MOD.w[b]}" oninput="computeModel()">`).join('')
-   +`<div style="border-top:1px solid var(--line2);margin:12px 0 10px"></div>`
-   +`<div class="slabel"><span>Non-demographic growth</span><b id="mgndv">${MOD.gnd.toFixed(1)}%/yr</b></div><input id="mgnd" type="range" min="0" max="3" step="0.1" value="${MOD.gnd}" oninput="computeModel()">`
-   +`<div class="slabel" style="margin-top:8px"><span>Shift-of-care / prevention offset</span><b id="mshiftv">${MOD.shift.toFixed(1)}%/yr</b></div><input id="mshift" type="range" min="0" max="3" step="0.1" value="${MOD.shift}" oninput="computeModel()">`
-   +`<div class="slabel" style="margin-top:8px"><span>LoS / productivity improvement (beds only)</span><b id="mprodv">${MOD.prod.toFixed(1)}%/yr</b></div><input id="mprod" type="range" min="0" max="3" step="0.1" value="${MOD.prod}" oninput="computeModel()">`
-   +`<div class="slabel" style="margin-top:8px"><span>Occupancy ceiling</span><b id="mceilv">${MOD.ceil}%</b></div><input id="mceil" type="range" min="85" max="100" step="0.5" value="${MOD.ceil}" oninput="computeModel()">`
-   +`<div class="note" id="mnote"></div></div>`
-   +`<div class="card"><div class="h3">Projected demand to 2040</div><div class="cap" id="mdcap"></div><div class="chartbox"><canvas id="a1demand"></canvas></div></div></div>`;
-  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Bed requirement vs available beds</div><div class="cap">Future bed need = occupied beds × demand index × (1−productivity)^t ÷ occupancy ceiling</div><div class="chartbox"><canvas id="a1beds"></canvas></div></div>
-   <div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists every assumption, the baseline and per-year outputs to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div><div class="cap" style="margin-top:16px;margin-bottom:4px">Previous runs · this database</div><div id="mrunlist"><div class="note">Loading…</div></div></div></div>`;
-  /* --- differential growth & mitigation · trust × point of delivery --- */
-  const PODS4=[['nel','Non-elective admissions','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatient attendances','op_attendances'],['ae','A&E attendances','ae_attendances']];
-  const dTrusts=sysTrusts();
-  const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
-  const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
-  const diffBase={};dTrusts.forEach(t=>PODS4.forEach(pd=>{diffBase[t.id+'|'+pd[0]]=base12(t.id,pd[2]);}));
-  if(dTrusts.length&&Object.values(diffBase).some(v2=>v2!=null)){
-    h+=`<div class="eyebrow" style="margin-top:16px">Differential growth &amp; mitigation · trust × point of delivery</div>`;
-    h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="cap">The engine above applies one demographic driver and one set of scenario layers to the whole system. Here you vary them: extra growth (demand drivers specific to a trust or POD) and mitigation (shift-left, prevention, productivity) in %/yr, on top of the global sliders. Zero everywhere reproduces the system engine.</div>`;
-    h+=`<table class="dt" style="max-width:860px"><thead><tr><th>Point of delivery</th><th></th>`+dTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
-    PODS4.forEach(pd=>{
-      h+=`<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">${pd[1]}</td><td class="muted" style="font-size:10.5px">extra growth %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).g||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dg_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;
-      h+=`<tr><td class="muted" style="font-size:10.5px">mitigation %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).m||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dm_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;});
-    h+=`</tbody></table><div style="margin-top:10px"><button class="btn" onclick="diffApply()">Apply differentials</button> <span class="muted" style="font-size:11px">applied on top of the demographic index and the global growth/shift sliders · saved with a scenario run</span></div>`;
-    h+=`<div id="diffout" style="margin-top:12px"></div></div>`;
-    h+=`<div class="note" style="margin:-4px 2px 14px">Specialty-grain growth lives in the outlook heatmap below (national specialty trend × this demography); PODs here, specialties there, one demographic engine underneath both.</div>`;
-  }
-  h+=`<div class="eyebrow">Future capacity requirements</div><div class="grid three" id="reqcards"></div>`;
-  h+=`<div class="prov" id="mprov"></div>`;
+  h+=`<div class="two" style="margin-top:14px"><div class="card"><div class="h3">Projected demand to 2040, with the variant band</div><div class="cap" id="mdcap"></div><div class="chartbox"><canvas id="a1demand"></canvas></div></div>
+   <div class="card"><div class="h3">Why the line rises · decomposition to 2036</div><div class="cap">Percentage-point contributions to non-elective growth: pure population, the shifting age mix, and the fitted non-demographic trend (with any scenario layers)</div><div class="chartbox"><canvas id="a1decomp"></canvas></div></div></div>`;
+  /* ---- 2 · where it lands ---- */
+  h+=`<div class="eyebrow" id="sLand" style="margin-top:16px">Where it lands · trusts, points of delivery, specialties</div>`;
+  h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="h3">Growth on each trust's own trend</div><div class="cap">Each trust's observed activity trend composed with the system's demography (fitted deviation from the system rate, clamped ±1.5pp, shown in the cell tooltip) · cells read Δ by 2031 / Δ by 2036 · overriding a cell with a reason arrives with the judgement log in phase 2</div><div id="landtable"></div></div>`;
+  /* ---- 3 · when it binds (built by computeModel) ---- */
+  const S3_OPEN=`<div class="eyebrow" id="sBind" style="margin-top:16px">When it binds · the tipping timeline</div>`;
+  /* ---- assemble specialty outlook + fragility below, then S3/S4/S5 are inserted around them ---- */
   /* --- item 7 · specialty demand outlook: where future growth lands, trust by trust --- */
   const OUT=specOutlook(NS);const DC=demoCAGR(2036);
   const cpAll=AF.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
@@ -1844,8 +1888,13 @@ async function renderModelling(v){
       h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="h3">Projected extra elective pathways per year by ${DC.yT}, trust × specialty</div><div class="cap">Local demographic growth (ONS SNPP, weighted by the engine's age weights: ${(DC.cagr*100).toFixed(1)}%/yr) × each specialty's national demand trend (HES, 3-year, clamped ±3%/yr) applied to today's completed-pathway volumes · red = growth, blue = projected decline · † = urgent-heavy specialty (60%+ of national admissions are emergency)</div>`;
       h+=hmGrid(shown,cellEx,colEx,v2=>v2==null?'':(Math.abs(v2)>=1000?((Math.round(v2/100)/10)+'k'):Math.round(v2)),(oid,sc)=>`openFactDrill('activity','${oid}','${sc}','rtt_completed_pathways')`);
       h+=`<div class="note" style="margin-top:8px">Urgent-heavy rows deserve the sharpest siting attention: the 85+ population here grows ${DC.g85>=0?'+':''}${Math.round(DC.g85)}% by ${DC.yT}, and those specialties carry the admissions that cannot be scheduled away. Any cell opens the trust's activity series.</div></div>`;
-      h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the specialty outlook is built</div><div class="note" style="margin-top:6px">Three published ingredients, multiplied: this system's demographic index (ONS sub-national projections, weighted by the editable age-band activity weights above), each specialty's observed national demand trend (HES monthly activity by treatment specialty, 3-year annualised, expressed relative to the all-specialty trend and clamped to ±3% a year so specialty coding changes cannot run away), and the trust's current activity volume (published completed RTT pathways). No public dataset crosses specialty with age at trust level; record-level HES access (DARS) would replace the national trend with an age-specific local calculation and is the single biggest upgrade to this view.</div></div>`;}
+      h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the specialty outlook is built</div><div class="note" style="margin-top:6px">Three published ingredients, multiplied: this system's demographic index (ONS sub-national projections, weighted by the engine's age-band activity weights (assumptions drawer)), each specialty's observed national demand trend (HES monthly activity by treatment specialty, 3-year annualised, expressed relative to the all-specialty trend and clamped to ±3% a year so specialty coding changes cannot run away), and the trust's current activity volume (published completed RTT pathways). No public dataset crosses specialty with age at trust level; record-level HES access (DARS) would replace the national trend with an age-specific local calculation and is the single biggest upgrade to this view.</div></div>`;}
   }
+  h+=S3_OPEN;
+  h+=`<div class="card" style="margin-bottom:12px"><div class="h3">General &amp; acute beds · the year projected occupied beds cross the ceiling of today's stock</div><div class="cap">Per trust on its own fitted trend, and for the system · green = headroom, amber = binds under the high-demand variant, red = binds under the central case · a typical capacity response takes ~${LEAD_YEARS} years to deliver (stated assumption), which sets the decision date</div><div id="tipwrap"></div></div>`;
+  h+=`<div class="two" style="margin-top:0"><div class="card"><div class="h3">Bed requirement vs available beds</div><div class="cap">Future bed need per trust = occupied beds × NEL demand index (trust trend) × (1−productivity)^t ÷ occupancy ceiling, summed</div><div class="chartbox"><canvas id="a1beds"></canvas></div></div>
+   <div class="card"><div class="h3">Scale of the response</div><div class="cap">What the central case implies at the planning horizons</div><div class="grid" id="reqcards" style="grid-template-columns:1fr 1fr;gap:10px"></div></div></div>`;
+  h+=`<div class="prov" id="mprov"></div>`;
   /* --- item 8 · specialty fragility index: multi-domain, weighted, documented --- */
   const rtt18Nat={},rtt52Nat={},rttIncNat={};
   RN.forEach(x=>{const m=x.metric_code==='rtt_18wk'?rtt18Nat:x.metric_code==='rtt_52wk'?rtt52Nat:rttIncNat;(m[x.specialty_code]=m[x.specialty_code]||[]).push([x.organisation_id,Number(x.value)]);});
@@ -1912,7 +1961,7 @@ async function renderModelling(v){
       ccu:[['acmed',1],['imaging',1],['path',1],['emsurg',2]]
     }};
   const lvlPill=l=>l===1?`<span class="pill" style="background:#8f1d17">must co-locate</span>`:l===2?`<span class="pill" style="background:#b45309">on site / rapid</span>`:`<span class="pill" style="background:#44639f">network ok</span>`;
-  h+=`<div class="eyebrow" style="margin-top:16px">Clinical co-location dependencies · starter matrix, for clinical sign-off</div>`;
+  h+=`<details class="card" style="margin-top:16px;margin-bottom:14px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Reference · clinical co-location dependencies (starter matrix, for clinical sign-off)</summary><div class="cap" style="margin-top:6px">Out of the main flow as proposed: the consolidation lever consults this matrix from phase 2 · requires clinical sign-off before it gates any option</div>`;
   h+=`<div class="card" style="padding:4px 0;margin-bottom:12px"><table class="dt ev"><thead><tr><th>Service</th><th>Depends on</th></tr></thead><tbody>`+
     Object.keys(IDEP.need).map(k=>`<tr><td style="font-weight:600">${IDEP.names[k]}</td><td>`+IDEP.need[k].map(d=>`<span style="display:inline-block;margin:2px 8px 2px 0;font-size:11.5px">${IDEP.names[d[0]]} ${lvlPill(d[1])}</span>`).join('')+`</td></tr>`).join('')+`</tbody></table></div>`;
   const DEPMAP={'General Surgery':'emsurg','Trauma and Orthopaedic':'trauma','General Medicine':'acmed','Elderly Medicine':'acmed','General Internal Medicine':'acmed','Cardiology':'pci'};
@@ -1922,7 +1971,50 @@ async function renderModelling(v){
     if(dependants.length)coRisk.push({w,key,dependants});});}
   if(coRisk.length){h+=`<div class="card" style="margin-bottom:12px"><div class="h3">Co-location risk read</div><div class="cap">Where a fragile service is a level-1 dependency of other services on the same site</div>`+
     coRisk.slice(0,5).map(c=>`<div class="kv"><span class="k">${esc(c.w.name)} at ${esc(trustShort(c.w.tc))} is fragile (score ${c.w.score}) — and ${esc(c.dependants.join(', '))} cannot run without ${esc(IDEP.names[c.key].toLowerCase())}</span></div>`).join('')+`</div>`;}
-  h+=`<div class="note" style="margin-bottom:14px">This grid is a curated starter following the published co-dependency frameworks used in acute service reviews (the Clinical Senate family of guidance): level 1 must be co-located around the clock, level 2 is needed on site or by rapid formal arrangement, level 3 can safely run as a network. It is a curation for challenge, not a local clinical decision — have your clinical leads validate and amend it before it informs any option, and treat the co-location read as trust-level until site-grain service data is loaded.</div>`;
+  h+=`<div class="note">This grid is a curated starter following the published co-dependency frameworks used in acute service reviews (the Clinical Senate family of guidance): level 1 must be co-located around the clock, level 2 is needed on site or by rapid formal arrangement, level 3 can safely run as a network. It is a curation for challenge, not a local clinical decision — have your clinical leads validate and amend it before it informs any option, and treat the co-location read as trust-level until site-grain service data is loaded.</div></details>`;
+  /* ---- 4 · what bends the curve ---- */
+  h+=`<div class="eyebrow" id="sBend" style="margin-top:16px">What bends the curve · interim scenario surface</div>`;
+  h+=`<div class="note" style="margin-bottom:10px">The lever library (named interventions with evidence bounds: setting shift, length-of-stay convergence, day-case conversion, capacity additions, consolidation) arrives in phase 2 and replaces this surface. Until then: global shift and productivity layers live in the assumptions drawer below (default 0 = do nothing), and trust × POD differentials here.</div>`;
+  /* --- differential growth & mitigation · trust × point of delivery --- */
+  const PODS4=[['nel','Non-elective admissions','adm_emergency'],['el','Elective + day case','adm_elective'],['op','Outpatient attendances','op_attendances'],['ae','A&E attendances','ae_attendances']];
+  const dTrusts=sysTrusts();
+  const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
+  const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
+  const diffBase={};dTrusts.forEach(t=>PODS4.forEach(pd=>{diffBase[t.id+'|'+pd[0]]=base12(t.id,pd[2]);}));
+  if(dTrusts.length&&Object.values(diffBase).some(v2=>v2!=null)){
+    h+=`<div class="eyebrow" style="margin-top:16px">Differential growth &amp; mitigation · trust × point of delivery</div>`;
+    h+=`<div class="card" style="overflow-x:auto;margin-bottom:12px"><div class="cap">The engine above applies one demographic driver and one set of scenario layers to the whole system. Here you vary them: extra growth (demand drivers specific to a trust or POD) and mitigation (shift-left, prevention, productivity) in %/yr, on top of the fitted engine (system rate plus each trust's fitted deviation). Zero everywhere reproduces the fitted engine.</div>`;
+    h+=`<table class="dt" style="max-width:860px"><thead><tr><th>Point of delivery</th><th></th>`+dTrusts.map(t=>`<th class="num">${esc(trustShort(t.code))}</th>`).join('')+`</tr></thead><tbody>`;
+    PODS4.forEach(pd=>{
+      h+=`<tr><td rowspan="2" style="font-weight:600;vertical-align:middle">${pd[1]}</td><td class="muted" style="font-size:10.5px">extra growth %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).g||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dg_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;
+      h+=`<tr><td class="muted" style="font-size:10.5px">mitigation %/yr</td>`+dTrusts.map(t=>{const k=t.id+'|'+pd[0];const v2=(MOD.diff[k]||{}).m||0;return `<td class="num">${diffBase[k]==null?'—':`<input class="field" style="width:58px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" id="dm_${t.id}_${pd[0]}" value="${v2}">`}</td>`;}).join('')+`</tr>`;});
+    h+=`</tbody></table><div style="margin-top:10px"><button class="btn" onclick="diffApply()">Apply differentials</button> <span class="muted" style="font-size:11px">applied on top of the per-POD demographic index, the fitted rates and any drawer layers · saved with a scenario run</span></div>`;
+    h+=`<div id="diffout" style="margin-top:12px"></div></div>`;
+    h+=`<div class="note" style="margin:-4px 2px 14px">Specialty-grain growth lives in the outlook heatmap in section 2 (national specialty trend × this demography); PODs here, specialties there, one demographic engine underneath both.</div>`;
+  }
+  /* ---- 5 · commit and reuse ---- */
+  h+=`<div class="eyebrow" id="sCommit" style="margin-top:16px">Commit &amp; reuse</div>`;
+  h+=`<div class="two" style="margin-bottom:2px"><div class="card"><div class="h3">Save this scenario run</div><div class="cap">Persists the full assumption set (weights, fitted rates, variants, differentials, amendments), the baseline and per-year outputs incl. low/central/high to sr_scenarios / sr_model_runs / sr_model_outputs — versioned and reproducible. Marking a run as the system's planning basis arrives in phase 2.</div><div class="note" id="mrunname" style="margin:0 0 10px"></div><button class="btn" id="msave" onclick="saveModelRun()">Save scenario run</button><div class="note" id="msavenote"></div></div>
+   <div class="card"><div class="cap" style="margin-top:2px;margin-bottom:4px">Previous runs · this database</div><div id="mrunlist"><div class="note">Loading…</div></div></div></div>`;
+  /* ---- assumptions drawer ---- */
+  h+=`<details class="card" id="assumdrawer" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Assumptions &amp; evidence · every engine input, its default and its source</summary>
+    <div class="cap" style="margin-top:8px">The tool proposes, you amend by exception: edits mark the input as amended (the audit log with reasons arrives in phase 2). <button class="btn ghost" style="font-size:11px;padding:4px 10px;margin-left:8px" onclick="resetAssumptions()">Reset all to evidence</button></div>
+    <div class="cap" style="margin-top:10px;margin-bottom:2px">Age-band activity weights per point of delivery · relative acute activity per head, 16-64 = 1.0</div>
+    <div style="overflow-x:auto"><table class="dt" style="max-width:860px"><thead><tr><th>Point of delivery</th>`+MOD_BANDS.map(b=>`<th class="num">${b}</th>`).join('')+`<th></th></tr></thead><tbody>`+
+    MOD_PODS.map(pd=>`<tr><td style="font-weight:600">${pd[1]}</td>`+MOD_BANDS.map((b,i)=>`<td class="num"><input class="field" style="width:56px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" id="wp_${pd[0]}_${i}" value="${MOD.wpod[pd[0]][b]}" oninput="modMark(this);computeModel()"></td>`).join('')+`<td><span class="pill" id="chip_wp_${pd[0]}" style="background:${Object.keys(MOD.amended).some(k=>k.startsWith('wp_'+pd[0]))?'#b45309':'#166f4d'}">${Object.keys(MOD.amended).some(k=>k.startsWith('wp_'+pd[0]))?'amended':'evidence default'}</span></td></tr>
+    <tr><td colspan="6" class="muted" style="font-size:10.5px;padding-top:0">${esc(WPOD_SRC[pd[0]])}</td></tr>`).join('')+`</tbody></table></div>
+    <div class="cap" style="margin-top:14px;margin-bottom:2px">Non-demographic growth per point of delivery · %/yr, fitted from this system's own history</div>
+    <div style="overflow-x:auto"><table class="dt" style="max-width:860px"><tbody>`+
+    MOD_PODS.map(pd=>`<tr><td style="font-weight:600;width:24%">${pd[1]}</td><td class="num" style="width:12%"><input class="field" style="width:64px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="${GND_CAP}" id="mg_${pd[0]}" value="${MOD.gndPod[pd[0]]}" oninput="modMark(this);computeModel()"></td><td><span class="pill" id="chip_mg_${pd[0]}" style="background:${MOD.amended['mg_'+pd[0]]?'#b45309':'#166f4d'}">${MOD.amended['mg_'+pd[0]]?'amended':(MOD.fit&&MOD.fit.pod[pd[0]].fallback?'planning default':'evidence-fitted')}</span></td><td class="muted" style="font-size:10.5px">${esc(fitLine(pd[0]))}</td></tr>`).join('')+`</tbody></table></div>
+    <div class="cap" style="margin-top:14px;margin-bottom:2px">Scenario layers, standards and uncertainty</div>
+    <div style="overflow-x:auto"><table class="dt" style="max-width:860px"><tbody>
+    <tr><td style="font-weight:600;width:24%">Shift of care / prevention</td><td class="num" style="width:12%"><input class="field" style="width:64px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="3" id="msh" value="${MOD.shift}" oninput="modMark(this);computeModel()"></td><td><span class="pill" id="chip_msh" style="background:${MOD.amended.msh?'#b45309':'#166f4d'}">${MOD.amended.msh?'amended':'do-nothing default'}</span></td><td class="muted" style="font-size:10.5px">%/yr demand removed from acute · interim global layer, becomes a scoped lever in phase 2 · 0 = the honest do-nothing baseline</td></tr>
+    <tr><td style="font-weight:600">LoS / productivity (beds)</td><td class="num"><input class="field" style="width:64px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="3" id="mpr" value="${MOD.prod}" oninput="modMark(this);computeModel()"></td><td><span class="pill" id="chip_mpr" style="background:${MOD.amended.mpr?'#b45309':'#166f4d'}">${MOD.amended.mpr?'amended':'do-nothing default'}</span></td><td class="muted" style="font-size:10.5px">%/yr bed-need reduction · interim global layer, becomes a lever in phase 2</td></tr>
+    <tr><td style="font-weight:600">Occupancy ceiling</td><td class="num"><select id="mceilsel" class="field" style="padding:4px 6px;font-size:11.5px" onchange="modMark(this);computeModel()"><option value="92" ${MOD.ceil===92?'selected':''}>92%</option><option value="85" ${MOD.ceil===85?'selected':''}>85%</option><option value="custom" ${MOD.ceil!==92&&MOD.ceil!==85?'selected':''}>custom</option></select> <input class="field" style="width:56px;padding:4px 6px;font-size:11.5px;text-align:right;${MOD.ceil!==92&&MOD.ceil!==85?'':'display:none'}" type="number" step="0.5" min="70" max="100" id="mceilc" value="${MOD.ceil}" oninput="modMark(this);computeModel()"></td><td><span class="pill" id="chip_mceilsel" style="background:${MOD.amended.mceilsel||MOD.amended.mceilc?'#b45309':'#166f4d'}">${MOD.amended.mceilsel||MOD.amended.mceilc?'amended':'planning standard'}</span></td><td class="muted" style="font-size:10.5px">a policy choice, surfaced as one: 92% is the operational planning ambition; 85% is the lower-harm reference point in the literature · logged with any saved run</td></tr>
+    <tr><td style="font-weight:600">Variant band</td><td class="num"><input class="field" style="width:64px;padding:4px 6px;font-size:11.5px;text-align:right" type="number" step="0.1" min="0" max="2" id="mband" value="${MOD.band}" oninput="modMark(this);computeModel()"></td><td><span class="pill" id="chip_mband" style="background:${MOD.amended.mband?'#b45309':'#166f4d'}">${MOD.amended.mband?'amended':'stated assumption'}</span></td><td class="muted" style="font-size:10.5px">±percentage points on the fitted non-demographic rate · replaced by ONS variant projections when that loader lands (phase 4)</td></tr>
+    </tbody></table></div>
+    <div class="note" style="margin-top:10px">Fits are computed under the evidence-default weights and lengthen automatically as more monthly history loads. The legacy global weight set still drives the specialty outlook estimates on other pages until the phase-3 rewiring.</div>
+  </details>`;
   h+=methodHtml();
   v.innerHTML=h;computeModel();loadSavedRuns();
   if(document.getElementById('diffout'))diffApply(true);
@@ -1930,49 +2022,131 @@ async function renderModelling(v){
 function computeModel(){
   const BL=modelBaseline();const proj=(popProjCache[sysSlug]||[]).filter(p=>p.year>=2025&&p.year<=2040);
   if(!proj.length||!BL.nel||!BL.el||!BL.op)return;
-  MOD_BANDS.forEach((b,i)=>{const e=document.getElementById('mw'+i);if(e)MOD.w[b]=parseFloat(e.value);const l=document.getElementById('mwv'+i);if(l)l.textContent=MOD.w[b].toFixed(1)+'×';});
-  ['gnd','shift','prod','ceil'].forEach(k=>{const e=document.getElementById('m'+k);if(e)MOD[k]=parseFloat(e.value);const l=document.getElementById('m'+k+'v');if(l)l.textContent=k==='ceil'?MOD.ceil+'%':MOD[k].toFixed(1)+'%/yr';});
+  const F=engineFit();if(!MOD.gndPod)return;
+  /* drawer inputs → state */
+  MOD_PODS.forEach(pd=>{MOD_BANDS.forEach((b,i)=>{const e=document.getElementById('wp_'+pd[0]+'_'+i);if(e)MOD.wpod[pd[0]][b]=Math.max(0,parseFloat(e.value)||0);});
+    const g=document.getElementById('mg_'+pd[0]);if(g)MOD.gndPod[pd[0]]=Math.max(0,Math.min(GND_CAP,parseFloat(g.value)||0));});
+  const sh=document.getElementById('msh');if(sh)MOD.shift=Math.max(0,parseFloat(sh.value)||0);
+  const pr=document.getElementById('mpr');if(pr)MOD.prod=Math.max(0,parseFloat(pr.value)||0);
+  const cs=document.getElementById('mceilsel'),cc=document.getElementById('mceilc');
+  if(cs){if(cs.value==='custom'){if(cc)cc.style.display='';MOD.ceil=Math.max(70,Math.min(100,parseFloat(cc&&cc.value)||MOD.ceil));}else{if(cc)cc.style.display='none';MOD.ceil=parseFloat(cs.value);}}
+  const bd=document.getElementById('mband');if(bd)MOD.band=Math.max(0,Math.min(2,parseFloat(bd.value)||0));
   const years=[...new Set(proj.map(p=>p.year))].sort((a,b)=>a-b);const y0=years.includes(2026)?2026:years[0];
   const yrs=years.filter(y=>y>=y0);if(!yrs.length)return;
   const popB=(b,y)=>proj.filter(p=>p.age_band===b&&p.year===y).reduce((s,p)=>s+Number(p.population),0);
-  const W=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*MOD.w[b],0);const W0=W(y0)||1;
-  /* I(y) = D(y)·(1+gND)^t·(1−shift)^t where D(y)=W(y)/W(y0) — see method block above */
-  const idx=yrs.map(y=>{const t=y-y0;return W(y)/W0*Math.pow(1+MOD.gnd/100,t)*Math.pow(1-MOD.shift/100,t);});
-  const nel=idx.map(i=>Math.round(BL.nel.annual*i)),el=idx.map(i=>Math.round(BL.el.annual*i)),op=idx.map(i=>Math.round(BL.op.annual*i));
-  /* B(y) = bedsOccupied₀·I(y)·(1−prod)^t ÷ ceiling */
-  const bedNeed=yrs.map((y,k)=>{const t=y-y0;return Math.round(BL.bedsOcc*idx[k]*Math.pow(1-MOD.prod/100,t)/(MOD.ceil/100));});
-  MOD.last={yrs,y0,idx,nel,el,op,bedNeed,BL};
+  const Wp=(pod,y)=>MOD_BANDS.reduce((s,b)=>s+popB(b,y)*MOD.wpod[pod][b],0);
+  const W0={};MOD_PODS.forEach(pd=>{W0[pd[0]]=Wp(pd[0],y0)||1;});
+  const P=y=>MOD_BANDS.reduce((s,b)=>s+popB(b,y),0);const P0=P(y0)||1;
+  /* I_pod(y) = W_pod(y)/W_pod(y0) · (1+gND_pod+dg)^t · (1−shift)^t — dg carries variants and trust deviations */
+  const idxPod=(pod,y,dg)=>{const t=y-y0;return Wp(pod,y)/W0[pod]*Math.pow(1+(MOD.gndPod[pod]+(dg||0))/100,t)*Math.pow(1-MOD.shift/100,t);};
+  const mk=(pod,base,dg)=>yrs.map(y=>Math.round(base*idxPod(pod,y,dg)));
+  const idx=yrs.map(y=>idxPod('nel',y,0)),idxLo=yrs.map(y=>idxPod('nel',y,-MOD.band)),idxHi=yrs.map(y=>idxPod('nel',y,MOD.band));
+  const nel=mk('nel',BL.nel.annual,0),nelLo=mk('nel',BL.nel.annual,-MOD.band),nelHi=mk('nel',BL.nel.annual,MOD.band);
+  const el=mk('el',BL.el.annual,0),op=mk('op',BL.op.annual,0);
+  /* beds per trust on its own fitted trend, summed for the system */
+  const ts=sysTrusts();const tb={};let availSum=0;
+  ts.forEach(t=>{const a=latestOf(t.id,'beds_ga_available'),o=latestOf(t.id,'beds_ga_occupied'),pc=latestOf(t.id,'bed_occupancy');
+    if(!a){tb[t.id]={code:t.code,nodata:true};return;}
+    const occ0=o?o.v:(pc?a.v*pc.v/100:a.v*0.92);availSum+=a.v;
+    const dev=F.dev[t.id+'|nel']||0;
+    const need=v2=>yrs.map(y=>{const t2=y-y0;return occ0*idxPod('nel',y,dev+v2)*Math.pow(1-MOD.prod/100,t2)/(MOD.ceil/100);});
+    tb[t.id]={code:t.code,avail:a.v,occ0,dev,need:need(0),needLo:need(-MOD.band),needHi:need(MOD.band)};});
+  const withBeds=Object.keys(tb).filter(k=>!tb[k].nodata);
+  const sumAt=(key,k)=>withBeds.reduce((s,id)=>s+tb[id][key][k],0);
+  const bedNeed=yrs.map((y,k)=>Math.round(sumAt('need',k)));
+  const bedNeedLo=yrs.map((y,k)=>Math.round(sumAt('needLo',k)));
+  const bedNeedHi=yrs.map((y,k)=>Math.round(sumAt('needHi',k)));
+  const bindOf=(arr,avail)=>{for(let k=0;k<arr.length;k++)if(arr[k]>avail)return yrs[k];return null;};
+  const bindTriple=(nC,nLo,nHi,avail)=>({c:bindOf(nC,avail),early:bindOf(nHi,avail),late:bindOf(nLo,avail)});
+  const bind={sys:bindTriple(bedNeed,bedNeedLo,bedNeedHi,availSum)};
+  withBeds.forEach(id=>{bind[id]=bindTriple(tb[id].need.map(Math.round),tb[id].needLo.map(Math.round),tb[id].needHi.map(Math.round),tb[id].avail);});
   const at=y=>{const k=yrs.indexOf(y);return k<0?null:k;};
-  const k31=at(2031),k36=at(2036);const k40=at(2040)!=null?at(2040):yrs.length-1;
-  ['a1demand','a1beds'].forEach(id=>{if(charts[id]){try{charts[id].destroy()}catch(e){}delete charts[id];}});
+  const k31=at(2031),k36=at(2036)!=null?at(2036):yrs.length-1,k40=at(2040)!=null?at(2040):yrs.length-1;
+  const y36=yrs[k36],yEnd=yrs[yrs.length-1],nowY=new Date().getFullYear();
+  MOD.last={yrs,y0,idx,nel,el,op,bedNeed,BL,v2:{idxLo,idxHi,nelLo,nelHi,bedNeedLo,bedNeedHi,byTrust:tb,bind,availSum,fit:F}};
+  /* charts */
+  ['a1demand','a1beds','a1decomp'].forEach(id=>{if(charts[id]){try{charts[id].destroy()}catch(e){}delete charts[id];}});
   lineChart('a1demand',yrs.map(String),[
-    {label:'Non-elective admissions',data:nel,borderColor:'#1f3a78',backgroundColor:'rgba(31,58,120,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},
+    {label:'NEL range',data:nelLo,borderColor:'rgba(31,58,120,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:false},
+    {label:'NEL range ',data:nelHi,borderColor:'rgba(31,58,120,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:'-1',backgroundColor:'rgba(31,58,120,.10)'},
+    {label:'Non-elective admissions',data:nel,borderColor:'#1f3a78',backgroundColor:'transparent',tension:.25,pointRadius:0,borderWidth:2},
     {label:'Elective admissions',data:el,borderColor:'#8a6a1e',backgroundColor:'transparent',tension:.25,pointRadius:0,borderWidth:2},
-    {label:'Today (NEL)',data:yrs.map(()=>BL.nel.annual),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2}]);
+    {label:'Today (NEL)',data:yrs.map(()=>BL.nel.annual),borderColor:'#9aa0af',borderDash:[5,4],pointRadius:0,borderWidth:1.2}],
+    {plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183',filter:i=>i.text.indexOf('range')<0}}}});
   lineChart('a1beds',yrs.map(String),[
-    {label:'Beds required',data:bedNeed,borderColor:'#b45309',backgroundColor:'rgba(180,83,9,.08)',fill:true,tension:.25,pointRadius:0,borderWidth:2},
-    {label:'Beds available today',data:yrs.map(()=>BL.bedsAvail),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]);
-  const dd=Math.round((W(yrs[k40])/W0-1)*100),dg=Math.round((idx[k40]-1)*100);
-  const mn=document.getElementById('mnote');if(mn)mn.textContent=`Demographic index ${dd>=0?'+':''}${dd}% by ${yrs[k40]}; with the growth and shift layers the demand index is ${idx[k40].toFixed(2)} (${dg>=0?'+':''}${dg}%).`;
-  const mc=document.getElementById('mdcap');if(mc)mc.textContent=`Annualised activity vs the ${y0} baseline · demographic driver + scenario layers`;
-  const addBeds=k=>k==null?null:bedNeed[k]-BL.bedsAvail;
+    {label:'range',data:bedNeedLo,borderColor:'rgba(180,83,9,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:false},
+    {label:'range ',data:bedNeedHi,borderColor:'rgba(180,83,9,.35)',borderDash:[4,3],pointRadius:0,borderWidth:1,fill:'-1',backgroundColor:'rgba(180,83,9,.10)'},
+    {label:'Beds required',data:bedNeed,borderColor:'#b45309',backgroundColor:'transparent',tension:.25,pointRadius:0,borderWidth:2},
+    {label:'Beds available today',data:yrs.map(()=>availSum),borderColor:'#6a7183',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],
+    {plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183',filter:i=>i.text.indexOf('range')<0}}}});
+  /* decomposition to 2036 (NEL weights) */
+  const popIdx=P(y36)/P0,demogIdx=Wp('nel',y36)/W0.nel,totPts=(idx[k36]-1)*100;
+  const popPts=(popIdx-1)*100,mixPts=(demogIdx-popIdx)*100,ndPts=totPts-(demogIdx-1)*100;
+  const dcv=document.getElementById('a1decomp');
+  if(dcv&&window.Chart)charts.a1decomp=new Chart(dcv.getContext('2d'),{type:'bar',data:{labels:['Population','Age mix','Non-demographic (net of layers)','Total by '+y36],datasets:[{data:[[0,popPts],[popPts,popPts+mixPts],[popPts+mixPts,totPts],[0,totPts]],backgroundColor:['#44639f','#7c93c4','#8a6a1e','#1f3a78'],borderRadius:3,maxBarThickness:44}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const d=c.raw;return (Math.round((d[1]-d[0])*10)/10)+' pts';}}}},scales:{x:{ticks:{font:{size:9.5},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af',callback:v2=>v2+'pt'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false}});
+  /* the finding */
+  const sgn=n=>(n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString();
+  const pct=x=>Math.round((x-1)*100);
+  const g85=Math.round((popB('85+',y36)/(popB('85+',y0)||1)-1)*100);
+  const addB=k=>k==null?null:bedNeed[k]-availSum;
+  const B=bind.sys;
+  let find=`On current evidence, emergency admissions in ${esc(sysLabel())} grow about <b>${pct(idx[k36])}%</b> by ${y36} (${pct(idxLo[k36])}% to ${pct(idxHi[k36])}% across the variant band). Demographic change contributes ${Math.round((demogIdx-1)*100)} points, with the 85+ population growing ${g85}%; the fitted non-demographic trend supplies the rest. Elective demand grows ${pct(idxPod('el',y36,0))}% and outpatient attendances ${pct(idxPod('op',y36,0))}%. At today's length of stay and a ${MOD.ceil}% occupancy ceiling, that implies <b>${addB(k31)!=null?sgn(addB(k31)):'—'}</b> G&amp;A beds by ${k31!=null?yrs[k31]:2031} and <b>${sgn(addB(k36))}</b> by ${y36} across the system.`;
+  if(B.c)find+=` Projected occupied beds cross the ceiling of today's stock around <b>${B.c}</b>${B.early&&B.late?` (${B.early} to ${B.late} across the band)`:B.early?` (${B.early} under high demand)`:''}; with a typical ${LEAD_YEARS}-year capacity lead time (stated assumption), the decision point is <b>${B.c-LEAD_YEARS<=nowY?'now':B.c-LEAD_YEARS}</b>.`;
+  else if(B.early)find+=` Beds hold under the central case but cross the ceiling in ${B.early} under the high-demand variant.`;
+  else find+=` On current stock, projected occupied beds stay under the ${MOD.ceil}% ceiling out to ${yEnd}.`;
+  if(MOD.shift>0||MOD.prod>0)find+=` <span class="muted">Includes drawer layers: shift ${MOD.shift}%/yr, productivity ${MOD.prod}%/yr.</span>`;
+  const of=document.getElementById('outFind');if(of)of.innerHTML=find;
+  const mc=document.getElementById('mdcap');if(mc)mc.textContent=`Annualised activity vs the ${y0} baseline · shaded band = ±${MOD.band}pp on the fitted non-demographic rate`;
+  /* where it lands · trust × POD growth table */
+  const lt=document.getElementById('landtable');
+  if(lt){const fmtCell=(pod,dev)=>{const g31=k31!=null?Math.round((idxPod(pod,yrs[k31],dev)-1)*100):null,g36=Math.round((idxPod(pod,y36,dev)-1)*100);
+      const tip=`fitted ${(MOD.gndPod[pod]+dev).toFixed(2)}%/yr non-demographic`+(dev?` (system ${MOD.gndPod[pod].toFixed(2)} ${dev>0?'+':''}${dev.toFixed(2)} trust deviation)`:'');
+      return `<td class="num" title="${escAttr(tip)}">${g31!=null?(g31>=0?'+':'')+g31+'%':'—'} / <b>${(g36>=0?'+':'')+g36}%</b></td>`;};
+    let rowsH=ts.map(t=>`<tr><td>${esc(trustShort(t.code))}</td>`+MOD_PODS.map(pd=>fmtCell(pd[0],F.dev[t.id+'|'+pd[0]]||0)).join('')+`</tr>`).join('');
+    rowsH+=`<tr style="font-weight:700;border-top:1px solid #dcd9d0"><td>Whole system</td>`+MOD_PODS.map(pd=>fmtCell(pd[0],0)).join('')+`</tr>`;
+    lt.innerHTML=`<table class="dt ev"><thead><tr><th>Trust</th>`+MOD_PODS.map(pd=>`<th class="num">${pd[1]}</th>`).join('')+`</tr></thead><tbody>${rowsH}</tbody></table>`;}
+  /* tipping timeline */
+  const tw=document.getElementById('tipwrap');
+  if(tw){const span=Math.max(1,yEnd-y0);const px=y=>Math.max(0,Math.min(100,(y-y0)/span*100));
+    const bar=b2=>{const e=b2.early,c=b2.c;let g;
+      if(c==null&&e==null)g=`background:#2e7d54`;
+      else{const pe=px(e!=null?e:c),pc2=c!=null?px(c):100;
+        g=`background:linear-gradient(90deg,#2e7d54 0%,#2e7d54 ${pe}%,#b45309 ${pe}%,#b45309 ${pc2}%${c!=null?`,#8f1d17 ${pc2}%,#8f1d17 100%`:''})`;}
+      return `<div class="tipbar" style="${g}"></div>`;};
+    const lab=b2=>{if(b2.c)return `<b>binds ~${b2.c}</b>${b2.early&&b2.late?` (${b2.early} to ${b2.late})`:b2.early?` (${b2.early} to beyond ${yEnd})`:''}<br><span class="muted">decide by ${b2.c-LEAD_YEARS<=nowY?'now':b2.c-LEAD_YEARS}</span>`;
+      if(b2.early)return `holds centrally · <b>${b2.early}</b> under high demand`;
+      return `beyond ${yEnd} on current stock`;};
+    let th=`<div class="tiprow tiphead"><div></div><div style="display:flex;justify-content:space-between;font-size:9.5px;color:#9aa0af"><span>${y0}</span><span>${Math.round((y0+yEnd)/2)}</span><span>${yEnd}</span></div><div></div></div>`;
+    th+=`<div class="tiprow"><div class="tl"><b>Whole system</b><div class="muted" style="font-size:10.5px">${fmt(availSum,'count')} beds</div></div>${bar(bind.sys)}<div class="tr">${lab(bind.sys)}</div></div>`;
+    ts.forEach(t=>{const x=tb[t.id];if(!x)return;
+      if(x.nodata){th+=`<div class="tiprow"><div class="tl"><b>${esc(trustShort(t.code))}</b></div><div class="muted" style="font-size:11px">beds series not published for this trust</div><div></div></div>`;return;}
+      th+=`<div class="tiprow"><div class="tl"><b>${esc(trustShort(t.code))}</b><div class="muted" style="font-size:10.5px">${fmt(x.avail,'count')} beds · occ ${fmt(x.occ0,'count')}</div></div>${bar(bind[t.id])}<div class="tr">${lab(bind[t.id])}</div></div>`;});
+    tw.innerHTML=th;}
+  /* scale of the response */
   const rc=document.getElementById('reqcards');if(rc)rc.innerHTML=
-    reqCard('Additional beds by 2031',addBeds(k31),'vs '+fmt(BL.bedsAvail,'count')+' available · at '+MOD.ceil+'% ceiling')+
-    reqCard('Additional beds by 2036',addBeds(k36),'occupied-bed baseline '+fmt(BL.bedsOcc,'count'))+
-    reqCard('Additional beds by 2040',addBeds(k40),'requirement '+fmt(bedNeed[k40],'count')+' beds')+
-    reqCard('Elective demand by 2040',el[k40]-BL.el.annual,'theatres proxy · +'+Math.round((el[k40]/BL.el.annual-1)*100)+'% — theatre count baseline pending estates link')+
-    reqCard('Outpatient demand by 2040',op[k40]-BL.op.annual,'diagnostics proxy · +'+Math.round((op[k40]/BL.op.annual-1)*100)+'% on '+fmt(BL.op.annual,'count')+'/yr')+
-    reqCard('A&E attendances by 2040',BL.ae?Math.round(BL.ae.annual*idx[k40])-BL.ae.annual:null,'front-door proxy on '+(BL.ae?fmt(BL.ae.annual,'count'):'—')+'/yr');
+    reqCard('Additional beds by '+(k31!=null?yrs[k31]:2031),addB(k31),'vs '+fmt(availSum,'count')+' available · at '+MOD.ceil+'% ceiling')+
+    reqCard('Additional beds by '+y36,addB(k36),'central case · band '+sgn(bedNeedLo[k36]-availSum)+' to '+sgn(bedNeedHi[k36]-availSum))+
+    reqCard('Additional beds by '+yrs[k40],addB(k40),'requirement '+fmt(bedNeed[k40],'count')+' beds')+
+    reqCard('Elective demand by '+yrs[k40],el[k40]-BL.el.annual,'theatres proxy · +'+Math.round((el[k40]/BL.el.annual-1)*100)+'% — theatre count baseline pending estates link')+
+    reqCard('Outpatient demand by '+yrs[k40],op[k40]-BL.op.annual,'diagnostics proxy · +'+Math.round((op[k40]/BL.op.annual-1)*100)+'% on '+fmt(BL.op.annual,'count')+'/yr')+
+    reqCard('A&E attendances by '+yrs[k40],BL.ae?Math.round(BL.ae.annual*idxPod('ae',yrs[k40],0))-BL.ae.annual:null,'front-door proxy on '+(BL.ae?fmt(BL.ae.annual,'count'):'—')+'/yr');
   const rn=document.getElementById('mrunname');if(rn)rn.textContent='Run name: '+runName();
-  const pv=document.getElementById('mprov');if(pv)pv.textContent=`Inputs: adm_emergency, adm_elective, op_attendances${BL.ae?', ae_attendances':''} (latest-12-month sums${BL.nel.months<12?', '+BL.nel.months+'-month series annualised':''}, to ${fmtPeriod(BL.nel.to)}) · beds_ga_available, beds_ga_occupied, bed_occupancy (latest month, ${fmtPeriod(BL.bedsPeriod)}) · ONS SNPP 2022 via sr_population_projections [d8-v1] · engine ${ENGINE_VERSION}. Bed-need formula: occupied × demand index × (1−productivity)^t ÷ occupancy ceiling.`;
+  const pv=document.getElementById('mprov');if(pv){const f=F.pod.nel||{};pv.textContent=`Inputs: adm_emergency, adm_elective, op_attendances${BL.ae?', ae_attendances':''} (latest-12-month sums, to ${fmtPeriod(BL.nel.to)}) · beds_ga_available, beds_ga_occupied, bed_occupancy per trust (${fmtPeriod(BL.bedsPeriod)}) · ONS SNPP 2022 via sr_population_projections [d8-v1] · engine ${ENGINE_VERSION}. Age weights per POD from HES/ECDS 2024-25 age tables (sources in the drawer). Non-demographic rates fitted from this system's observed history${f.months?` (${f.months} months to ${fmtPeriod(f.to)})`:''}, shrunk toward the ${GND_DEFAULT}% planning default, capped at ${GND_CAP}%; variant band ±${MOD.band}pp. Bed need per trust: occupied × NEL demand index (trust trend) × (1−productivity)^t ÷ ${MOD.ceil}% ceiling, summed for the system.`;}
 }
 function reqCard(t,n,s){return `<div class="card"><div class="kpi"><div class="l">${t}</div><div class="v" style="color:#b45309">${n==null?'—':(n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()}</div><div class="s">${s}</div></div></div>`;}
-function runName(){const d=new Date().toISOString().slice(0,10);return `${sysSlug} — ${d} — nd${MOD.gnd}/shift${MOD.shift}/prod${MOD.prod}/occ${MOD.ceil}/w${MOD_BANDS.map(b=>MOD.w[b]).join('·')}`;}
+function runName(){const d=new Date().toISOString().slice(0,10);const diffOn=Object.keys(MOD.diff||{}).some(k=>{const dd=MOD.diff[k];return dd&&(dd.g||dd.m);});
+  return `${sysSlug} · ${d} · v2 nd ${MOD_PODS.map(pd=>MOD.gndPod?MOD.gndPod[pd[0]]:'?').join('/')} ±${MOD.band} occ${MOD.ceil}${(MOD.shift||MOD.prod)?` sh${MOD.shift} pr${MOD.prod}`:''}${diffOn?' +diff':''}`;}
 function demoIdxAt(y){const proj=(popProjCache[sysSlug]||[]).filter(p2=>p2.year>=2025&&p2.year<=2040);if(!proj.length)return null;
   const years=[...new Set(proj.map(p2=>p2.year))].sort((a,b)=>a-b);const y0=years.includes(2026)?2026:years[0];
   const yy=years.includes(y)?y:years[years.length-1];
   const popB=(b,yr)=>proj.filter(p2=>p2.age_band===b&&p2.year===yr).reduce((s2,p2)=>s2+Number(p2.population),0);
   const W=yr=>MOD_BANDS.reduce((s2,b)=>s2+popB(b,yr)*MOD.w[b],0);
+  const w0=W(y0);if(!w0)return null;return {idx:W(yy)/w0,t:yy-y0,y0,y:yy};}
+function demoIdxAtPod(pod,y){const proj=(popProjCache[sysSlug]||[]).filter(p2=>p2.year>=2025&&p2.year<=2040);if(!proj.length)return null;
+  const years=[...new Set(proj.map(p2=>p2.year))].sort((a,b)=>a-b);const y0=years.includes(2026)?2026:years[0];
+  const yy=years.includes(y)?y:years[years.length-1];
+  const popB=(b,yr)=>proj.filter(p2=>p2.age_band===b&&p2.year===yr).reduce((s2,p2)=>s2+Number(p2.population),0);
+  const W=yr=>MOD_BANDS.reduce((s2,b)=>s2+popB(b,yr)*MOD.wpod[pod][b],0);
   const w0=W(y0);if(!w0)return null;return {idx:W(yy)/w0,t:yy-y0,y0,y:yy};}
 function diffApply(initial){
   const out=document.getElementById('diffout');if(!out)return;
@@ -1982,26 +2156,27 @@ function diffApply(initial){
     if(g||m)MOD.diff[t.id+'|'+pd[0]]={g:g?(+g.value||0):0,m:m?(+m.value||0):0};}));
   const midOf=code=>{const r0=rows.find(r=>r.metric_code===code&&r.metric_id);return r0?r0.metric_id:null;};
   const base12=(oid,code)=>{const mid=midOf(code);if(!mid)return null;const ser=(series[oid+'|'+mid]||[]).slice(-12);if(ser.length<6)return null;return Math.round(ser.reduce((a,x)=>a+Number(x.value||0),0)*(12/ser.length));};
-  const d31=demoIdxAt(2031),d36=demoIdxAt(2036);
-  if(!d31||!d36){out.innerHTML='<div class="note">Population projections are not loaded for this system, so differentials cannot project.</div>';return;}
-  const proj=(oid,pod,base,D)=>{const dd=MOD.diff[oid+'|'+pod]||{g:0,m:0};
-    return base*D.idx*Math.pow(1+(MOD.gnd+dd.g)/100,D.t)*Math.pow(1-(MOD.shift+dd.m)/100,D.t);};
+  const D31={},D36={};PODS4.forEach(pd=>{D31[pd[0]]=demoIdxAtPod(pd[0],2031);D36[pd[0]]=demoIdxAtPod(pd[0],2036);});
+  if(!D31.nel||!D36.nel){out.innerHTML='<div class="note">Population projections are not loaded for this system, so differentials cannot project.</div>';return;}
+  const F2=MOD.fit||{dev:{}};
+  const proj=(oid,pod,base,D)=>{const dd=MOD.diff[oid+'|'+pod]||{g:0,m:0};const dv=(F2.dev&&F2.dev[oid+'|'+pod])||0;
+    return base*D.idx*Math.pow(1+((MOD.gndPod?MOD.gndPod[pod]:MOD.gnd)+dv+dd.g)/100,D.t)*Math.pow(1-(MOD.shift+dd.m)/100,D.t);};
   let rowsH='',sys={};PODS4.forEach(pd=>{sys[pd[0]]={b:0,p31:0,p36:0};});
   dTrusts.forEach(t=>{PODS4.forEach(pd=>{const b=base12(t.id,pd[2]);if(b==null)return;
-    const p31=proj(t.id,pd[0],b,d31),p36=proj(t.id,pd[0],b,d36);
+    const p31=proj(t.id,pd[0],b,D31[pd[0]]),p36=proj(t.id,pd[0],b,D36[pd[0]]);
     sys[pd[0]].b+=b;sys[pd[0]].p31+=p31;sys[pd[0]].p36+=p36;
     const ch=100*(p36/b-1);
     rowsH+=`<tr><td>${esc(trustShort(t.code))}</td><td>${pd[1]}</td><td class="num muted">${b.toLocaleString()}</td><td class="num">${Math.round(p31).toLocaleString()}</td><td class="num" style="font-weight:600">${Math.round(p36).toLocaleString()}</td><td class="num" style="font-weight:700;color:${ch>20?'#b3261e':ch>8?'#b45309':ch<0?'#1f3a78':'#191f2b'}">${(ch>0?'+':'')+Math.round(ch)}%</td></tr>`;});});
   let sysH='';PODS4.forEach(pd=>{const s2=sys[pd[0]];if(!s2.b)return;const ch=100*(s2.p36/s2.b-1);
     sysH+=`<tr style="font-weight:700;border-top:1px solid #dcd9d0"><td>Whole system</td><td>${pd[1]}</td><td class="num">${Math.round(s2.b).toLocaleString()}</td><td class="num">${Math.round(s2.p31).toLocaleString()}</td><td class="num">${Math.round(s2.p36).toLocaleString()}</td><td class="num" style="color:${ch>20?'#b3261e':ch>8?'#b45309':'#191f2b'}">${(ch>0?'+':'')+Math.round(ch)}%</td></tr>`;});
-  out.innerHTML=`<table class="dt ev"><thead><tr><th>Trust</th><th>POD</th><th class="num">Now /yr</th><th class="num">${d31.y}</th><th class="num">${d36.y}</th><th class="num">Δ by ${d36.y}</th></tr></thead><tbody>${rowsH}${sysH}</tbody></table>
+  out.innerHTML=`<table class="dt ev"><thead><tr><th>Trust</th><th>POD</th><th class="num">Now /yr</th><th class="num">${D31.nel.y}</th><th class="num">${D36.nel.y}</th><th class="num">Δ by ${D36.nel.y}</th></tr></thead><tbody>${rowsH}${sysH}</tbody></table>
    <div class="chartbox sm" style="margin-top:10px"><canvas id="diffchart"></canvas></div>
-   <div class="note">Projection per cell = latest 12-month activity × the demographic index (ONS, age-weighted) × (1 + global growth + extra growth)ᵗ × (1 − global shift − mitigation)ᵗ. ${initial?'All differentials zero: this reproduces the system engine trust by trust.':'Differentials applied.'} Modelled, and saved with any scenario run.</div>`;
+   <div class="note">Projection per cell = latest 12-month activity × the POD demographic index (ONS, age-weighted per POD) × (1 + fitted rate + trust deviation + extra growth)ᵗ × (1 − shift − mitigation)ᵗ. ${initial?'All differentials zero: this reproduces the fitted engine trust by trust.':'Differentials applied.'} Modelled, and saved with any scenario run.</div>`;
   if(charts.diffchart){try{charts.diffchart.destroy()}catch(e){}delete charts.diffchart;}
   const cv=document.getElementById('diffchart');
   if(cv&&window.Chart)charts.diffchart=new Chart(cv.getContext('2d'),{type:'bar',data:{labels:PODS4.map(pd=>pd[1]),datasets:[
     {label:'Now',data:PODS4.map(pd=>Math.round(sys[pd[0]].b)),backgroundColor:'#b7c4de',borderRadius:3,maxBarThickness:34},
-    {label:''+d36.y,data:PODS4.map(pd=>Math.round(sys[pd[0]].p36)),backgroundColor:'#1f3a78',borderRadius:3,maxBarThickness:34}]},
+    {label:''+D36.nel.y,data:PODS4.map(pd=>Math.round(sys[pd[0]].p36)),backgroundColor:'#1f3a78',borderRadius:3,maxBarThickness:34}]},
     options:{plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},color:'#6a7183'}}},scales:{x:{ticks:{font:{size:10},color:'#6a7183'},grid:{display:false}},y:{ticks:{font:{size:9},color:'#9aa0af'},grid:{color:'#e8e5dc'}}},responsive:true,maintainAspectRatio:false}});
 }
 window.diffApply=diffApply;
@@ -2009,19 +2184,23 @@ async function saveModelRun(){const L=MOD.last;if(!L)return;const btn=document.g
   /* U3 · writes require a session (anon INSERT revoked in E2) */
   if(!session){if(note)note.textContent='Sign in to save (public data stays open to read).';return;}
   if(btn)btn.disabled=true;if(note)note.textContent='Saving…';
-  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),non_demographic_growth_pct:MOD.gnd,shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,differential_trust_pod:Object.assign({},MOD.diff),
+  const params={engine:ENGINE_VERSION,system:sysSlug,age_band_weights:Object.assign({},MOD.w),age_band_weights_pod:JSON.parse(JSON.stringify(MOD.wpod)),weights_sources:WPOD_SRC,non_demographic_growth_pct:MOD.gnd,non_demographic_growth_pct_pod:Object.assign({},MOD.gndPod),non_demographic_fit:MOD.fit?MOD.fit.pod:null,trust_pod_deviation_pct:MOD.fit?MOD.fit.dev:null,variant_band_pp:MOD.band,amended_inputs:Object.keys(MOD.amended||{}),shift_of_care_offset_pct:MOD.shift,productivity_pct:MOD.prod,occupancy_ceiling_pct:MOD.ceil,differential_trust_pod:Object.assign({},MOD.diff),
     baseline:{year:L.y0,nel_annual:L.BL.nel.annual,el_annual:L.BL.el.annual,op_annual:L.BL.op.annual,ae_annual:L.BL.ae?L.BL.ae.annual:null,beds_available:L.BL.bedsAvail,beds_occupied:L.BL.bedsOcc,occupancy_pct:L.BL.occ,activity_to:L.BL.nel.to,beds_period:L.BL.bedsPeriod,trusts:TRUSTS.slice()}};
   try{
-    const{data:sc,error:e1}=await sb.from('sr_scenarios').insert({name:runName(),params,version:1,notes:'A1 v1 in-app engine — saved from the modelling studio'}).select('id').single();if(e1)throw e1;
+    const{data:sc,error:e1}=await sb.from('sr_scenarios').insert({name:runName(),params,version:1,notes:'v2 engine · saved from the modelling studio'}).select('id').single();if(e1)throw e1;
     const k40=L.yrs.indexOf(2040)>=0?L.yrs.indexOf(2040):L.yrs.length-1;
-    const summary={engine:ENGINE_VERSION,headline:{demand_index_2040:+L.idx[k40].toFixed(3),nel_2040:L.nel[k40],el_2040:L.el[k40],op_2040:L.op[k40],beds_required_2040:L.bedNeed[k40],beds_available:L.BL.bedsAvail,beds_gap_2040:L.bedNeed[k40]-L.BL.bedsAvail}};
-    const{data:run,error:e2}=await sb.from('sr_model_runs').insert({name:runName(),scenario_type:'demand_capacity',assumptions:params,status:'completed',notes:'A1 v1 engine run — per-year outputs in sr_model_outputs (variant central)',scenario_id:sc.id,baseline_year:L.y0,horizon_years:L.yrs[L.yrs.length-1]-L.y0,summary}).select('id').single();if(e2)throw e2;
+    const summary={engine:ENGINE_VERSION,headline:{demand_index_2040:+L.idx[k40].toFixed(3),nel_2040:L.nel[k40],el_2040:L.el[k40],op_2040:L.op[k40],beds_required_2040:L.bedNeed[k40],beds_available:L.BL.bedsAvail,beds_gap_2040:L.bedNeed[k40]-L.BL.bedsAvail,beds_bind_year:(L.v2&&L.v2.bind.sys.c)||null,beds_bind_range:L.v2?[L.v2.bind.sys.early,L.v2.bind.sys.late]:null}};
+    const{data:run,error:e2}=await sb.from('sr_model_runs').insert({name:runName(),scenario_type:'demand_capacity',assumptions:params,status:'completed',notes:'v2 engine run · per-year outputs in sr_model_outputs (variants low/central/high for NEL and beds)',scenario_id:sc.id,baseline_year:L.y0,horizon_years:L.yrs[L.yrs.length-1]-L.y0,summary}).select('id').single();if(e2)throw e2;
     const outs=[];L.yrs.forEach((y,k)=>{outs.push(
       {model_run_id:run.id,year:y,metric:'projected_demand_nel',value:L.nel[k],unit:'admissions',variant:'central'},
       {model_run_id:run.id,year:y,metric:'projected_demand_el',value:L.el[k],unit:'admissions',variant:'central'},
       {model_run_id:run.id,year:y,metric:'projected_demand_op',value:L.op[k],unit:'attendances',variant:'central'},
       {model_run_id:run.id,year:y,metric:'beds_required',value:L.bedNeed[k],unit:'beds',variant:'central'},
-      {model_run_id:run.id,year:y,metric:'beds_gap',value:L.bedNeed[k]-L.BL.bedsAvail,unit:'beds',variant:'central'});});
+      {model_run_id:run.id,year:y,metric:'beds_gap',value:L.bedNeed[k]-L.BL.bedsAvail,unit:'beds',variant:'central'});
+      if(L.v2)outs.push({model_run_id:run.id,year:y,metric:'beds_required',value:L.v2.bedNeedLo[k],unit:'beds',variant:'low'},
+        {model_run_id:run.id,year:y,metric:'beds_required',value:L.v2.bedNeedHi[k],unit:'beds',variant:'high'},
+        {model_run_id:run.id,year:y,metric:'projected_demand_nel',value:L.v2.nelLo[k],unit:'admissions',variant:'low'},
+        {model_run_id:run.id,year:y,metric:'projected_demand_nel',value:L.v2.nelHi[k],unit:'admissions',variant:'high'});});
     const{error:e3}=await sb.from('sr_model_outputs').insert(outs);if(e3)throw e3;
     if(note)note.textContent='Saved — '+outs.length+' output rows · run '+run.id.slice(0,8)+'…';
     MOD.runsCache=null;loadSavedRuns();
@@ -2031,23 +2210,30 @@ async function loadSavedRuns(){const el=document.getElementById('mrunlist');if(!
   if(!MOD.runsCache){try{const{data,error}=await sb.from('sr_model_runs').select('id,name,created_at,scenario_type,status,assumptions,summary').order('created_at',{ascending:false}).limit(25);if(error)throw error;MOD.runsCache=data||[];}catch(e){el.innerHTML='<div class="note">Could not load saved runs (network).</div>';return;}}
   const runs=MOD.runsCache.filter(r=>{const a=r.assumptions||{};return !a.system||a.system===sysSlug;});
   if(!runs.length){el.innerHTML='<div class="note">No saved runs yet for this system.</div>';return;}
-  el.innerHTML=runs.map(r=>{const a=r.assumptions||{},s=(r.summary||{}).headline||{};const mine=a.engine===ENGINE_VERSION;
-    const key=mine?`beds req. 2040: ${fmt(s.beds_required_2040,'count')} (gap ${s.beds_gap_2040>=0?'+':''}${fmt(s.beds_gap_2040,'count')})`:'segmented planning-engine seed';
-    return `<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.name)}">${esc(r.name)}</div><div class="muted" style="font-size:11px">${r.created_at?new Date(r.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):''} · ${esc(r.scenario_type||'')} · ${key}</div></div>${mine?`<button class="btn ghost" style="font-size:11px;padding:4px 10px;flex:none" onclick="loadModelRun('${r.id}')">Load</button>`:''}</div></div>`;}).join('');}
+  el.innerHTML=runs.map(r=>{const a=r.assumptions||{},s=(r.summary||{}).headline||{};const mine=a.engine===ENGINE_VERSION;const v1=/^v1-/.test(a.engine||'');
+    const key=mine?`beds req. 2040: ${fmt(s.beds_required_2040,'count')} (gap ${s.beds_gap_2040>=0?'+':''}${fmt(s.beds_gap_2040,'count')})${s.beds_bind_year?` · binds ${s.beds_bind_year}`:''}`:v1?'engine v1 run':'segmented planning-engine seed';
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.name)}">${esc(r.name)}</div><div class="muted" style="font-size:11px">${r.created_at?new Date(r.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):''} · ${esc(r.scenario_type||'')} · ${key}</div></div>${mine||v1?`<button class="btn ghost" style="font-size:11px;padding:4px 10px;flex:none" onclick="loadModelRun('${r.id}')">${v1?'Load (map to v2)':'Load'}</button>`:''}</div></div>`;}).join('');}
 function loadModelRun(id){const r=(MOD.runsCache||[]).find(x=>x.id===id);if(!r||!r.assumptions)return;const a=r.assumptions;
-  if(a.age_band_weights)MOD_BANDS.forEach(b=>{if(a.age_band_weights[b]!=null)MOD.w[b]=Number(a.age_band_weights[b]);});
-  if(a.non_demographic_growth_pct!=null)MOD.gnd=Number(a.non_demographic_growth_pct);
+  if(a.age_band_weights_pod)MOD_PODS.forEach(pd=>{MOD_BANDS.forEach(b=>{const v2=(a.age_band_weights_pod[pd[0]]||{})[b];if(v2!=null)MOD.wpod[pd[0]][b]=Number(v2);});});
+  else if(a.age_band_weights)MOD_PODS.forEach(pd=>{MOD_BANDS.forEach(b=>{if(a.age_band_weights[b]!=null)MOD.wpod[pd[0]][b]=Number(a.age_band_weights[b]);});});
+  MOD.gndPod=MOD.gndPod||{};
+  if(a.non_demographic_growth_pct_pod)MOD_PODS.forEach(pd=>{const v2=a.non_demographic_growth_pct_pod[pd[0]];if(v2!=null)MOD.gndPod[pd[0]]=Number(v2);});
+  else if(a.non_demographic_growth_pct!=null)MOD_PODS.forEach(pd=>{MOD.gndPod[pd[0]]=Number(a.non_demographic_growth_pct);});
+  if(a.variant_band_pp!=null)MOD.band=Number(a.variant_band_pp);
   if(a.shift_of_care_offset_pct!=null)MOD.shift=Number(a.shift_of_care_offset_pct);
   if(a.productivity_pct!=null)MOD.prod=Number(a.productivity_pct);
   if(a.occupancy_ceiling_pct!=null)MOD.ceil=Number(a.occupancy_ceiling_pct);
-  render();}
+  if(a.differential_trust_pod)MOD.diff=Object.assign({},a.differential_trust_pod);
+  MOD.amended={};['mg_nel','mg_el','mg_op','mg_ae','msh','mpr','mceilsel','mband'].forEach(k=>MOD.amended[k]=1);
+  render();
+  if(/^v1-/.test(a.engine||''))setTimeout(()=>{const n=document.getElementById('msavenote');if(n)n.textContent='Engine v1 run mapped onto v2 (its single weight set and growth rate applied to every POD): an approximate reproduction.';},900);}
 function methodHtml(){
   const codes=[...new Set(ENGINE_INPUTS.concat(...Object.values(DRIVER_METRICS)))].sort();
   const rd1=sysTrusts()[0]||orgs.find(o=>o.code==='RD1');
   const rowFor=code=>{let r=rd1?rows.find(x=>x.metric_code===code&&x.organisation_id===rd1.id):null;if(!r)r=rows.find(x=>x.metric_code===code&&TRUSTS.includes(x.org_code));return r||rows.find(x=>x.metric_code===code);};
   const tr=codes.map(code=>{const r=rowFor(code);return `<tr><td class="mono" style="font-size:11px">${esc(code)}</td><td>${esc(r?r.metric_name:'—')}</td><td>${esc(r?r.unit:'—')}</td><td class="num">${r&&r.standard!=null?fmt(r.standard,r.unit):'—'}</td><td style="font-size:11px">${r?`${esc(r.source||'—')} · ${esc(r.confidence||'—')} · ${fmtPeriod(r.period)}`:'not loaded for this system'}</td></tr>`;}).join('');
   return `<details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Method &amp; data</summary>
-  <div style="font-size:13px;color:var(--ink2);margin-top:10px;max-width:860px">The engine takes the latest twelve months of non-elective admissions, elective admissions and outpatient attendances for the system's acute trusts and treats their sum as the annual baseline (shorter series are annualised and flagged in the provenance line). It then builds a demographic demand index from ONS 2022-based sub-national population projections: each age band is multiplied by an editable activity weight reflecting how much acute care that band uses per head, and the weighted population of each future year is divided by the weighted population of the baseline year. Demand in year y is the baseline multiplied by this index, compounded by a non-demographic growth rate and reduced by a shift-of-care/prevention offset, both editable. The bed requirement additionally applies an annual length-of-stay/productivity improvement (beds only) and divides by the planning occupancy ceiling, so it answers: how many staffed G&amp;A beds would be needed to run at the ceiling? Theatre and diagnostic figures are growth proxies scaled from elective and outpatient demand — not counts of physical assets. Every saved run stores the full assumption set, the baseline numbers and the per-year outputs, so any figure on this page can be reproduced from its run record.</div>
+  <div style="font-size:13px;color:var(--ink2);margin-top:10px;max-width:860px">The v2 engine takes the latest twelve months of each point of delivery for the system's acute trusts as the annual baseline (shorter series are annualised and flagged). Each POD gets its own demographic demand index from ONS 2022-based sub-national projections, weighted by that POD's age-activity shape derived from national publications (HES admitted care and outpatient 2024-25, ECDS A&amp;E 2024-25; sources and per-1,000 rates in the assumptions drawer). On top of the demography sits a non-demographic growth rate fitted from this system's own observed history: observed annualised growth minus the demographic component over the same window, shrunk toward the 0.5% planning default and capped at 2.5%, with the fit printed in the drawer and a ±band carried through every output as low and high variants. Demand in year y is baseline × demographic index × (1+fitted rate)^t × (1−shift)^t. The bed requirement runs per trust on the trust's own fitted deviation, applies the length-of-stay/productivity layer, divides by the chosen occupancy ceiling (a policy preset, logged with every run) and sums to the system; the tipping year is the first year projected occupied beds cross the ceiling of today's stock, reported with its variant range. Theatre and diagnostic figures remain growth proxies scaled from elective and outpatient demand rather than counts of physical assets. Every saved run stores the full assumption set including fits, sources and amendments, the baseline and the per-year outputs (low, central and high for demand and beds), so any figure on this page can be reproduced from its run record.</div>
   <div class="cap" style="margin-top:14px;margin-bottom:4px">Data dictionary · every metric used by the driver tables and this engine · generated live from the metric register</div>
   <div style="overflow-x:auto"><table class="dt ev"><thead><tr><th>Code</th><th>Name</th><th>Unit</th><th class="num">Standard</th><th>Source of latest row (first trust in scope)</th></tr></thead><tbody>${tr}</tbody></table></div>${freshTable()}</details>`;}
 /* D12 · freshness table for the Method & data note */

@@ -110,11 +110,18 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(after).not.toEqual(before);
   });
 
-  test('08 modelling studio: 8 sliders, requirement cards, dictionary + freshness', async ({ page }) => {
+  test('08 modelling studio v2: spine, finding, tipping, drawer, dictionary', async ({ page }) => {
     await boot(page);
     await nav(page, 'Modelling studio');
     await expect(page.locator('#reqcards .card')).toHaveCount(6, { timeout: 25000 });
-    await expect(page.locator('.view input[type="range"]')).toHaveCount(8);
+    await expect(page.locator('.spinenav a')).toHaveCount(5);
+    await expect(page.locator('#outFind')).toContainText('%');
+    await expect(page.locator('.view')).toContainText('When it binds');
+    await expect(page.locator('#tipwrap .tiprow').nth(1)).toBeAttached();
+    const drawer = page.locator('#assumdrawer');
+    await drawer.locator('summary').click();
+    expect(await drawer.locator('input').count(), 'drawer inputs').toBeGreaterThan(15);
+    await expect(drawer).toContainText('HES APC 2024-25');
     const details = page.locator('.view details', { hasText: 'Method & data' });
     await details.locator('summary').click();
     const dictRows = details.locator('table.dt').first().locator('tbody tr');
@@ -562,6 +569,33 @@ test.describe('System Intelligence — smoke (E1)', () => {
     await expect(page.locator('.view')).toContainText('ALL grades including doctors in training');
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
+
+
+  test('44 modelling v2 · engine self-consistency and honest variants', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=modelling');
+    await expect(page.locator('#outFind')).toContainText('%', { timeout: 50000 });
+    const ok = await page.evaluate(() => {
+      const L = MOD.last; if (!L || !L.v2) return 'no MOD.last v2';
+      const n = L.yrs.length;
+      if (L.idx.length !== n || L.bedNeed.length !== n) return 'length mismatch';
+      for (let k = 0; k < n; k++) {
+        if (!(L.v2.idxLo[k] <= L.idx[k] + 1e-9 && L.idx[k] <= L.v2.idxHi[k] + 1e-9)) return 'variant order idx ' + k;
+        if (L.v2.bedNeedLo[k] > L.bedNeed[k] || L.bedNeed[k] > L.v2.bedNeedHi[k]) return 'variant order beds ' + k;
+      }
+      const b = L.v2.bind.sys;
+      if (b.c) {
+        const k = L.yrs.indexOf(b.c); if (k < 0) return 'bind year not in yrs';
+        if (!(L.bedNeed[k] > L.v2.availSum)) return 'bind year does not bind';
+        if (k > 0 && L.bedNeed[k - 1] > L.v2.availSum) return 'bind year not first';
+      }
+      const g = Object.values(MOD.gndPod || {});
+      if (!g.length || g.some(x => !(x >= 0 && x <= 2.5))) return 'gnd out of range';
+      const f = L.v2.fit && L.v2.fit.pod; if (!f || !f.nel) return 'no fit record';
+      return 'ok';
+    });
+    expect(ok).toBe('ok');
   });
 
 });
