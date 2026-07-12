@@ -770,7 +770,7 @@ async function renderFlow(v){
 }
 
 /* ===== PERFORMANCE ===== */
-async function renderPerformance(v){v.innerHTML='<div class="loading">Loading performance…</div>';const f=await ensure('performance');
+async function renderPerformance(v){v.innerHTML='<div class="loading">Loading performance…</div>';const[f,NC]=await Promise.all([ensure('performance'),fetchNowcast()]);
   const rttSpecs=specs.filter(s=>s.is_rtt);const lp=latestPeriod(f);
   const metricSel=`<select class="sel" id="pm" onchange="perfMetric=this.value;render()">`+[['rtt_18wk','RTT 18-week %'],['rtt_incomplete','Waiting list size'],['rtt_52wk','52-week breaches']].map(m=>`<option value="${m[0]}" ${m[0]===perfMetric?'selected':''}>${m[1]}</option>`).join('')+`</select>`;
   // heatmap trust x specialty for perfMetric latest
@@ -780,6 +780,23 @@ async function renderPerformance(v){v.innerHTML='<div class="loading">Loading pe
   const hcol=(val)=>{if(val==null)return '#e7ecf2';let t=(val-mn)/((mx-mn)||1);if(perfMetric==='rtt_18wk')t=1-t;return d3.interpolateRgb('#166f4d', '#b3261e')(t);};
   let h=sysNote()+ensureNote('performance')+`<h1 class="serif">Performance</h1><div class="lead">The published constitutional standards across the system's acute trusts: RTT, cancer, diagnostics and A&amp;E, with RTT by specialty for every trust.</div>`;
   h+=nationalBlock(['rtt_18wk','cancer_62','dm01_6wk','ae_4hr'],['rtt_18wk','rtt_52wk','cancer_62','dm01_6wk','cancer_fds_28','ae_4hr'],'Drill a red cell or list row below — DM01 splits by diagnostic test and cancer 62-day splits by tumour group, nationally.');
+  const wkN=(NC&&NC.weekly&&NC.weekly.length)?NC.weekly[NC.weekly.length-1]:null;
+  if(NC&&NC.drift&&wkN&&NC.forward_weeks>0){
+    const parts=sysTrusts().map(t=>latestOf(t.id,'rtt_total')).filter(x=>x&&x.v!=null);
+    const pubT=parts.length?parts.reduce((s,x)=>s+Number(x.v),0):null;
+    const dpc=100*(NC.drift-1);
+    h+=`<div class="eyebrow" style="margin-top:14px">Waits now · nowcast (beta)</div>
+    <div class="card" style="margin-bottom:14px"><div class="two">
+      <div>${pubT!=null?`<div class="cap">This system's published incomplete list (${fmtPeriod(NC.anchor_month+'-01')}) → nowcast to the week ending ${new Date(NC.latest_week).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+        <div style="font-size:25px;font-weight:700;letter-spacing:-.5px">${fmt(pubT,'count')} <span class="muted" style="font-size:15px">→</span> ${fmt(pubT*NC.drift,'count')}</div>`
+        :`<div class="cap">National nowcast (no published system total held)</div><div style="font-size:25px;font-weight:700">${fmt(NC.nowcast_national,'count')}</div>`}
+        <div style="font-size:12.5px;color:var(--ink2);margin-top:4px">National drift <b style="color:${dpc>0?'#b3261e':'#166f4d'}">${dpc>0?'+':''}${Math.round(dpc*10)/10}%</b> across the ${NC.forward_weeks} weeks the weekly series runs past the publication.</div></div>
+      <div><div class="cap">Waits texture · weekly national share under 18 weeks</div>
+        <div style="height:44px">${spark(NC.weekly.map(w=>({value:w.u18})),'#1d4ed8')}</div>
+        <div style="font-size:12px;color:var(--ink2);margin-top:3px">now ${wkN.u18}% under 18 weeks · ${wkN.o52}% over 52 · national list ${fmt(wkN.known,'count')}</div></div>
+    </div>
+    <div class="note">Ratio drift from the WLMDS weekly national series (known clock starts), applied to this system's published level; system-specific drift is exactly the miss the backtest measures: median ${NC.backtest.m1.med_abs_pct}% one month out, worst decile ${NC.backtest.m1.p90_abs_pct}% (n=${NC.backtest.m1.n} months since Sep 2021). Full accuracy record in Tests &amp; packs.</div></div>`;
+  }
   h+=`<div class="eyebrow" style="margin-top:14px">RTT by specialty · provider-published detail (all English trusts)</div><div class="filters">Metric ${metricSel}</div>`;
   h+=`<div class="card" style="overflow-x:auto"><div class="h3">${perfMetric==='rtt_18wk'?'RTT 18-week compliance':perfMetric==='rtt_incomplete'?'Incomplete waiting list':'52-week breaches'} by trust × specialty</div><div class="cap">Latest period ${fmtPeriod(lp)} · ${perfMetric==='rtt_18wk'?'red = below standard':'red = highest'}</div>`;
   h+=`<table class="hm"><thead><tr><th></th>`+TRUSTS.map(tc=>`<th>${tc}</th>`).join('')+`</tr></thead><tbody>`;
@@ -2479,6 +2496,10 @@ function testMeta(s){return {met:['met','#166f4d'],passed:['met','#166f4d'],part
    reconfigurations, published as static artefacts by scripts/serving/build_precedents.py.
    Trust-grain honesty: site-level effects are diluted at trust level, and every donor
    pool, pre-window fit and placebo spread is printed alongside the effect. ===== */
+let nowCache;
+async function fetchNowcast(){if(nowCache!==undefined)return nowCache;
+  try{const r=await fetch('geo/nowcast.json');nowCache=r.ok?await r.json():null;}catch(e){nowCache=null;}
+  return nowCache;}
 let precCatCache=null,precEvCache={};
 async function precCat(){if(precCatCache!==null)return precCatCache;
   try{const r=await fetch('geo/precedents/catalog.json');precCatCache=r.ok?await r.json():false;}
@@ -2620,6 +2641,15 @@ async function renderAssurance(v){v.innerHTML='<div class="loading">Loading test
   opts.forEach(o=>{const ts=tests.filter(t=>t.option_id===o.id);if(!ts.length)return;
     h+=`<div class="eyebrow">${esc(optShort(o.title))}</div><div class="list">`+ts.map(t=>{const m=testMeta(t.status);
       return `<div class="row" style="cursor:default"><span class="tag" style="background:${m[1]}"></span><div class="m"><div class="t1">${esc(t.test_name)}</div><div class="t2">${esc((t.evidence_summary||'').slice(0,230))}${t.gaps?`<div class="muted" style="font-size:11px;margin-top:2px">gaps: ${esc(t.gaps.split(' | ').slice(0,3).join(' · '))}</div>`:''}</div></div><span class="pill" style="background:${m[1]};flex:none">${m[0]}</span></div>`;}).join('')+`</div>`;});
+  const NCa=await fetchNowcast();
+  if(NCa&&NCa.backtest&&NCa.backtest.m1)h+=`<div class="eyebrow">Nowcast accuracy · the assumption on trial</div>
+   <div class="card" style="margin-bottom:14px"><div class="h3">WLMDS ratio-drift nowcast · backtest against every published month</div>
+   <div class="cap">${esc(NCa.method)}</div>
+   <table class="dt ev"><thead><tr><th>Horizon</th><th class="num">Months tested</th><th class="num">Median abs miss</th><th class="num">90th percentile</th></tr></thead><tbody>
+   <tr><td>One month ahead</td><td class="num">${NCa.backtest.m1.n}</td><td class="num">${NCa.backtest.m1.med_abs_pct}%</td><td class="num">${NCa.backtest.m1.p90_abs_pct}%</td></tr>
+   ${NCa.backtest.m2?`<tr><td>Two months ahead</td><td class="num">${NCa.backtest.m2.n}</td><td class="num">${NCa.backtest.m2.med_abs_pct}%</td><td class="num">${NCa.backtest.m2.p90_abs_pct}%</td></tr>`:''}
+   </tbody></table>
+   <div class="note">Generated ${esc(NCa.generated)} · anchor ${esc(NCa.anchor_month)} · weekly series to ${esc(NCa.latest_week)} · refreshed by scripts/serving/pull_wlmds_weekly.py + build_nowcast.py. The live strip sits on Performance.</div></div>`;
   h+=`<div class="eyebrow">Evidence-pack register</div>`;
   const packs=OC.packs||[];
   if(packs.length)h+=`<div class="list">`+packs.map(p=>{const secs=(OC.packSections||[]).filter(s=>s.pack_id===p.id),exs=(OC.packExhibits||[]).filter(x=>x.pack_id===p.id),xps=(OC.packExports||[]).filter(x=>x.pack_id===p.id);

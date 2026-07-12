@@ -658,4 +658,23 @@ test.describe('System Intelligence — smoke (E1)', () => {
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
+
+  test('50 performance · WLMDS nowcast strip with printed accuracy', async ({ page }) => {
+    test.slow();
+    const res = await page.request.get('/geo/nowcast.json');
+    expect(res.ok()).toBeTruthy();
+    const nc = await res.json();
+    expect(nc.backtest.m1.n).toBeGreaterThan(20);
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=performance');
+    await expect(page.locator('.view')).toContainText('RTT by specialty', { timeout: 45000 });
+    if (nc.forward_weeks > 0) {
+      await expect(page.locator('.view')).toContainText('Waits now');
+      await expect(page.locator('.view')).toContainText('median');
+      await expect(page.locator('.view')).toContainText('under 18 weeks');
+    } else {
+      await expect(page.locator('.view')).not.toContainText('Waits now');
+    }
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
 });

@@ -666,3 +666,18 @@ paragraph rendered verbatim from catalog.json. Options: cards cite nearest prece
 keywords (precFor), cross-link note above the appraisal matrix. Tests 48+49 (49 specs); gate
 47/49 with 33+41 throttle-class, solo-pass 19.6s. CI: W2 green on rerun; W1b failed boot-class
 throttle twice, its code validated by W2-green CI on top; third rerun kicked.
+
+## 13 Jul 2026 · Ceiling sprint W4: WLMDS nowcast v1
+Engine: scripts/serving/pull_wlmds_weekly.py (scrapes the NHSE WLMDS page, fetches any
+Demographics Timeseries/Specialty CSV the lake lacks, idempotent by filename; launchd agent
+com.sr.wlmds-pull loaded, Fridays 09:40) + scripts/serving/build_nowcast.py (weekly national
+known-clock-start series from the Age partition; ratio drift from the anchor week nearest the
+published month end to the latest week; backtested against every published month since WLMDS
+began Sep 2021: n=54, median abs miss 0.8% one month out, p90 3.17%; two months 0.68%/2.56%).
+Fresh pull landed the 31-May-2026 series (4 forward weeks past the Apr 2026 publication);
+live nowcast: published 6,644,703 x 1.01006 = 6,711,540. Artefact geo/nowcast.json.
+App: Performance gains a 'Waits now · nowcast (beta)' strip (system published level drifted,
+u18-share texture sparkline, printed accuracy, honest hide when no forward weeks); Tests &
+packs gains 'Nowcast accuracy · the assumption on trial' with the full backtest table and
+method verbatim. Test 50 (artefact shape + strip, conditional on forward weeks). Gate 47
+passed + 3 boot-class flaky-on-retry = 50/50.
