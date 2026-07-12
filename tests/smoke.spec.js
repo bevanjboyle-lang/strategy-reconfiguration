@@ -677,4 +677,13 @@ test.describe('System Intelligence — smoke (E1)', () => {
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
+
+  test('51 options · computed configurations score receivers for fragile services', async ({ page }) => {
+    test.slow();
+    await page.goto('/index.html?system=' + BSW_SLUG + '&view=options');
+    await expect(page.locator('.view')).toContainText('Computed configurations', { timeout: 60000 });
+    await expect(page.locator('.view')).toContainText(/Where each fragile service could consolidate|No fragile services to reconfigure/);
+    const txt = await page.locator('.view').innerText();
+    expect(/undefined|NaN/.test(txt)).toBeFalsy();
+  });
 });

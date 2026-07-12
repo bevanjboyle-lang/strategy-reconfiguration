@@ -681,3 +681,19 @@ u18-share texture sparkline, printed accuracy, honest hide when no forward weeks
 packs gains 'Nowcast accuracy · the assumption on trial' with the full backtest table and
 method verbatim. Test 50 (artefact shape + strip, conditional on forward weeks). Gate 47
 passed + 3 boot-class flaky-on-retry = 50/50.
+
+## 13 Jul 2026 · Ceiling sprint W5: configuration optimiser v1 (client-side)
+Design deviation from the charter, deliberate: rather than a Mac artefact pipeline duplicating
+the fragility calculation, fragility moved OUT of the modelling closure into a shared
+buildFrag() (one score, one definition; modelling rewired to FR.cell/FR.specsM/FR.worst; the
+write-only rtt52Nat/rttIncNat dicts turned out dead and are gone). IDEP starter matrix, lvlPill
+and DEPMAP lifted to top level. computeConfigs() (client): for each 55+ fragile service (top 6),
+every partner acute is scored on four published planes: combined consultant rota (donor+receiver
+WTE, 8 = 1-in-8 line), level-1 co-location needs from the starter matrix with published-signal
+detection (consultant census families + A&E presence; undetectable = confirm clinically),
+receiver G&A bed headroom at a 92% ceiling, and pop-weighted delta-travel over the donor
+catchment's routed LSOAs (OSRM matrix; coverage % printed; >+20min share printed). Options page:
+'Computed configurations · beta · dependency matrix awaiting clinical sign-off' table, best fit
+first, honest empty state; footnote states every source and every gap. Optimiser respects the
+options early-return (seed-panel systems skip it) - registered as a refinement candidate.
+Test 51; gate 50 passed + 1 flaky-on-retry = 51/51.

@@ -1953,6 +1953,111 @@ function resetAssumptions(){MOD.wpod=wpodCopy();MOD.shift=0;MOD.prod=0;MOD.ceil=
 window.resetAssumptions=resetAssumptions;
 function fitLine(p){const f=(MOD.fit&&MOD.fit.pod[p])||{};if(f.fallback)return `no usable history for this POD yet (${f.months||0} complete months): the ${GND_DEFAULT}% planning default stands until more months load`;
   return `observed ${f.obs>=0?'+':''}${f.obs}%/yr (${f.months} months to ${fmtPeriod(f.to)}, first 12 vs last 12) minus demographic ${f.demo>=0?'+':''}${f.demo}%/yr (SNPP ${f.dy0} to ${f.dy1}), shrunk ${Math.round((1-f.lam)*100)}% toward the ${GND_DEFAULT}% planning default given the window, capped at ${GND_CAP}%`;}
+const IDEP={
+    names:{ed:'Emergency department (Type 1)',acmed:'Acute & general medicine',ccu:'Critical care (level 2/3)',emsurg:'Emergency general surgery',anaes:'Anaesthetics & theatres',imaging:'Imaging (CT 24/7)',path:'Pathology & blood sciences',obs:'Consultant-led obstetrics',neo:'Neonatal care',paeds:'Inpatient paediatrics',trauma:'Trauma & orthopaedics',stroke:'Hyperacute stroke',pci:'Primary PCI',ir:'Interventional radiology',elsurg:'Elective inpatient surgery'},
+    need:{
+      ed:[['acmed',1],['ccu',1],['anaes',1],['imaging',1],['path',1],['emsurg',2],['paeds',2],['ir',3]],
+      acmed:[['imaging',1],['path',1],['ccu',2]],
+      emsurg:[['anaes',1],['ccu',1],['imaging',1],['ed',2],['ir',2]],
+      obs:[['anaes',1],['neo',1],['path',1],['ccu',2],['imaging',2]],
+      neo:[['obs',1],['paeds',2]],
+      paeds:[['ed',2],['anaes',2],['imaging',2]],
+      trauma:[['ed',1],['anaes',1],['imaging',1],['ccu',2],['acmed',2]],
+      stroke:[['imaging',1],['acmed',1],['ccu',2],['ir',3]],
+      pci:[['imaging',1],['ccu',2],['ir',2]],
+      elsurg:[['anaes',1],['imaging',2],['ccu',2]],
+      ccu:[['acmed',1],['imaging',1],['path',1],['emsurg',2]]
+    }};
+const lvlPill=l=>l===1?`<span class="pill" style="background:#8f1d17">must co-locate</span>`:l===2?`<span class="pill" style="background:#b45309">on site / rapid</span>`:`<span class="pill" style="background:#44639f">network ok</span>`;
+const DEPMAP={'General Surgery':'emsurg','Trauma and Orthopaedic':'trauma','General Medicine':'acmed','Elderly Medicine':'acmed','General Internal Medicine':'acmed','Cardiology':'pci'};
+
+/* ===== W5 · shared fragility builder: the SAME five-component score the modelling studio
+   documents, computed once and reused by the configuration optimiser. ===== */
+async function buildFrag(){
+  const[AF,PF,WF,WN,RN,CN2]=await Promise.all([ensure('activity'),ensure('performance'),ensure('workforce'),fetchWauNat(),fetchRttNat(),fetchConsNat()]);
+  const cpAll=AF.filter(x=>x.metric_code==='rtt_completed_pathways'&&x.specialty_code&&!/^X/.test(x.specialty_code));
+  const rtt18Nat={};
+  RN.forEach(x=>{if(x.metric_code==='rtt_18wk')(rtt18Nat[x.specialty_code]=rtt18Nat[x.specialty_code]||[]).push(Number(x.value));});
+  const med18={};Object.keys(rtt18Nat).forEach(sc=>{const v=rtt18Nat[sc].sort((x,y)=>x-y);if(v.length>=10)med18[sc]=v[Math.floor(v.length/2)];});
+  const wteBy={};WF.forEach(x=>{if(x.metric_code!=='medical_wte'||!x.specialty_code)return;const k=x.organisation_id+'|'+x.specialty_code;const e=wteBy[k];if(!e||x.period>e.period)wteBy[k]={period:x.period,v:Number(x.value)};});
+  const consLp2=CN2.length?[...new Set(CN2.map(x=>x.period))].sort().pop():null;
+  const consBy={};CN2.forEach(x=>{if(x.period===consLp2)consBy[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
+  const consFor=(oid,slug)=>{const ckey=Object.keys(consBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36))return false;const s3=k.slice(37);const al=WTE_ALIAS[slug]||slug;return s3===al||s3===slug||s3.startsWith(al)||al.startsWith(s3);});return ckey!=null?consBy[ckey]:null;};
+  const wnLp=latestPeriod(WN.filter(x=>x.metric_code==='mhso_cost_per_wau'));
+  const cpwF={},cpwSpec={};WN.forEach(x=>{if(x.metric_code!=='mhso_cost_per_wau'||x.period!==wnLp||!(Number(x.value)>0)||/_as_a_of_/.test(x.specialty_code))return;cpwF[x.organisation_id+'|'+x.specialty_code]=Number(x.value);(cpwSpec[x.specialty_code]=cpwSpec[x.specialty_code]||[]).push(Number(x.value));});
+  const cpwMed={};Object.keys(cpwSpec).forEach(sc=>{const v=cpwSpec[sc].slice().sort((x,y)=>x-y);if(v.length>=10)cpwMed[sc]=v[Math.floor(v.length/2)];});
+  const pfLp=latestPeriod(PF.filter(x=>x.metric_code==='rtt_18wk'));
+  const pfIdx={};PF.forEach(x=>{if(x.period===pfLp&&x.specialty_code)pfIdx[x.organisation_id+'|'+x.specialty_code+'|'+x.metric_code]=Number(x.value);});
+  const pfAt=(oid,sc,mc)=>{const v2=pfIdx[oid+'|'+sc+'|'+mc];return v2==null?null:v2;};
+  const clamp01=x=>Math.max(0,Math.min(1,x));
+  const cell=(oid,sc,nm)=>{
+    const parts=[];const slug=slugName(nm.replace(' †',''));
+    const wkey=Object.keys(wteBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36)||k.indexOf('|')<0)return false;const s=k.slice(k.indexOf('|')+1);const al=WTE_ALIAS[slug]||slug;return s===al||s===slug||s.startsWith(al)||al.startsWith(s);});
+    const wte=wkey?wteBy[wkey].v:null;
+    const cwte=consFor(oid,slug);
+    if(cwte!=null)parts.push([30,cwte<4?30:cwte<6?24:cwte<8?16:cwte<10?8:0]);
+    else if(wte!=null)parts.push([30,wte<3?30:wte<5?24:wte<8?16:wte<12?8:0]);
+    const v18=pfAt(oid,sc,'rtt_18wk');
+    if(v18!=null&&med18[sc]!=null)parts.push([25,25*clamp01((10-(v18-med18[sc]))/25)]);
+    const v52=pfAt(oid,sc,'rtt_52wk'),vin=pfAt(oid,sc,'rtt_incomplete');
+    if(v52!=null&&vin>0)parts.push([15,15*clamp01((100*v52/vin)/5)]);
+    const cps2=[...new Set(cpAll.filter(x=>x.organisation_id===oid&&x.specialty_code===sc).map(x=>x.period))].sort();
+    if(cps2.length>=18){const l12=cps2.slice(-12),p12=cps2.slice(-24,-12);
+      const sum=ps=>cpAll.filter(x=>x.organisation_id===oid&&x.specialty_code===sc&&ps.includes(x.period)).reduce((s,x)=>s+Number(x.value||0),0);
+      const q=sum(l12),b=sum(p12);if(b>60)parts.push([15,15*clamp01(-(q/b-1)*100/25)]);}
+    const mslug=Object.keys(cpwMed).find(s=>s===slug||s.startsWith(slug)||slug.startsWith(s));
+    if(mslug&&cpwF[oid+'|'+mslug]!=null)parts.push([15,15*clamp01((cpwF[oid+'|'+mslug]/cpwMed[mslug]-1)*100/30)]);
+    if(parts.length<2)return null; /* one plane is a hint, not an index — require corroboration */
+    const maxSum=parts.reduce((s,p)=>s+p[0],0),ptSum=parts.reduce((s,p)=>s+p[1],0);
+    return {score:Math.round(100*ptSum/maxSum),n:parts.length,wte};};
+  const specsM=specs.filter(s=>s.is_rtt&&!/^X/.test(s.code));
+  const worst=[];
+  specsM.forEach(s=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=cell(oid,s.code,s.name);if(c&&c.score>=55)worst.push({name:s.name,code:s.code,tc,score:c.score,wte:c.wte});}));
+  worst.sort((x,y)=>y.score-x.score);
+  return {cell,specsM,worst,consFor};}
+
+/* ===== W5 · configuration optimiser (client-side, beta): for each fragile service, score
+   every partner trust as a receiver — combined consultant rota, level-1 co-location needs
+   from the starter matrix (awaiting clinical sign-off), receiver bed headroom, and the
+   population-weighted travel change over the donor's routed catchment. ===== */
+const OPT_DETECT={anaes:['anaesthetics'],imaging:['clinical_radiology'],path:['histopathology','chemical_pathology','medical_microbiology'],acmed:['general_internal_medicine','general_medicine','acute_internal_medicine'],ccu:['intensive_care_medicine','anaesthetics'],obs:['obstetrics_and_gynaecology','obstetrics'],neo:['paediatrics'],paeds:['paediatrics'],ed:['emergency_medicine']};
+async function computeConfigs(){
+  const[FR,A]=await Promise.all([buildFrag(),accessFile()]);
+  const acutes=sysTrusts();
+  const worst=(FR.worst||[]).slice(0,6);
+  if(!worst.length||acutes.length<2)return{worst:[],rows:[],A};
+  const depOk=(rid,k)=>{const slugs=OPT_DETECT[k];if(!slugs)return null;
+    if(k==='ed'&&latestOf(rid,'ae_4hr'))return true;
+    return slugs.some(s2=>{const v=FR.consFor(rid,s2);return v!=null&&v>0;})||null;};
+  const rows=worst.map(w=>{const donor=acutes.find(t=>t.code===w.tc);if(!donor)return null;
+    const slug=slugName(w.name);
+    const key=DEPMAP[w.name.replace(/ Service$/,'')]||'elsurg';
+    const needs=(IDEP.need[key]||[]).filter(d=>d[1]===1).map(d=>d[0]);
+    const cd=FR.consFor(donor.id,slug)||0;
+    const cands=acutes.filter(t=>t.code!==w.tc).map(r=>{
+      const cr=FR.consFor(r.id,slug)||0;const comb=cd+cr;
+      const deps=needs.map(k2=>({k:k2,ok:depOk(r.id,k2)}));
+      const occ=latestOf(r.id,'bed_occupancy'),beds=latestOf(r.id,'beds_ga_available');
+      const head=(occ&&beds)?Math.round(beds.v*(0.92-occ.v/100)):null;
+      let dt=null,cov=null,far=null;
+      if(A&&A.sites&&A.lsoa){
+        const dIdx=new Set(),rIdx=new Set();A.sites.forEach((s2,i2)=>{if(s2[1]===w.tc)dIdx.add(i2);if(s2[1]===r.code)rIdx.add(i2);});
+        let pAll=0,pCov=0,acc=0,farP=0;
+        A.lsoa.forEach(L=>{const pop=Number(L[1])||0;const opts=L[4]||[];if(!pop||!opts.length)return;
+          let td=null,tr=null,tmin=Infinity,imin=-1;
+          opts.forEach(o=>{if(o[1]<tmin){tmin=o[1];imin=o[0];}
+            if(dIdx.has(o[0]))td=td==null?o[1]:Math.min(td,o[1]);
+            if(rIdx.has(o[0]))tr=tr==null?o[1]:Math.min(tr,o[1]);});
+          if(imin<0||!dIdx.has(imin)||td==null)return;
+          pAll+=pop;
+          if(tr!=null){pCov+=pop;acc+=pop*(tr-td);if(tr-td>20)farP+=pop;}});
+        if(pCov>0){dt=acc/pCov;cov=100*pCov/Math.max(1,pAll);far=100*farP/pCov;}
+      }
+      return {r,comb,cr,deps,occ:occ?occ.v:null,head,dt,cov,far};})
+      .sort((x,y)=>((x.comb>=8?0:1)-(y.comb>=8?0:1))||((x.dt==null?99:x.dt)-(y.dt==null?99:y.dt)));
+    return {w,cd,key,needs,cands};}).filter(Boolean);
+  return {worst,rows,A};}
+
 async function renderModelling(v){
   v.innerHTML='<div class="loading">Loading demand &amp; capacity engine…</div>';
   if(deferredLoads)await deferredLoads; /* E4 · freshness table depends on the deferred load */
@@ -2006,43 +2111,11 @@ async function renderModelling(v){
   h+=`<div class="two" style="margin-top:0"><div class="card"><div class="h3">Bed requirement vs available beds</div><div class="cap">Future bed need per trust = occupied beds × NEL demand index (trust trend) × (1−productivity)^t ÷ occupancy ceiling, summed</div><div class="chartbox"><canvas id="a1beds"></canvas></div></div>
    <div class="card"><div class="h3">Scale of the response</div><div class="cap">What the central case implies at the planning horizons</div><div class="grid" id="reqcards" style="grid-template-columns:1fr 1fr"></div></div></div>`;
   h+=`<div class="prov" id="mprov"></div>`;
-  /* --- item 8 · specialty fragility index: multi-domain, weighted, documented --- */
-  const rtt18Nat={},rtt52Nat={},rttIncNat={};
-  RN.forEach(x=>{const m=x.metric_code==='rtt_18wk'?rtt18Nat:x.metric_code==='rtt_52wk'?rtt52Nat:rttIncNat;(m[x.specialty_code]=m[x.specialty_code]||[]).push([x.organisation_id,Number(x.value)]);});
-  const med18={};Object.keys(rtt18Nat).forEach(sc=>{const a=rtt18Nat[sc].map(x=>x[1]).sort((x,y)=>x-y);if(a.length>=10)med18[sc]=a[Math.floor(a.length/2)];});
-  const wteBy={};WF.forEach(x=>{if(x.metric_code!=='medical_wte'||!x.specialty_code)return;const k=x.organisation_id+'|'+x.specialty_code;const e=wteBy[k];if(!e||x.period>e.period)wteBy[k]={period:x.period,v:Number(x.value)};});
-  const consLp2=CN2.length?[...new Set(CN2.map(x=>x.period))].sort().pop():null;
-  const consBy={};CN2.forEach(x=>{if(x.period===consLp2)consBy[x.organisation_id+'|'+x.specialty_code]=Number(x.value);});
-  const wnLp=latestPeriod(WN.filter(x=>x.metric_code==='mhso_cost_per_wau'));
-  const cpwF={},cpwSpec={};WN.forEach(x=>{if(x.metric_code!=='mhso_cost_per_wau'||x.period!==wnLp||!(Number(x.value)>0)||/_as_a_of_/.test(x.specialty_code))return;cpwF[x.organisation_id+'|'+x.specialty_code]=Number(x.value);(cpwSpec[x.specialty_code]=cpwSpec[x.specialty_code]||[]).push(Number(x.value));});
-  const cpwMed={};Object.keys(cpwSpec).forEach(sc=>{const a=cpwSpec[sc].slice().sort((x,y)=>x-y);if(a.length>=10)cpwMed[sc]=a[Math.floor(a.length/2)];});
-  const pfLp=latestPeriod(PF.filter(x=>x.metric_code==='rtt_18wk'));
-  const pfIdx={};PF.forEach(x=>{if(x.period===pfLp&&x.specialty_code)pfIdx[x.organisation_id+'|'+x.specialty_code+'|'+x.metric_code]=Number(x.value);});
-  const pfAt=(oid,sc,mc)=>{const v2=pfIdx[oid+'|'+sc+'|'+mc];return v2==null?null:v2;};
-  const clamp01=x=>Math.max(0,Math.min(1,x));
-  const fragCell=(oid,sc,nm)=>{
-    const parts=[];const slug=slugName(nm.replace(' †',''));
-    const wkey=Object.keys(wteBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36)||k.indexOf('|')<0)return false;const s=k.slice(k.indexOf('|')+1);const al=WTE_ALIAS[slug]||slug;return s===al||s===slug||s.startsWith(al)||al.startsWith(s);});
-    const wte=wkey?wteBy[wkey].v:null;
-    const ckey=Object.keys(consBy).find(k=>{if(k.slice(0,36)!==String(oid).slice(0,36))return false;const s3=k.slice(37);const al=WTE_ALIAS[slug]||slug;return s3===al||s3===slug||s3.startsWith(al)||al.startsWith(s3);});
-    const cwte=ckey!=null?consBy[ckey]:null;
-    if(cwte!=null)parts.push([30,cwte<4?30:cwte<6?24:cwte<8?16:cwte<10?8:0]);
-    else if(wte!=null)parts.push([30,wte<3?30:wte<5?24:wte<8?16:wte<12?8:0]);
-    const v18=pfAt(oid,sc,'rtt_18wk');
-    if(v18!=null&&med18[sc]!=null)parts.push([25,25*clamp01((10-(v18-med18[sc]))/25)]);
-    const v52=pfAt(oid,sc,'rtt_52wk'),vin=pfAt(oid,sc,'rtt_incomplete');
-    if(v52!=null&&vin>0)parts.push([15,15*clamp01((100*v52/vin)/5)]);
-    const cps2=[...new Set(cpAll.filter(x=>x.organisation_id===oid&&x.specialty_code===sc).map(x=>x.period))].sort();
-    if(cps2.length>=18){const l12=cps2.slice(-12),p12=cps2.slice(-24,-12);
-      const sum=ps=>cpAll.filter(x=>x.organisation_id===oid&&x.specialty_code===sc&&ps.includes(x.period)).reduce((s,x)=>s+Number(x.value||0),0);
-      const a=sum(l12),b=sum(p12);if(b>60)parts.push([15,15*clamp01(-(a/b-1)*100/25)]);}
-    const mslug=Object.keys(cpwMed).find(s=>s===slug||s.startsWith(slug)||slug.startsWith(s));
-    if(mslug&&cpwF[oid+'|'+mslug]!=null)parts.push([15,15*clamp01((cpwF[oid+'|'+mslug]/cpwMed[mslug]-1)*100/30)]);
-    if(parts.length<2)return null; /* one plane is a hint, not an index — require corroboration */
-    const maxSum=parts.reduce((s,p)=>s+p[0],0),ptSum=parts.reduce((s,p)=>s+p[1],0);
-    return {score:Math.round(100*ptSum/maxSum),n:parts.length,wte};};
-  const rttSpecsM=specs.filter(s=>s.is_rtt&&!/^X/.test(s.code));
-  let fragWorst=[];
+
+  /* --- item 8 · specialty fragility index: shared builder (W5) — one score, one definition --- */
+  const FR=await buildFrag();const fragCell=FR.cell;
+  const rttSpecsM=FR.specsM;
+  let fragWorst=FR.worst;
   const fragRows=rttSpecsM.map(s=>{let tot=0,n=0;TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const c=fragCell(oid,s.code,s.name);if(c){tot+=c.score;n++;}});return {code:s.code,name:s.name,avg:n?tot/n:null};}).filter(x=>x.avg!=null).sort((a,b)=>b.avg-a.avg);
   if(fragRows.length){
     const cellFr=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===sc);const c=fragCell(oid,sc,s2?s2.name:sc);return c?c.score:null;};
@@ -2050,34 +2123,18 @@ async function renderModelling(v){
     h+=`<div class="card" style="overflow-x:auto;margin-bottom:14px"><div class="h3">Fragility by trust × specialty · 0 (robust) to 100 (fragile)</div><div class="cap">Five weighted components per cell: rota scale 30 · access position 25 · long-wait severity 15 · falling volume 15 · cost outlier 15 · score renormalised when a component is not published for that specialty · click any cell for the RTT drill</div>`;
     h+=hmGrid(fragRows.slice(0,16),cellFr,v2=>{if(v2==null)return{bg:'#e7ecf2',fg:'#9aa0af'};const t=Math.min(1,v2/100);return{bg:d3.interpolateRgb('#f2f5f0','#8f1d17')(Math.sqrt(t)),fg:t>0.3?'#fff':'#3d4a3e'};},v2=>v2==null?'':Math.round(v2),(oid,sc)=>`openFactDrill('performance','${oid}','${sc}','rtt_18wk')`);
     h+=`</div>`;
-    const worst=fragWorst;fragRows.forEach(rw=>TRUSTS.forEach(tc=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const s2=rttSpecsM.find(s=>s.code===rw.code);const c=fragCell(oid,rw.code,s2?s2.name:rw.code);if(c&&c.score>=55)worst.push({name:rw.name,tc,score:c.score,wte:c.wte});}));
-    worst.sort((a,b)=>b.score-a.score);
+    const worst=fragWorst;
     if(worst.length){const gfF=g10From(AF,DC,OUT);
     h+=`<div class="card" style="margin-bottom:14px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Most fragile services</div><div class="cap" style="padding:2px 14px 0">Score 55+ · the consolidation and network conversation starts here · outlook = ten-year demand on this service (trust's own trend where held), the forward marker the fragility score deliberately excludes</div><table class="dt ev"><thead><tr><th>Specialty</th><th>Trust</th><th class="num">Fragility</th><th class="num">Doctors in post</th><th class="num">Outlook</th></tr></thead><tbody>`+
       worst.slice(0,10).map(x=>{const rw2=fragRows.find(r2=>r2.name===x.name);const oid2=(orgs.find(o=>o.code===x.tc)||{}).id;const g=rw2?gfF(oid2,rw2.code):null;const t2=gfF.tier(g);
         return `<tr><td>${esc(x.name)}</td><td>${esc(trustShort(x.tc))}</td><td class="num" style="font-weight:700;color:${x.score>=70?'#b3261e':'#b45309'}">${x.score}</td><td class="num muted">${x.wte!=null?(Math.round(x.wte*10)/10)+' WTE':'—'}</td><td class="num" style="font-weight:600;color:${t2?t2[1]:'#9aa0af'}">${g!=null?((g>0?'+':'')+Math.round(g*100)+'% · '+t2[0]):'—'}</td></tr>`;}).join('')+`</tbody></table></div>`;}
     h+=`<div class="card" style="margin-bottom:14px"><div class="h3">How the fragility score is built · full methodology</div><div class="note" style="margin-top:6px">Each trust-and-specialty cell starts from five questions, each answered from a published national source and each carrying a fixed weight. <b>Can it staff a rota? (30 points)</b> Scored on the CONSULTANT grade where the census publishes it (under 4 consultant WTE scores the full 30, under 6 scores 24, under 8 scores 16, under 10 scores 8 — a sustainable 1-in-8 on-call needs roughly eight consultants), falling back to all-grades doctors in post (under 3 / 5 / 8 / 12 WTE) where it does not. <b>Is access holding? (25 points)</b> The specialty's RTT 18-week position against the national median for the same specialty: 10 points better than median scores 0, sliding to the full 25 at 15 points worse. <b>How severe are the long waits? (15 points)</b> 52-week breaches as a share of that specialty's waiting list: 0% scores 0, 5%+ scores the full 15. <b>Is the service shrinking? (15 points)</b> Completed pathways, last 12 months against the previous 12: growth scores 0, a 25% decline scores the full 15 — falling throughput with a stable population is how services quietly wither before they fail. <b>Is it a cost outlier? (15 points)</b> Cost per weighted activity unit against the national specialty median (open Model Health System): at or below median scores 0, 30% above scores the full 15. The cell score is the points taken as a share of the points available — where a source does not publish that specialty (cost per WAU covers around 21 specialties, workforce around 60), the score is renormalised over what is published rather than pretending the gap is a zero. A score of 55 or more is flagged; nothing in this index is a verdict, every component opens to its published source, and the weights are stated so they can be challenged and re-run.</div></div>`;}
   /* --- build plan · clinical co-location dependencies: starter matrix, requires clinical sign-off --- */
-  const IDEP={
-    names:{ed:'Emergency department (Type 1)',acmed:'Acute & general medicine',ccu:'Critical care (level 2/3)',emsurg:'Emergency general surgery',anaes:'Anaesthetics & theatres',imaging:'Imaging (CT 24/7)',path:'Pathology & blood sciences',obs:'Consultant-led obstetrics',neo:'Neonatal care',paeds:'Inpatient paediatrics',trauma:'Trauma & orthopaedics',stroke:'Hyperacute stroke',pci:'Primary PCI',ir:'Interventional radiology',elsurg:'Elective inpatient surgery'},
-    need:{
-      ed:[['acmed',1],['ccu',1],['anaes',1],['imaging',1],['path',1],['emsurg',2],['paeds',2],['ir',3]],
-      acmed:[['imaging',1],['path',1],['ccu',2]],
-      emsurg:[['anaes',1],['ccu',1],['imaging',1],['ed',2],['ir',2]],
-      obs:[['anaes',1],['neo',1],['path',1],['ccu',2],['imaging',2]],
-      neo:[['obs',1],['paeds',2]],
-      paeds:[['ed',2],['anaes',2],['imaging',2]],
-      trauma:[['ed',1],['anaes',1],['imaging',1],['ccu',2],['acmed',2]],
-      stroke:[['imaging',1],['acmed',1],['ccu',2],['ir',3]],
-      pci:[['imaging',1],['ccu',2],['ir',2]],
-      elsurg:[['anaes',1],['imaging',2],['ccu',2]],
-      ccu:[['acmed',1],['imaging',1],['path',1],['emsurg',2]]
-    }};
-  const lvlPill=l=>l===1?`<span class="pill" style="background:#8f1d17">must co-locate</span>`:l===2?`<span class="pill" style="background:#b45309">on site / rapid</span>`:`<span class="pill" style="background:#44639f">network ok</span>`;
+
   h+=`<details class="card" style="margin-top:14px;margin-bottom:14px"><summary style="cursor:pointer;font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:15px">Reference · clinical co-location dependencies (starter matrix, for clinical sign-off)</summary><div class="cap" style="margin-top:6px">Out of the main flow as proposed: the consolidation lever consults this matrix from phase 2 · requires clinical sign-off before it gates any option</div>`;
   h+=`<div class="card" style="padding:4px 0;margin-bottom:14px"><table class="dt ev"><thead><tr><th>Service</th><th>Depends on</th></tr></thead><tbody>`+
     Object.keys(IDEP.need).map(k=>`<tr><td style="font-weight:600">${IDEP.names[k]}</td><td>`+IDEP.need[k].map(d=>`<span style="display:inline-block;margin:2px 8px 2px 0;font-size:11.5px">${IDEP.names[d[0]]} ${lvlPill(d[1])}</span>`).join('')+`</td></tr>`).join('')+`</tbody></table></div>`;
-  const DEPMAP={'General Surgery':'emsurg','Trauma and Orthopaedic':'trauma','General Medicine':'acmed','Elderly Medicine':'acmed','General Internal Medicine':'acmed','Cardiology':'pci'};
+
   const coRisk=[];
   if(fragWorst.length){fragWorst.forEach(w=>{const key=DEPMAP[w.name.replace(/ Service$/,'')];if(!key)return;
     const dependants=Object.keys(IDEP.need).filter(s=>IDEP.need[s].some(d=>d[0]===key&&d[1]===1)).map(s=>IDEP.names[s]);
@@ -2586,6 +2643,23 @@ async function renderOptions(v){v.innerHTML='<div class="loading">Loading option
       const verdict=fails?['fails screen','#b3261e']:cauts>1?['conditional','#b45309']:['clears screen','#166f4d'];
       return `<tr style="cursor:pointer" onclick="openOption('${o.id}')"><td style="font-size:12px">${esc(optShort(o.title).slice(0,80))}</td>${st.map(s=>`<td class="num">${hg(s)}</td>`).join('')}<td class="num" style="border-left:1px solid var(--line)"><span class="pill" style="background:${verdict[1]}">${verdict[0]}</span></td></tr>`;}).join('')+
     `</tbody></table><div class="note" style="padding:6px 14px 10px">A hurdle screen answers "may this option proceed at all" before any weighting: an option that fails clinical safety cannot buy its way back with a good finance score. Derived from each option's stored impact ratings (negative = fail, mixed = caution) and risk register (a significant risk fails deliverability); dashes are unassessed, and the screen is a facilitation aid to challenge, not a verdict.</div></div>`;
+  const CFG=await computeConfigs();
+  h+=`<div class="eyebrow">Computed configurations · beta · dependency matrix awaiting clinical sign-off</div>`;
+  if(!CFG.rows.length){h+=`<div class="card" style="margin-bottom:14px"><div class="h3">No fragile services to reconfigure</div><div class="cap">No service in this system scores 55+ on the fragility index (or the system has a single acute provider), so the optimiser has nothing to move. The index lives in the modelling studio.</div></div>`;}
+  else{
+    const tick=d=>d.ok===true?`<b style="color:#166f4d">✓</b>`:d.ok===null?`<span class="muted" title="not detectable from published data — confirm clinically">·</span>`:`<b style="color:#b3261e">✗</b>`;
+    h+=`<div class="card" style="margin-bottom:14px;padding:4px 0"><div class="h3" style="padding:10px 14px 0">Where each fragile service could consolidate</div><div class="cap" style="padding:2px 14px 0">Every partner trust scored on four published planes: combined consultant rota (a sustainable 1-in-8 needs ~8 WTE), level-1 co-location needs from the starter matrix, receiver bed headroom at a 92% ceiling, and the population-weighted travel change across the donor's routed catchment. Best candidate first; this is arithmetic to argue with, not a recommendation.</div>
+    <table class="dt ev"><thead><tr><th>Fragile service</th><th>Receiver</th><th class="num">Combined rota</th><th>Level-1 needs</th><th class="num">Bed headroom</th><th class="num">Δ travel</th></tr></thead><tbody>`+
+    CFG.rows.map(row=>{const w=row.w;
+      return row.cands.map((c,ci)=>{const combCol=c.comb>=8?'#166f4d':c.comb>=5?'#b45309':'#b3261e';
+        return `<tr>${ci===0?`<td rowspan="${row.cands.length}" style="vertical-align:top"><b>${esc(w.name)}</b><br><span class="muted" style="font-size:11px">at ${esc(trustShort(w.tc))} · fragility ${w.score} · ${row.cd?Math.round(row.cd*10)/10+' consultant WTE':'census thin'}</span></td>`:''}
+        <td>${esc(trustShort(c.r.code))}${ci===0?' <span class="pill" style="background:#1f3a78">best fit</span>':''}</td>
+        <td class="num" style="font-weight:700;color:${combCol}">${Math.round(c.comb*10)/10} WTE</td>
+        <td>${row.needs.length?c.deps.map(d=>`<span style="font-size:11px;white-space:nowrap;margin-right:7px">${esc(IDEP.names[d.k].split(' (')[0])} ${tick(d)}</span>`).join(''):'<span class="muted">none level-1</span>'}</td>
+        <td class="num">${c.head!=null?`${c.head>0?'+':''}${c.head} beds <span class="muted" style="font-size:10.5px">at ${Math.round(c.occ*10)/10}%</span>`:'—'}</td>
+        <td class="num">${c.dt!=null?`<b style="color:${c.dt>10?'#b3261e':c.dt>4?'#b45309':'#166f4d'}">+${Math.round(c.dt*10)/10} min</b><br><span class="muted" style="font-size:10.5px">${Math.round(c.far)}% of pop &gt;+20 · ${Math.round(c.cov)}% routed</span>`:'<span class="muted">unrouted</span>'}</td></tr>`;}).join('');}).join('')+
+    `</tbody></table><div class="note" style="padding:6px 14px 10px">Rota = this specialty's consultant WTE at donor plus receiver (NHS workforce census; thin where the census does not split the specialty). Level-1 needs read the starter co-location matrix in the modelling studio, detected from published signals where possible (· means confirm clinically); the matrix awaits clinical sign-off and gates nothing. Bed headroom = receiver G&amp;A beds × (92% − occupancy). Δ travel = extra minutes, population-weighted over the donor catchment's routed LSOAs (car, OSRM). Site-grain service data would sharpen every column.</div></div>`;
+  }
   h+=`<div class="note" style="margin-top:10px">Options are working drafts from facilitation; the hurdle screen, weighted matrix and each option's economics sandbox deepen as engine integration lands.</div>`;
   v.innerHTML=h;}
 function openOption(id){if(!optCache)return;const o=(optCache.options||[]).find(x=>x.id===id);if(!o)return;hideTip();
