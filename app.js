@@ -122,7 +122,17 @@ async function loadAll(){
     sb.from('sr_dim_specialty').select('*').order('sort'),sb.from('sr_dim_pod').select('*').order('sort'),
     sb.from('sr_dim_staff_group').select('*').order('sort'),sb.from('sr_dim_finance_line').select('*').order('sort'),sb.from('sr_dim_site').select('*').order('sort'),
     sb.from('sr_benchmarks').select('*').limit(20000)]);
-  orgs=o.data||[];orgdist=d.data||[];rows=r.data||[];overrides=ov.data||[];criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];bench=bm.data||[];
+  /* supabase-js resolves {data:null,error} rather than throwing — a dropped critical query must not
+     silently boot an empty model (it renders every page hollow). Verify, retry once, then fail honestly. */
+  if(o.error||!(o.data||[]).length)throw new Error('organisations query failed: '+((o.error&&o.error.message)||'empty'));
+  let rowsRes=r;
+  if(rowsRes.error||!(rowsRes.data||[]).length){
+    console.warn('status rows fetch failed, retrying once',rowsRes.error&&rowsRes.error.message);
+    await new Promise(x=>setTimeout(x,1400));
+    rowsRes=await sb.from('sr_mv_metric_status').select('*').limit(60000);
+    if(rowsRes.error||!(rowsRes.data||[]).length)throw new Error('metric status query failed: '+((rowsRes.error&&rowsRes.error.message)||'empty'));
+  }
+  orgs=o.data||[];orgdist=d.data||[];rows=rowsRes.data||[];overrides=ov.data||[];criteria=cr.data||[];lenses=ln.data||[];issues=iss.data||[];iscores=isc.data||[];bench=bm.data||[];
   const today=new Date().toISOString().slice(0,10);bench=bench.filter(b=>!b.period||b.period<=today); /* drop stray future-dated benchmark rows */
   specs=sp.data||[];pods=pd.data||[];sgs=sg.data||[];flines=fl.data||[];sites=si.data||[];
   orgById={};orgs.forEach(x=>orgById[x.id]=x);distByOrg={};orgdist.forEach(x=>distByOrg[x.organisation_id]=x);
