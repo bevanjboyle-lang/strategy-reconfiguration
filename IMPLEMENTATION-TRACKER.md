@@ -750,3 +750,17 @@ Recloned at tip, rebuilt @playwright/test 1.61.1 in the cloud container and ship
 module tree over (chromium 1228 already cached). Data hygiene follow-up registered: decide
 whether the partial ae_4hr May-26 rows and legacy wl_weekly_* facts should stay in the
 performance domain.
+
+## 14 Jul 2026 · Units and decimals sweep (reported by Bevan: 10-dp values on Trust explorer)
+Cause: fmt() knew nine units; the warehouse serves twenty. Eleven live unit families (num
+15,454 rows, share, index, segment, rating, gbp, rate, tco2e, ppts, gbp_per_wau, mins) fell
+through to raw float printing, and the explorer's vs-standard / vs-median columns subtract
+floats client-side, manufacturing artifacts like 3.3299999999999996. Stored values audited
+clean (0 rows with 4+ dp), so this was purely presentation.
+Fix: fmt() now covers every unit actually served (share->%, index/score/ratio 1dp, rate 2dp,
+ppts->'pp', segment/rating integers, gbp/gbp_per_wau with £ and k/m compaction, tco2e, mins)
+and unknown units get magnitude-aware smart rounding (1,000+ localized integer; 100+ 1dp;
+else 2dp; tiny values 2 sig figs) instead of ''+v. Non-numeric values pass through sanitised.
+Explorer delta columns follow the movement-unit rule: percentage-led metrics show 'pp'.
+Formatter unit-tested (18 cases incl. artifact reproductions). Test 31 gained a guard: any
+4+ decimal run on the explorer fails the gate. Gate 53 passed + 1 boot-class flaky-on-retry.

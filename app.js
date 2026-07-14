@@ -35,7 +35,29 @@ function color(d){if(d==null)return '#9aa0af';if(d>=70)return '#b3261e';if(d>=55
 function slab(s){return {near_failure:'near-failure',serious:'serious',watch:'watch',stable:'stable'}[s]||s;}
 /* Item 3 · one consistent legend for the headline-tile colours, shown under every domain KPI strip. */
 function kpiLegend(){return `<div class="keyline">Tile colour reads from the live scoring model — this organisation's position against the published standard and every English trust, plus direction of travel: <b style="color:#166f4d">green stable</b> · <b style="color:#7a6200">amber watch</b> · <b style="color:#b45309">orange serious</b> · <b style="color:#b3261e">red critical</b>. Signed measures (surplus/deficit) colour by favourable or adverse; <b style="color:#9aa0af">grey</b> and <b style="color:#1f3a78">navy</b> tiles are context, not judged.</div>`;}
-function fmt(v,u){if(v==null||v==='')return '—';v=Number(v);if(u==='pct')return (Math.round(v*10)/10)+'%';if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(Math.round(v*10)/10).toLocaleString()+'m';if(u==='count'||u==='wte')return Math.round(v).toLocaleString();if(u==='days')return (Math.round(v*10)/10)+' days';if(u==='m2')return Math.round(v).toLocaleString()+' m²';if(u==='flag')return v?'Yes':'No';if(u==='score'||u==='ratio')return ''+(Math.round(v*10)/10);return ''+v;}
+function fmt(v,u){if(v==null||v==='')return '—';const raw=v;v=Number(v);
+  if(!isFinite(v))return String(raw).replace(/[<>&]/g,'');
+  const smart=x=>{const a2=Math.abs(x);if(a2>=1000)return Math.round(x).toLocaleString();
+    if(a2>=100)return (Math.round(x*10)/10).toLocaleString();
+    if(a2>0&&a2<0.01)return x.toPrecision(2).replace(/e[+-]?\d+$/,'');
+    return String(Math.round(x*100)/100);};
+  if(u==='pct'||u==='share')return (Math.round(v*10)/10)+'%';
+  if(u==='gbp_m')return (v<0?'−£':'£')+Math.abs(Math.round(v*10)/10).toLocaleString()+'m';
+  if(u==='gbp'||u==='gbp_per_wau'){const a2=Math.abs(v),s=v<0?'−£':'£';
+    if(a2>=10000000)return s+(Math.round(a2/100000)/10).toLocaleString()+'m';
+    if(a2>=100000)return s+Math.round(a2/1000).toLocaleString()+'k';
+    return s+smart(a2);}
+  if(u==='count'||u==='wte')return Math.round(v).toLocaleString();
+  if(u==='days')return (Math.round(v*10)/10)+' days';
+  if(u==='mins')return (Math.round(v*10)/10)+' min';
+  if(u==='m2')return Math.round(v).toLocaleString()+' m²';
+  if(u==='flag')return v?'Yes':'No';
+  if(u==='score'||u==='ratio'||u==='index')return ''+(Math.round(v*10)/10);
+  if(u==='rate')return ''+(Math.round(v*100)/100);
+  if(u==='ppts')return (Math.round(v*10)/10)+'pp';
+  if(u==='segment'||u==='rating')return ''+Math.round(v);
+  if(u==='tco2e')return Math.round(v).toLocaleString()+' tCO₂e';
+  return smart(v);}
 function esc(s){return (s==null?'':''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 const MONTHS_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtPeriod(p){if(!p)return '';const s=''+p;const m=parseInt(s.slice(5,7),10);if(!m||m<1||m>12)return s.slice(2,7);return MONTHS_ABBR[m-1]+' '+s.slice(2,4);}
@@ -3285,7 +3307,7 @@ async function renderXEntity(v){
       if(subCount>1){const sSub=subOf[r.metric_code]||'';if(sSub!==lastSub){h+=`<tr><td colspan="7" style="padding:9px 14px 3px;font-size:9.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--mut,#6a7183);border-bottom:none">${esc((sSub||'general').replace(/_/g,' '))}</td></tr>`;lastSub=sSub;}}
       const spCol=sp?(sp.verdict.indexOf('deterioration')>=0?'#b45309':sp.verdict.indexOf('improvement')>=0?'#166f4d':'#6a7183'):null;
       const goodCol=dv=>dv==null?'#9aa0af':dv===0?'#6a7183':((dv>0)===(r.higher_is_better!==false)?'#166f4d':'#b3261e');
-      const dfmt=dv=>dv==null?'—':(dv>0?'+':dv<0?'−':'')+fmt(Math.abs(dv),r.unit);
+      const dfmt=dv=>dv==null?'—':(dv>0?'+':dv<0?'−':'')+((r.unit==='pct'||r.unit==='share')?(Math.round(Math.abs(dv)*10)/10)+'pp':fmt(Math.abs(dv),r.unit));
       const dstd=(r.standard!=null&&r.value!=null)?Number(r.value)-Number(r.standard):null;
       const dnm=(r.nm_value!=null&&r.value!=null)?Number(r.value)-Number(r.nm_value):null;
       const split=xSplitInfo(r.metric_code);

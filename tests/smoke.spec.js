@@ -437,6 +437,8 @@ test.describe('System Intelligence — smoke (E1)', () => {
     const val = await page.locator('#xorgsel optgroup[label="Mental health trusts"] option', { hasText: 'Maudsley' }).first().getAttribute('value');
     await page.selectOption('#xorgsel', val);
     await expect(page.locator('.view'), 'MH provider metrics render').toContainText(/Backlog maintenance|Occupied share|estate/i, { timeout: 30000 });
+    const longdec = await page.evaluate(() => ((document.querySelector('.view')||{innerText:''}).innerText.match(/[0-9][.][0-9]{4,}/g)||[]).slice(0,3));
+    expect(longdec, 'no raw float artifacts on the explorer: '+longdec.join(' ')).toEqual([]);
     const txt = await page.locator('.view').innerText();
     expect(/undefined|NaN/.test(txt)).toBeFalsy();
   });
