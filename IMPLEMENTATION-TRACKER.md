@@ -734,3 +734,19 @@ exists. Rota back-trend at org grain needs the historical Trusts-and-core CSV zi
 Mar 2026 held; the 101 monthly workbooks are NATIONAL grain) - registered as an acquisition
 backlog item; national-grain consultant supply trend (2009+) available cheaply if wanted.
 Gate 53 passed + 1 flaky-on-retry = 54/54.
+
+## 14 Jul 2026 · Bugfix: blank RTT heatmap (reported by Bevan)
+Cause: renderPerformance computed its heatmap period as latestPeriod over the WHOLE
+performance fact family. Two families run ahead of the RTT publication month (a partial
+ae_4hr May-26 file for the BSW trusts; wl_weekly_* facts dated 26-Apr from the early WLMDS
+experiment), so any system holding those rows got a period no rtt_18wk/incomplete/52wk
+specialty row carries and every cell nulled to blank. Fix: the heatmap period now comes from
+the metric being drawn (metric_code === perfMetric with a specialty_code). Same latent
+pattern scoped in renderFinance (accounts line family) and renderWorkforce (staff-group
+census family). Test 50 strengthened: asserts >20 populated heatmap cells. Verified via
+probe: Devon 137 cells, Greater Manchester 344, BSW 122, all captioned Apr 26.
+Ops note: the Mac /tmp cleaner gutted /tmp/sr-repo overnight (.git and Playwright modules).
+Recloned at tip, rebuilt @playwright/test 1.61.1 in the cloud container and shipped the
+module tree over (chromium 1228 already cached). Data hygiene follow-up registered: decide
+whether the partial ae_4hr May-26 rows and legacy wl_weekly_* facts should stay in the
+performance domain.

@@ -771,7 +771,11 @@ async function renderFlow(v){
 
 /* ===== PERFORMANCE ===== */
 async function renderPerformance(v){v.innerHTML='<div class="loading">Loading performance…</div>';const[f,NC]=await Promise.all([ensure('performance'),fetchNowcast()]);
-  const rttSpecs=specs.filter(s=>s.is_rtt);const lp=latestPeriod(f);
+  const rttSpecs=specs.filter(s=>s.is_rtt);
+  /* The period must come from the metric being drawn: other performance families (a partial
+     A&E month, weekly list facts) can run ahead of the RTT publication and would otherwise
+     blank every cell. */
+  const lp=latestPeriod(f.filter(x=>x.metric_code===perfMetric&&x.specialty_code));
   const metricSel=`<select class="sel" id="pm" onchange="perfMetric=this.value;render()">`+[['rtt_18wk','RTT 18-week %'],['rtt_incomplete','Waiting list size'],['rtt_52wk','52-week breaches']].map(m=>`<option value="${m[0]}" ${m[0]===perfMetric?'selected':''}>${m[1]}</option>`).join('')+`</select>`;
   // heatmap trust x specialty for perfMetric latest
   const cell=(tc,sc)=>{const oid=(orgs.find(o=>o.code===tc)||{}).id;const r=f.find(x=>x.organisation_id===oid&&x.specialty_code===sc&&x.metric_code===perfMetric&&x.period===lp);return r?Number(r.value):null;};
@@ -952,7 +956,7 @@ async function renderEstate(v){v.innerHTML='<div class="loading">Loading estate�
    store already holds every metric_values series for the system's orgs. */
 function finFY(p){const y=+String(p).slice(0,4);return (y-1)+'/'+String(p).slice(2,4);}
 function tacIdByCode(){const m={};rows.forEach(r=>{if(!(r.metric_code in m))m[r.metric_code]=r.metric_id;});return m;}
-async function renderFinance(v){v.innerHTML='<div class="loading">Loading finance…</div>';const f=await ensure('finance');const lp=latestPeriod(f);
+async function renderFinance(v){v.innerHTML='<div class="loading">Loading finance…</div>';const f=await ensure('finance');const lp=latestPeriod(f.filter(x=>x.line_code));
   const g=(line)=>{const r=f.find(x=>x.organisation_id===sel&&x.line_code===line&&x.period===lp);return r?Number(r.value):0;};
   const income=g('inc_clinical')+g('inc_other');const pay=g('pay_substantive')+g('pay_bank')+g('pay_agency');const nonpay=g('np_drugs')+g('np_clin_supplies')+g('np_nonclin')+g('np_premises')+g('np_deprec')+g('np_other');
   const agencyPct=pay?100*g('pay_agency')/pay:0;
@@ -1366,7 +1370,7 @@ async function renderValue(v){v.innerHTML='<div class="loading">Sizing the oppor
 }
 
 /* ===== WORKFORCE ===== */
-async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f);
+async function renderWorkforce(v){v.innerHTML='<div class="loading">Loading workforce…</div>';const f=await ensure('workforce');const lp=latestPeriod(f.filter(x=>x.staff_group_code));
   const selOrg=orgById[sel]||{};
   const wOrgIds=(selOrg.type==='acute_trust')?[sel]:sysTrusts().map(t=>t.id);const grp=wOrgIds.length>1;
   const gv=(sgc,m)=>{const own=f.find(x=>x.organisation_id===sel&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(own)return Number(own.value);const xs=f.filter(x=>wOrgIds.includes(x.organisation_id)&&x.staff_group_code===sgc&&x.metric_code===m&&x.period===lp);if(!xs.length)return null;const s=xs.reduce((a,x)=>a+Number(x.value),0);return (m==='wte'||m==='agency_wte')?s:s/xs.length;};

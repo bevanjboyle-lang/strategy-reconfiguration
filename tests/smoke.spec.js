@@ -667,6 +667,8 @@ test.describe('System Intelligence — smoke (E1)', () => {
     expect(nc.backtest.m1.n).toBeGreaterThan(20);
     await page.goto('/index.html?system=' + BSW_SLUG + '&view=performance');
     await expect(page.locator('.view')).toContainText('RTT by specialty', { timeout: 45000 });
+    const hmCells = await page.evaluate(() => [...document.querySelectorAll('.hm .cell')].filter(e => /[0-9]/.test(e.textContent)).length);
+    expect(hmCells, 'RTT trust x specialty heatmap populates').toBeGreaterThan(20);
     if (nc.forward_weeks > 0) {
       await expect(page.locator('.view')).toContainText('Waits now');
       await expect(page.locator('.view')).toContainText('median');
