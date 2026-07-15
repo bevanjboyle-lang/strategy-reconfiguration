@@ -764,3 +764,24 @@ else 2dp; tiny values 2 sig figs) instead of ''+v. Non-numeric values pass throu
 Explorer delta columns follow the movement-unit rule: percentage-led metrics show 'pp'.
 Formatter unit-tested (18 cases incl. artifact reproductions). Test 31 gained a guard: any
 4+ decimal run on the explorer fails the gate. Gate 53 passed + 1 boot-class flaky-on-retry.
+
+## 15 Jul 2026 · External verification of the PAH note (Bevan: "check against published sources, not just the lake")
+Method: fresh downloads from england.nhs.uk parsed independently (lake and its parsers fully
+bypassed), plus published national statistics via web. Results:
+- RTT Apr 2026 (Incomplete-Provider-Apr26 xlsx, fresh): RQW total 38,611 EXACT; 65.3% within
+  18wk EXACT; T&O list 5,337 EXACT; 52+ waits 454 EXACT. Validates the whole RTT pipeline.
+- DM01 Apr 2026 (Monthly-Diagnostics-Web-File-Provider, fresh): RQW 4,019 of 12,123 waiting
+  6+ weeks = 33.15% -> note's 33.2% EXACT.
+- National outpatient scale: NHS Digital Hospital Outpatient Activity 2024-25 reports 113.2m
+  attended; our MAR-derived 12m-to-Feb-26 figure is 114.2m. Different collection, adjacent
+  window: corroborated within ~1%.
+- A&E DISCREPANCY FOUND (not used in the note): warehouse ae_4hr for RQW May-26 serves 81.7%;
+  recomputing the official formula from the fresh published May-2026 provider CSV gives 80.7%
+  (att 11,490 incl booked, over-4hr 2,220). BACKLOG: audit the ae_4hr loader definition
+  (booked-appointment columns / collection source) before the figure is quoted anywhere.
+- MAR trust-level (RQW Feb-26 firsts 11,380 / FU 20,760): no modern per-month provider file
+  located on the legacy MAR landing within the time-box; triangulated instead via the national
+  HES corroboration above plus cross-loader agreement with curated op metrics. Note's specialty
+  table is labelled modelled and unaffected.
+Note itself: zero corrections required from the external pass (the earlier wording pass fixed
+four claims); every externally checked number in the document matched the published source.
